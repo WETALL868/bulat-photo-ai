@@ -22,6 +22,12 @@ import { chromium } from 'playwright';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'seo-pages');
+/*
+  Старые снимки удаляем перед сборкой. Dev-сервер отдаёт seo-pages/*.html, если
+  файл есть, поэтому без очистки предрендер снимал бы сам себя: правка шапки или
+  подвала в index.html не попадала бы в новые страницы.
+*/
+fs.rmSync(OUT, { recursive: true, force: true });
 const PORT = 8099;
 const BASE = `http://127.0.0.1:${PORT}`;
 const SITE = 'https://hi-black.example';       // боевой домен подставляется здесь

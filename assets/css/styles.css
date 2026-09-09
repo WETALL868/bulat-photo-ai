@@ -29,7 +29,9 @@
   --shadow-card:0 14px 36px rgba(20,20,20,.09);
   --shadow-pop:0 18px 44px rgba(20,20,20,.07);
   --shadow-menu:0 30px 60px rgba(20,20,20,.14);
-  --hdr:#171716;--hdr2:#111110;--hdr-line:#332f28;
+  /* Шапка в три полосы: служебная сверху тёмная, рабочая посередине
+     светлее и заметнее, меню снизу снова тёмное. */
+  --hdr:#171716;--hdr2:#0e0e0d;--hdr-mid:#26241f;--hdr-line:#3b362e;
   /* Поля по краям экрана. Одно значение на весь сайт: если менять его,
      то заодно и у блоков, которые «выезжают» за поля (.nav, .brands…). */
   --gut:32px;
@@ -145,7 +147,8 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 /* Шапка тёмная: логотип и фирменный жёлтый читаются на ней заметно лучше,
    а витрина ниже остаётся светлой и не спорит с фотографиями товаров. */
 .hdr{position:relative;z-index:30;background:var(--hdr);color:#fff}
-.topbar{background:var(--hdr2);border-bottom:1px solid var(--hdr-line);font-size:13px;color:#a7a69f}
+.head{background:var(--hdr-mid);border-bottom:1px solid var(--hdr-line)}
+.topbar{background:var(--hdr2);border-bottom:1px solid var(--hdr-line);font-size:14px;color:#b4b3ac}
 .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:40px;gap:16px;overflow:hidden}
 .topbar .l,.topbar .r{display:flex;gap:26px;align-items:center}
 .topbar a{color:#a7a69f;white-space:nowrap}.topbar a:hover{color:#fff}
@@ -154,20 +157,20 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .mobbtn,.mphone{display:none}
 .logo{display:flex;flex-direction:column;align-items:flex-start;gap:5px;flex:none}
 .logo img{height:34px;width:auto}
-.logo-sub{font-size:11px;color:#a7a69f;white-space:nowrap;font-weight:500;letter-spacing:.02em}
+.logo-sub{font-size:12.5px;color:#b4b3ac;white-space:nowrap;font-weight:500;letter-spacing:.02em}
 .search{flex:1;display:flex;height:54px;border:2px solid transparent;border-radius:14px;overflow:hidden;background:#fff;min-width:0;transition:box-shadow .15s}
 .search:focus-within{box-shadow:0 0 0 4px rgba(255,210,0,.35)}
-.search input{flex:1;border:0;outline:0;padding:0 18px;font:inherit;font-size:15px;color:var(--ink);min-width:0;background:transparent;-webkit-appearance:none;appearance:none}
+.search input{flex:1;border:0;outline:0;padding:0 18px;font:inherit;font-size:16px;color:var(--ink);min-width:0;background:transparent;-webkit-appearance:none;appearance:none}
 .search input::placeholder{color:var(--muted)}
 .search input::-webkit-search-cancel-button{-webkit-appearance:none}
-.search .sbtn{width:118px;flex:none;background:var(--yellow);color:var(--ink);display:flex;align-items:center;justify-content:center;gap:8px;font-family:var(--head);font-weight:700;font-size:14px}
+.search .sbtn{width:124px;flex:none;background:var(--yellow);color:var(--ink);display:flex;align-items:center;justify-content:center;gap:8px;font-family:var(--head);font-weight:700;font-size:15px}
 .search .sbtn:hover{background:var(--yellow2)}
 .phone{display:flex;flex-direction:column;align-items:flex-start;flex:none}
-.phone b{font-family:var(--head);font-weight:800;font-size:17px;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;white-space:nowrap;color:#fff}
+.phone b{font-family:var(--head);font-weight:800;font-size:18px;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;white-space:nowrap;color:#fff}
 .phone b a{color:#fff}
-.phone span{font-size:12px;color:#a7a69f;margin-top:4px;border-bottom:1px dashed #6d6c66;line-height:1.3;cursor:pointer}
+.phone span{font-size:13px;color:#b4b3ac;margin-top:4px;border-bottom:1px dashed #6d6c66;line-height:1.3;cursor:pointer}
 .hacts{display:flex;align-items:center;gap:4px;flex:none}
-.hact{display:flex;flex-direction:column;align-items:center;gap:5px;width:64px;font-size:11px;color:#a7a69f;position:relative;white-space:nowrap}
+.hact{display:flex;flex-direction:column;align-items:center;gap:5px;width:70px;font-size:12px;color:#b4b3ac;position:relative;white-space:nowrap}
 .hact:hover{color:#fff}
 .hact svg{color:#e6e5df}
 .hact .cnt{position:absolute;top:-7px;right:14px;min-width:18px;height:18px;border-radius:9px;background:var(--yellow);color:var(--ink);font-family:var(--head);font-weight:700;font-size:11px;line-height:18px;text-align:center;padding:0 5px}
@@ -175,23 +178,23 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .cartbtn:hover{background:var(--yellow2);color:var(--ink)}
 .cartbtn .n{background:var(--ink);color:var(--yellow)}
 .cartbtn .n{background:var(--yellow);color:var(--ink);border-radius:7px;padding:3px 7px;font-family:var(--head);font-weight:700;font-size:12px;line-height:1.1}
-.cartbtn .sum{font-family:var(--head);font-weight:700;font-size:15px}
+.cartbtn .sum{font-family:var(--head);font-weight:700;font-size:16px}
 .navbar{border-top:1px solid var(--hdr-line);border-bottom:0;position:relative;background:var(--hdr)}
-.navbar .wrap{display:flex;align-items:center;gap:26px;height:64px}
-.catbtn{display:inline-flex;align-items:center;gap:12px;height:44px;padding:0 18px 0 16px;border-radius:12px;background:var(--yellow);color:var(--ink);font-family:var(--head);font-weight:700;font-size:15px;white-space:nowrap;flex:none}
+.navbar .wrap{display:flex;align-items:center;gap:22px;height:64px}
+.catbtn{display:inline-flex;align-items:center;gap:12px;height:46px;padding:0 20px 0 18px;border-radius:12px;background:var(--yellow);color:var(--ink);font-family:var(--head);font-weight:700;font-size:16px;white-space:nowrap;flex:none}
 .catbtn:hover{background:var(--yellow2)}
 .catbtn svg.y{color:var(--ink)}
 .catbtn svg.y{color:var(--yellow)}
 .catbtn .chev{transition:transform .2s}
 .catbtn.open .chev{transform:rotate(180deg)}
-.nav{display:flex;gap:22px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.nav{display:flex;gap:20px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .nav::-webkit-scrollbar{display:none}
-.nav a{font-weight:500;font-size:15px;white-space:nowrap;padding:8px 0;color:#e6e5df}
+.nav a{font-weight:500;font-size:16px;white-space:nowrap;padding:8px 0;color:#eceae4}
 .nav a:hover{color:#fff}
 .nav a.on{font-weight:700;color:var(--yellow)}
 .nav .mob-only{display:none}
 .navr{display:flex;gap:10px;align-items:center;flex:none}
-.navr a{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;height:38px;padding:0 14px;border-radius:10px;white-space:nowrap}
+.navr a{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:15px;height:40px;padding:0 15px;border-radius:10px;white-space:nowrap}
 .navr a{color:#e6e5df}
 .navr a.y{background:rgba(255,210,0,.16);color:var(--yellow)}.navr a.y:hover{background:var(--yellow);color:var(--ink)}
 .navr a.r{color:#ff8f8e}.navr a.r:hover{background:rgba(211,64,63,.2);color:#ff8f8e}
@@ -273,11 +276,11 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .hslider .slide{grid-area:1/1;position:relative;min-width:0;padding-bottom:66px;opacity:0;visibility:hidden;transition:opacity .7s ease,visibility 0s linear .7s;pointer-events:none;display:flex;align-items:center;background:#161616 center/cover no-repeat}
 .hslider .slide.on{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .7s ease,visibility 0s}
 .hslider .slide::before{content:"";position:absolute;inset:0}
-.hslider .s1{background-image:url(../img/photo/slide-office.webp);background-position:right 30%;color:#fff}
+.hslider .s1{background-image:url(../img/art/slide-1.svg);background-position:right center;color:#fff}
 .hslider .s1::before{background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.88) 42%,rgba(14,14,14,.45) 68%,rgba(14,14,14,.2) 100%)}
 .hslider .s2{background:#161616}
 .hslider .s2::before{background:radial-gradient(60% 80% at 78% 50%,rgba(255,210,0,.22),rgba(255,210,0,0) 70%)}
-.hslider .s3{background-image:url(../img/photo/slide-canon.webp);background-position:right 40%}
+.hslider .s3{background-image:url(../img/art/slide-2.svg);background-position:right center}
 .hslider .s3::before{background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.86) 42%,rgba(14,14,14,.35) 70%,rgba(14,14,14,.15) 100%)}
 .hslider .wrap{position:relative;width:100%;display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:40px;align-items:center}
 .hslider .stext{max-width:660px;padding:40px 0;min-width:0}
@@ -528,6 +531,7 @@ a.line-c:hover{border-color:var(--ink)}
 .desc p{font-size:16px;line-height:1.65;color:var(--ink2);margin-bottom:14px;max-width:760px}
 .desc ul{margin:0 0 14px 20px;color:var(--ink2);line-height:1.65}
 .desc a{text-decoration:underline}
+.desc a.btn,.desc a.chip,.desc a.cmpt-i{text-decoration:none}
 .spec-t{border:1px solid var(--line);border-radius:16px;overflow:hidden}
 .spec-t .sh{padding:16px 20px;font-family:var(--head);font-weight:800;font-size:16px;border-bottom:1px solid var(--line);background:var(--surface)}
 .spec-t .sr{display:flex;justify-content:space-between;gap:16px;padding:11px 20px;font-size:14px;border-bottom:1px solid var(--line)}
@@ -728,29 +732,49 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 
 /* 12. Подвал
    -------------------------------------------------------------------------- */
-.foot{position:relative;color:#c9c8c2;margin-top:80px;padding:56px 0 32px;background:#141414 url(../img/photo/footer-bg.webp) 88% 45%/cover no-repeat}
+.foot{position:relative;color:#d2d1cb;margin-top:80px;padding:56px 0 32px;font-size:15px;background:#141312 url(../img/art/footer.svg) center/cover no-repeat}
 .foot::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.92) 45%,rgba(14,14,14,.78) 72%,rgba(14,14,14,.6) 100%),linear-gradient(180deg,rgba(14,14,14,.2) 0%,rgba(14,14,14,.5) 100%)}
 .foot .wrap{position:relative}
 .fgrid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr 1.3fr;gap:32px}
-.foot h4{color:#fff;font-size:13px;margin-bottom:16px;letter-spacing:.08em;text-transform:uppercase;font-weight:700}
-.foot a{color:#c9c8c2}
+.foot h4{color:#fff;font-size:14px;margin-bottom:16px;letter-spacing:.07em;text-transform:uppercase;font-weight:700}
+.foot a{color:#d2d1cb}
 .foot a:hover{color:#fff}
-.fcol a{display:block;padding:5px 0;font-size:14px}
+.fcol a{display:block;padding:6px 0;font-size:15px}
 .fbrand .logo img{height:30px;filter:brightness(0) invert(1)}
-.fbrand .logo-sub{color:#8c8b85}
-.fbrand p{font-size:14px;color:#9a9993;line-height:1.5;margin-top:14px;max-width:320px}
-.fcontact{display:flex;flex-direction:column;gap:10px;font-size:14px}
-.fcontact b{color:#fff;font-family:var(--head);font-size:18px;font-weight:800}
+.fbrand .logo-sub{color:#a9a8a1}
+.fbrand p{font-size:15px;color:#a9a8a1;line-height:1.55;margin-top:14px;max-width:320px}
+.fcontact{display:flex;flex-direction:column;gap:10px;font-size:15px}
+.fcontact b{color:#fff;font-family:var(--head);font-size:19px;font-weight:800}
 .fcontact b a{color:#fff}
-.fcontact span{display:flex;gap:10px;align-items:flex-start;color:#c9c8c2}
+.fcontact span{display:flex;gap:10px;align-items:flex-start;color:#d2d1cb}
 .fcontact span svg{margin-top:3px}
-.fbottom{border-top:1px solid #2b2b2b;margin-top:44px;padding-top:24px;display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#8c8b85;gap:16px 24px;flex-wrap:wrap}
+.fbottom{border-top:1px solid #33322d;margin-top:44px;padding-top:24px;display:flex;justify-content:space-between;align-items:center;font-size:14px;color:#a9a8a1;gap:16px 24px;flex-wrap:wrap}
 .fbottom .links{display:flex;gap:20px;flex-wrap:wrap}
-.fbottom .links a{color:#8c8b85;font-size:13px}
+.fbottom .links a{color:#a9a8a1;font-size:14px}
 .fbottom .links a:hover{color:#fff}
 .pay{display:flex;gap:8px;flex-wrap:wrap}
-.pay span{border:1px solid #3a3a3a;border-radius:6px;padding:5px 9px;font-family:var(--head);font-weight:700;font-size:11px;color:#e6e5df;letter-spacing:.04em}
-.foot .credit{font-size:11px;color:#6d6c66;margin-top:14px;line-height:1.5}
+.pay span{border:1px solid #45443e;border-radius:6px;padding:5px 10px;font-family:var(--head);font-weight:700;font-size:12px;color:#eceae4;letter-spacing:.04em}
+.foot .credit{font-size:12px;color:#8c8b85;margin-top:14px;line-height:1.55}
+
+/* Таблица совместимости: список моделей принтеров по брендам. */
+.cmpt{margin-top:26px}
+.cmpt-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.cmpt-f{flex:1;min-width:260px;display:flex;align-items:center;gap:10px;height:52px;padding:0 16px;border:1.5px solid var(--line2);border-radius:13px;background:#fff;color:var(--muted);transition:border-color .15s}
+.cmpt-f:focus-within{border-color:var(--ink)}
+.cmpt-f input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:16px;color:var(--ink);-webkit-appearance:none;appearance:none}
+.cmpt-f input::-webkit-search-cancel-button{-webkit-appearance:none}
+.cmpt-jump{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:26px}
+.cmpt-b+.cmpt-b{margin-top:28px}
+.cmpt-h{display:flex;align-items:center;gap:12px;padding-bottom:10px;border-bottom:1px solid var(--line);scroll-margin-top:20px}
+.cmpt-h h3{font-size:19px}
+.cmpt-h span{color:var(--muted);font-size:14px;margin-left:auto;white-space:nowrap}
+.cmpt-h img{max-width:96px;object-fit:contain}
+.cmpt-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;margin-top:14px}
+.cmpt-i,.cmpt-i:hover{text-decoration:none}
+.cmpt-i{display:flex;flex-direction:column;gap:3px;padding:11px 14px;border:1px solid var(--line);border-radius:11px;background:#fff;transition:border-color .15s,box-shadow .15s}
+.cmpt-i:hover{border-color:var(--line2);box-shadow:var(--shadow-card)}
+.cmpt-i b{font-weight:600;font-size:15px}
+.cmpt-i span{font-size:13px;color:var(--muted)}
 
 /* 13. Оверлеи
    -------------------------------------------------------------------------- */
@@ -766,6 +790,13 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 /* 14. Адаптив
    ========================================================================== */
 
+/* ---- ≤1400: узкий десктоп ----------------------------------------------- */
+@media (max-width:1400px){
+  /* «Акции» есть отдельным пунктом в каталоге и в мобильном меню, поэтому
+     в тесноте убираем её первой — иначе обрезается последний пункт меню. */
+  .navr a.r{display:none}
+}
+
 /* ---- ≤1240: ноутбуки ---------------------------------------------------- */
 @media (max-width:1240px){
   /* На ноутбуке верхняя полоса не влезает целиком: прячем по одному
@@ -774,7 +805,6 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .topbar .l span:nth-child(3),.topbar .r a:nth-child(1){display:none}
   .navbar .wrap{gap:20px}
   .nav{gap:18px}
-  .navr a.r{display:none}
   .hslider .wrap{grid-template-columns:minmax(0,1fr) 340px}
   .hslider h1,.hslider h2{font-size:38px}
   .grid4{grid-template-columns:repeat(3,minmax(0,1fr))}

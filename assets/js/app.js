@@ -605,10 +605,47 @@
     if (!pg) return notfound();
     var body = C.site.pageText[pg.id] || '';
     if (pg.id === 'lines') body += '<div class="lines">' + C.site.lines.map(function (l) { return '<div class="line-c"><b>' + esc(l[0]) + '</b><span>' + esc(l[1]) + '</span></div>'; }).join('') + '</div>';
-    if (pg.id === 'compat') body += '<div class="cta"><a class="btn btn-y" href="' + link.plain('finder') + '">Подобрать по модели принтера</a></div><div class="tags">' + C.site.laserBrands.map(function (b) {
-      return '<a class="chip" href="' + link.catalog('laser', b) + '">' + esc(C.brandName(b)) + '</a>';
-    }).join('') + '</div>';
+    if (pg.id === 'compat') {
+      return C.compatibility().then(function (all) { return shell(pg, body + compatTable(all)); });
+    }
+    return shell(pg, body);
+  }
+
+  /* Обёртка информационной страницы: крошки, заголовок, боковая колонка. */
+  function shell(pg, body) {
     return '<div class="wrap"><div class="layout"><aside class="side">' + sideCats('') + sideInfo() + '</aside><div class="content"><div class="ph1" style="padding-top:0">' + crumbs([['Главная', link.home()], [pg.title, '']]) + '<h1>' + esc(pg.title) + '</h1></div><div class="desc page-text">' + body + '</div></div></div></div>';
+  }
+
+  /*
+    Таблица совместимости: все модели принтеров, к которым у нас есть расходники.
+    Данные лежат отдельным файлом и подгружаются только на этой странице — класть
+    235 моделей в общий пакет каталога незачем. Поиск фильтрует уже отрисованный
+    список, без перерисовки страницы.
+  */
+  function compatTable(all) {
+    var byBrand = {};
+    Object.keys(all).forEach(function (k) { (byBrand[all[k].brand] ||= []).push(k); });
+    var brands = Object.keys(byBrand).sort(function (a, b) { return byBrand[b].length - byBrand[a].length; });
+    var rows = brands.map(function (bid) {
+      var list = byBrand[bid].sort(function (a, b) { return all[a].model.localeCompare(all[b].model, 'ru', { numeric: true }); });
+      return '<div class="cmpt-b">' +
+        '<div class="cmpt-h" id="cmp-' + bid + '">' + brandLogo(bid, 20, 'blogo') + '<h3>' + esc(C.brandName(bid)) + '</h3><span>' + list.length + ' ' + plural(list.length, 'модель', 'модели', 'моделей') + '</span></div>' +
+        '<div class="cmpt-g">' + list.map(function (k) {
+          var e = all[k];
+          return '<a class="cmpt-i" href="' + link.printer(k) + '" data-model="' + esc((e.model + ' ' + C.brandName(bid)).toLowerCase()) + '">' +
+            '<b>' + esc(e.model) + '</b><span>' + e.rows.length + ' ' + plural(e.rows.length, 'расходник', 'расходника', 'расходников') + '</span></a>';
+        }).join('') + '</div></div>';
+    }).join('');
+    return '<div class="cmpt">' +
+      '<div class="cmpt-top"><label class="cmpt-f">' + ic('search', 18) +
+      '<input type="search" id="cmpt-q" placeholder="Модель принтера, например M2135dn" aria-label="Поиск по модели принтера"></label>' +
+      '<a class="btn btn-y" href="' + link.plain('finder') + '">Подобрать по принтеру</a></div>' +
+      '<div class="cmpt-jump">' + brands.map(function (b) {
+        return '<button class="chip" type="button" data-jump="cmp-' + b + '">' + esc(C.brandName(b)) + '</button>';
+      }).join('') + '</div>' +
+      '<div id="cmpt-list">' + rows + '</div>' +
+      '<div class="empty" id="cmpt-none" hidden><h3>Такой модели в таблице нет</h3><p>Проверьте написание или откройте подбор — там ищется по части названия.</p></div>' +
+      '</div>';
   }
 
   function notfound() {
@@ -658,10 +695,12 @@
     var a = e.target.closest('a');
     if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
     var href = a.getAttribute('href');
-    if (OFFLINE) return;                       // переходы делает сам хеш
+    /* Ссылки в шапке, подвале и мобильном меню записаны в разметке обычными
+       путями и про режим «весь сайт одним файлом» не знают. Перехватываем их
+       здесь: без этого браузер уйдёт по /catalog/laser и откроет пустоту. */
     if (!href || href[0] !== '/' || href.indexOf('//') === 0) return;
     e.preventDefault();
-    if (href === location.pathname + location.search) return;
+    if (!OFFLINE && href === location.pathname + location.search) return;
     go(href);
   });
 
@@ -670,6 +709,28 @@
     document.querySelectorAll('#ptabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
     document.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.dataset.panel !== name; });
   }
+  /* Живой поиск по таблице совместимости и переход к нужному бренду. */
+  document.addEventListener('input', function (e) {
+    if (e.target.id !== 'cmpt-q') return;
+    var q = e.target.value.trim().toLowerCase();
+    var shown = 0;
+    document.querySelectorAll('.cmpt-b').forEach(function (b) {
+      var vis = 0;
+      b.querySelectorAll('.cmpt-i').forEach(function (a) {
+        var on = !q || a.dataset.model.indexOf(q) >= 0;
+        a.hidden = !on; if (on) vis++;
+      });
+      b.hidden = !vis; shown += vis;
+    });
+    document.getElementById('cmpt-none').hidden = !!shown;
+  });
+  document.addEventListener('click', function (e) {
+    var j = e.target.closest('[data-jump]');
+    if (!j) return;
+    var el = document.getElementById(j.dataset.jump);
+    if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
+
   var toast = document.getElementById('toast'), tt;
   function showToast(html) { toast.innerHTML = html; toast.classList.add('show'); clearTimeout(tt); tt = setTimeout(function () { toast.classList.remove('show'); }, 2600); }
   function addToCart(id, q) {
