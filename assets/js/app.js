@@ -552,5 +552,8 @@
     bbObs = new IntersectionObserver(function (en) { var x = en[0]; bar.classList.toggle('show', !x.isIntersecting && x.boundingClientRect.top < 0); }, { threshold: 0 });
     bbObs.observe(buy);
   }
+  /* на телефонах длинная подсказка в поиске не помещается */
+  var sInp = document.querySelector('#search-form input');
+  if (sInp && window.matchMedia('(max-width:640px)').matches) sInp.placeholder = 'Модель принтера или артикул';
   render();
 })();

@@ -821,8 +821,9 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .search .sbtn .txt{display:none}
   .nav{margin:0 -16px;padding:0 16px}
   /* главная */
-  .hslider .stext{padding:26px 0 68px}
-  .hslider .slogo{height:28px;margin-bottom:16px}
+  .hslider .stext{padding:24px 0 68px}
+  .hslider .s1 .slogo{display:none}
+  .hslider .slogo{height:26px;margin-bottom:14px}
   .hslider h1,.hslider h2{font-size:27px;margin:12px 0 10px}
   .hslider p{font-size:15px}
   .hslider .sfeat{grid-template-columns:1fr;gap:8px;margin-top:20px}

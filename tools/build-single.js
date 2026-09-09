@@ -49,7 +49,7 @@ html = inlineHtmlSrcs(html);
 
 if (artifact) {
   // артефакт сам оборачивает контент в документ: оставляем только содержимое head (title, meta, style) и body
-  const title = (html.match(/<title>[\s\S]*?<\/title>/) || [''])[0];
+  const title = '<title>Магазин Hi-Black</title>';
   const style = (html.match(/<style>[\s\S]*?<\/style>/) || [''])[0];
   const body = (html.match(/<body>([\s\S]*)<\/body>/) || ['', ''])[1];
   html = title + '\n' + style + '\n' + body;
