@@ -30,6 +30,9 @@
   --shadow-pop:0 18px 44px rgba(20,20,20,.07);
   --shadow-menu:0 30px 60px rgba(20,20,20,.14);
   --hdr:#171716;--hdr2:#111110;--hdr-line:#332f28;
+  /* Поля по краям экрана. Одно значение на весь сайт: если менять его,
+     то заодно и у блоков, которые «выезжают» за поля (.nav, .brands…). */
+  --gut:32px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{color-scheme:light;scroll-behavior:smooth;-webkit-text-size-adjust:100%}
@@ -45,7 +48,7 @@ svg.ic{flex:none}
 h1,h2,h3,h4{font-family:var(--head);font-weight:800;letter-spacing:-.015em;line-height:1.15;text-wrap:balance}
 h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .muted{color:var(--muted)}.small{font-size:14px}.xs{font-size:13px}
-.wrap{max-width:1320px;margin:0 auto;padding:0 24px}
+.wrap{max-width:1368px;margin:0 auto;padding-left:max(var(--gut),env(safe-area-inset-left,0px));padding-right:max(var(--gut),env(safe-area-inset-right,0px))}
 .skip{position:absolute;left:-9999px;top:8px;z-index:300;background:var(--yellow);color:var(--ink);padding:10px 16px;border-radius:10px;font-weight:700}
 .skip:focus{left:8px}
 .noscroll{overflow:hidden}
@@ -143,7 +146,7 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
    а витрина ниже остаётся светлой и не спорит с фотографиями товаров. */
 .hdr{position:relative;z-index:30;background:var(--hdr);color:#fff}
 .topbar{background:var(--hdr2);border-bottom:1px solid var(--hdr-line);font-size:13px;color:#a7a69f}
-.topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:40px;gap:16px}
+.topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:40px;gap:16px;overflow:hidden}
 .topbar .l,.topbar .r{display:flex;gap:26px;align-items:center}
 .topbar a{color:#a7a69f;white-space:nowrap}.topbar a:hover{color:#fff}
 .topbar .l span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
@@ -261,9 +264,14 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 
 /* 6. Главная
    -------------------------------------------------------------------------- */
-.hslider{position:relative;overflow:hidden;background:#161616;height:600px;color:#fff}
-.hslider .slide{position:absolute;inset:0;opacity:0;transition:opacity .7s ease;pointer-events:none;display:flex;align-items:center;background:#161616 center/cover no-repeat}
-.hslider .slide.on{opacity:1;pointer-events:auto}
+/* Все слайды лежат в одной ячейке грида и все участвуют в расчёте размера:
+   высота блока равна самому высокому слайду, ширина колонок одинаковая.
+   Поэтому при смене слайда ничего не прыгает — ни на экране, ни на
+   телефоне. Скрытые слайды убраны из вкладки и с озвучки через
+   visibility, но остаются в потоке, иначе высота снова поедет. */
+.hslider{position:relative;overflow:hidden;background:#161616;display:grid;min-height:600px;color:#fff}
+.hslider .slide{grid-area:1/1;position:relative;min-width:0;padding-bottom:66px;opacity:0;visibility:hidden;transition:opacity .7s ease,visibility 0s linear .7s;pointer-events:none;display:flex;align-items:center;background:#161616 center/cover no-repeat}
+.hslider .slide.on{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .7s ease,visibility 0s}
 .hslider .slide::before{content:"";position:absolute;inset:0}
 .hslider .s1{background-image:url(../img/photo/slide-office.webp);background-position:right 30%;color:#fff}
 .hslider .s1::before{background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.88) 42%,rgba(14,14,14,.45) 68%,rgba(14,14,14,.2) 100%)}
@@ -271,9 +279,8 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .hslider .s2::before{background:radial-gradient(60% 80% at 78% 50%,rgba(255,210,0,.22),rgba(255,210,0,0) 70%)}
 .hslider .s3{background-image:url(../img/photo/slide-canon.webp);background-position:right 40%}
 .hslider .s3::before{background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.86) 42%,rgba(14,14,14,.35) 70%,rgba(14,14,14,.15) 100%)}
-.hslider .wrap{position:relative;width:100%;display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:40px;align-items:center}
-.hslider .s2 .wrap{grid-template-columns:minmax(0,1fr) 520px}
-.hslider .stext{max-width:660px;padding:40px 0 86px;min-width:0}
+.hslider .wrap{position:relative;width:100%;display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:40px;align-items:center}
+.hslider .stext{max-width:660px;padding:40px 0;min-width:0}
 /* Логотип живёт в шапке и виден на любой странице, поэтому на слайдах он не
    повторяется: два знака подряд читаются как ошибка вёрстки. */
 .hslider .slogo{display:none}
@@ -761,11 +768,14 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 
 /* ---- ≤1240: ноутбуки ---------------------------------------------------- */
 @media (max-width:1240px){
+  /* На ноутбуке верхняя полоса не влезает целиком: прячем по одному
+     пункту слева и справа, оба продублированы ниже в меню и в подвале. */
+  .topbar .l,.topbar .r{gap:20px}
+  .topbar .l span:nth-child(3),.topbar .r a:nth-child(1){display:none}
   .navbar .wrap{gap:20px}
   .nav{gap:18px}
   .navr a.r{display:none}
-  .hslider .wrap{grid-template-columns:minmax(0,1fr) 320px}
-  .hslider .s2 .wrap{grid-template-columns:minmax(0,1fr) 380px}
+  .hslider .wrap{grid-template-columns:minmax(0,1fr) 340px}
   .hslider h1,.hslider h2{font-size:38px}
   .grid4{grid-template-columns:repeat(3,minmax(0,1fr))}
   .pgrid{grid-template-columns:minmax(0,1fr) 340px;grid-template-areas:"g b" "i b"}
@@ -780,6 +790,7 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 
 /* ---- ≤980: планшеты и телефоны ------------------------------------------ */
 @media (max-width:980px){
+  :root{--gut:28px}
   .topbar{display:none}
   .head .wrap{flex-wrap:wrap;height:auto;padding:12px 0 12px;gap:10px 12px}
   .mobbtn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:1px solid var(--hdr-line);color:#fff;flex:none;margin-left:-4px}
@@ -792,7 +803,7 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .cartbtn{height:44px;padding:0 14px 0 12px;border-radius:12px;margin-left:4px}
   .navbar .wrap{height:auto;gap:0;padding-top:8px;padding-bottom:8px}
   .catbtn{display:none}
-  .nav{gap:6px;margin:0 -16px;padding:0 16px;flex:1 1 100%}
+  .nav{gap:6px;margin:0 calc(var(--gut)*-1);padding:0 var(--gut);flex:1 1 100%}
   .nav a{display:inline-flex;align-items:center;height:36px;padding:0 13px;border:1px solid var(--hdr-line);border-radius:999px;font-size:13.5px;font-weight:500;line-height:1}
   .nav a.on{background:var(--yellow);color:var(--ink);border-color:var(--yellow);font-weight:600}
   .nav .mob-only{display:inline-flex}
@@ -803,13 +814,12 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .side{display:none}
   .ph1{padding-top:18px}
   .sec{margin-top:40px}
-  .hslider{height:auto;min-height:0}
-  .hslider .slide{position:relative;display:none}
-  .hslider .slide.on{display:flex}
-  .hslider .wrap,.hslider .s2 .wrap{grid-template-columns:1fr;gap:0}
-  .hslider .svis{max-width:320px;margin:24px auto 0;order:-1}
+  .hslider{min-height:0}
+  .hslider .wrap{grid-template-columns:1fr;gap:0}
+  .hslider .svis{max-width:260px;margin:20px auto 0;order:-1}
   .hslider .s3 .svis{display:none}
-  .hslider .stext{padding:34px 0 76px;max-width:none}
+  .hslider .slide{padding-bottom:60px}
+  .hslider .stext{padding:30px 0;max-width:none}
   .hslider .s1::before{background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.9) 55%,rgba(14,14,14,.6) 100%)}
   .hslider .sfeat{max-width:none}
   .finder{max-width:none}
@@ -849,9 +859,9 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 
 /* ---- ≤640: телефоны ----------------------------------------------------- */
 @media (max-width:640px){
+  :root{--gut:22px}
   body{font-size:15px}
   h1{font-size:26px}h2{font-size:22px}h3{font-size:18px}
-  .wrap{padding:0 16px}
   .btn{height:46px;padding:0 18px;font-size:14px}
   .btn-lg{height:52px;padding:0 22px;font-size:15px}
   .chip{height:36px;padding:0 13px;font-size:13px}
@@ -870,13 +880,14 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .search{height:46px}
   .search .sbtn{width:54px;gap:0}
   .search .sbtn .txt{display:none}
-  .nav{margin:0 -16px;padding:0 16px}
   /* главная */
-  .hslider .stext{padding:24px 0 68px}
+  .hslider .slide{padding-bottom:54px}
+  .hslider .stext{padding:22px 0}
     .hslider h1,.hslider h2{font-size:27px;margin:12px 0 10px}
   .hslider p{font-size:15px}
-  .hslider .sfeat{grid-template-columns:1fr;gap:8px;margin-top:20px}
-  .hslider .sfeat div{padding:10px 12px;font-size:13px}
+  .hslider .svis{display:none}
+  .hslider .sfeat{gap:8px;margin-top:18px}
+  .hslider .sfeat div{padding:9px 10px;font-size:12.5px;gap:8px;border-radius:10px}
   .hslider .sctrl{bottom:16px}
   .hslider .sarr button{width:40px;height:40px}
   .hslider .sbtns .btn{flex:1}
@@ -884,9 +895,9 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   select.fsel{width:100%}
   .finder .finp{height:46px}
   .finder .btn{height:46px}
-  .brandstrip{display:block;padding:14px 16px 12px;margin-top:16px}
+  .brandstrip{display:block;padding:14px var(--gut) 12px;margin-top:16px}
   .brandstrip .lbl{display:block;margin:0 0 8px}
-  .brandstrip .logos{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px;-webkit-overflow-scrolling:touch}
+  .brandstrip .logos{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 calc(var(--gut)*-1);padding:0 var(--gut);-webkit-overflow-scrolling:touch}
   .brandstrip .logos::-webkit-scrollbar{display:none}
   .brandstrip .logos a{height:40px;padding:0 12px}
   .brandstrip .logos img{height:16px;max-width:76px}
@@ -943,7 +954,7 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   /* каталог */
   .ph1 h1{gap:10px}
   .ph1 h1 span{font-size:14px}
-  .brands{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;margin:16px -16px 0;padding-left:16px;padding-right:16px;scrollbar-width:none}
+  .brands{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;margin:16px calc(var(--gut)*-1) 0;padding-left:var(--gut);padding-right:var(--gut);scrollbar-width:none}
   .brands::-webkit-scrollbar{display:none}
   .layout.cat{padding-top:20px}
   .toolbar{padding-bottom:12px;margin-bottom:14px;gap:8px}
@@ -954,7 +965,7 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .toolbar .sel-sort{flex:1;min-width:0}
   .toolbar .sel-sort select{flex:1;width:100%}
   .toolbar .sel-pp{display:none}
-  .applied{overflow-x:auto;flex-wrap:nowrap;margin:0 -16px 14px;padding:0 16px;scrollbar-width:none}
+  .applied{overflow-x:auto;flex-wrap:nowrap;margin:0 calc(var(--gut)*-1) 14px;padding:0 var(--gut);scrollbar-width:none}
   .applied::-webkit-scrollbar{display:none}
   .pager{flex-direction:column;align-items:stretch;margin-top:20px}
   .pager .btn{width:100%}
@@ -976,7 +987,7 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .buy .price{font-size:28px}
   .buy .brow{gap:8px}
   .buy .acts button{font-size:12px;padding:0 6px}
-  .tabs{margin-top:32px;margin-left:-16px;margin-right:-16px;padding:0 16px}
+  .tabs{margin-top:32px;margin-left:calc(var(--gut)*-1);margin-right:calc(var(--gut)*-1);padding:0 var(--gut)}
   .tabs button{padding:12px 12px;font-size:14px}
   .tabbody{padding-top:22px}
   .desc h3{font-size:19px}
