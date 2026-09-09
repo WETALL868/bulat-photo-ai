@@ -17,7 +17,7 @@
   'use strict';
 
   var BASE = '/data/catalog/';
-  var state = { loaded: false, meta: null, fields: null, rows: [], cats: [], brands: [], live: null, site: null, search: null, compat: null };
+  var state = { loaded: false, meta: null, fields: null, rows: [], cats: [], brands: [], live: null, site: null, search: null, compat: null, fams: null };
   var chunkCache = {};
   var readyPromise = null;
 
@@ -122,6 +122,23 @@
           .filter(function (i) { return sets.every(function (s) { return s[i]; }); })
           .map(Number)
           .map(hydrate);
+      });
+    },
+
+    /*
+      Комплекты по цветам: один и тот же картридж в нескольких цветах.
+      Файл маленький, грузится при первом открытии карточки из семейства.
+    */
+    families: function () {
+      if (!state.fams) state.fams = json(BASE + 'families.json');
+      return state.fams;
+    },
+    family: function (id) {
+      if (!id) return Promise.resolve(null);
+      return API.families().then(function (all) {
+        var f = all[id];
+        if (!f) return null;
+        return { id: id, label: f.label, items: f.rows.map(hydrate).filter(Boolean) };
       });
     },
 

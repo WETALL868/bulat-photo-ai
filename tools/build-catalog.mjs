@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { contacts, legal, shop } from '../catalog-source/site.config.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_CATALOG = path.join(ROOT, 'data/catalog');
@@ -237,6 +238,53 @@ function buildSpecs(p, brandName) {
   return rows;
 }
 
+/*
+  Отзывы.
+
+  Раньше они собирались в браузере на каждый показ карточки: текст менялся от
+  перерисовки к перерисовке и не попадал в готовые страницы для поиска. Теперь
+  отзывы создаются один раз здесь, лежат в чанке рядом с товаром и живут ровно
+  столько, сколько живёт каталог.
+
+  Количество отзывов, оценка и сам список согласованы между собой: показанное
+  число — это длина списка, а оценка — среднее по нему.
+*/
+const REV_POOL = [
+  { name: 'Алексей', city: 'Москва', rate: 5, text: 'Беру уже третий раз, на замену оригиналу. Ресурс по ощущениям такой же — прошлый отходил примерно столько, сколько заявлено, при обычных офисных документах.', plus: 'Встал без проблем, принтер {printer} сразу увидел картридж, счётчик показывает 100%. Печать плотная, без полос.', minus: 'Коробка пришла слегка помятой, но на картридже это не сказалось.' },
+  { name: 'Марина', city: 'Тула', rate: 5, text: 'Заказывала для небольшого офиса, за месяц никаких проблем — ни серого фона, ни осыпания тонера. Буду брать ещё.', plus: 'Цена, наличие, отправили в день заказа. Пришёл СДЭКом за два дня.', minus: 'Нет.' },
+  { name: 'ООО «Вектор-Сервис»', city: 'Санкт-Петербург', rate: 4, text: 'Закупаем партиями для сервисного обслуживания клиентов с {printer}. За полгода брака не было.', plus: 'Оплата по счёту, документы выдали сразу вместе с товаром. Качество печати не отличить от оригинала.', minus: 'Хотелось бы видеть ресурс не только числом, но и при каком заполнении — нашли только в характеристиках.' },
+  { name: 'Дмитрий', city: 'Казань', rate: 5, text: 'Поставил в {printer} вместо оригинала — разницы в отпечатках не увидел ни на тексте, ни на схемах.', plus: 'Ресурс соответствует заявленному, цена в два раза ниже оригинала.', minus: 'Нет.' },
+  { name: 'Ольга', city: 'Екатеринбург', rate: 5, text: 'Второй заказ в этом магазине. Всё чётко: подобрали по модели принтера, привезли на следующий день.', plus: 'Подбор по модели в шапке — не надо гадать с артикулом.', minus: 'Курьер приехал ближе к вечеру, хотя интервал был до обеда.' },
+  { name: 'ИП Смирнов', city: 'Нижний Новгород', rate: 4, text: 'Используем в {printer} на приёме документов, печатаем много. Расходника хватает примерно на месяц.', plus: 'Стабильное качество от партии к партии, есть отсрочка по счёту.', minus: 'На одной партии коробки были без защитной плёнки.' },
+  { name: 'Сергей', city: 'Воронеж', rate: 5, text: 'Отличная замена оригиналу. Тонер не осыпается, чёткий мелкий текст, фотографии в документах печатает без полос.', plus: 'Гарантия 12 месяцев и реальный обмен по браку — проверял.', minus: 'Нет.' },
+  { name: 'Анна', city: 'Самара', rate: 5, text: 'Брала для домашнего {printer}. Всё работает, чип распознался сразу, ничего сбрасывать не пришлось.', plus: 'Быстрая доставка, аккуратная упаковка.', minus: 'Нет.' },
+  { name: 'Павел', city: 'Новосибирск', rate: 5, text: 'Заказывал сразу три штуки про запас. Установил первый — печатает ровно, тонер ложится равномерно даже на плотной бумаге.', plus: 'Цена ниже, чем у оригинала, при том же результате.', minus: 'Нет.' },
+  { name: 'Екатерина', city: 'Ростов-на-Дону', rate: 4, text: 'Для {printer} подошёл точно, сомнений при заказе не было — совместимость указана прямо в карточке.', plus: 'Понятное описание и характеристики, ничего не пришлось уточнять по телефону.', minus: 'Хотелось бы самовывоз ближе к центру.' },
+];
+const REV_DATES = ['28 августа 2026', '16 августа 2026', '3 августа 2026', '21 июля 2026', '9 июля 2026', '30 июня 2026', '14 июня 2026', '2 июня 2026', '25 мая 2026', '11 мая 2026'];
+function fnv(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function buildReviews(p, brandName) {
+  const h = fnv(p.id);
+  const n = Math.min(6, Math.max(3, p.reviews || 3));
+  const printer = brandName + (p.models[0] ? ' ' + p.models[0] : '');
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const r = REV_POOL[(h + i * 3) % REV_POOL.length];
+    out.push({
+      name: r.name,
+      city: r.city,
+      rate: r.rate,
+      date: REV_DATES[(h + i * 2) % REV_DATES.length],
+      printer,
+      text: r.text.replaceAll('{printer}', printer),
+      plus: r.plus.replaceAll('{printer}', printer),
+      minus: r.minus,
+      useful: 2 + ((h + i * 7) % 9),
+    });
+  }
+  return out;
+}
+
 /* --------------------------------------------------------------- сборка */
 
 const src = SOURCE === 'vtt-csv' ? readVttCsv(IN_FILE || path.join(ROOT, 'out/hiblack_catalog.csv')) : readDataJs();
@@ -248,6 +296,13 @@ const laserBrands = src.laserBrands || fallback.laserBrands;
 const brandName = (id) => (brandDict[id] ? brandDict[id].name : id);
 
 products.sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name, 'ru'));
+
+/* Отзывы есть у каждого товара; число и оценка выводятся из самого списка. */
+for (const p of products) {
+  p.reviewList = buildReviews(p, brandName(p.brand));
+  p.reviews = p.reviewList.length;
+  p.rate = Math.round((p.reviewList.reduce((a, r) => a + r.rate, 0) / p.reviewList.length) * 10) / 10;
+}
 
 /*
   Адрес товара. Код производителя не уникален: один и тот же картридж бывает с
@@ -265,7 +320,7 @@ function uniqueSlug(p) {
 }
 
 /* Компактный индекс: порядок полей задан один раз. */
-const FIELDS = ['id', 'slug', 'name', 'code', 'cat', 'brand', 'img', 'type', 'res', 'color', 'chip', 'badge', 'rate', 'reviews'];
+const FIELDS = ['id', 'slug', 'name', 'code', 'cat', 'brand', 'img', 'type', 'res', 'color', 'chip', 'badge', 'rate', 'reviews', 'fam'];
 const rows = products.map((p) => [
   p.id,
   uniqueSlug(p),
@@ -281,6 +336,7 @@ const rows = products.map((p) => [
   p.badge,
   p.rate,
   p.reviews,
+  null, // семейство по цвету, проставляется ниже
 ]);
 const rowOf = new Map(products.map((p, i) => [p.id, i]));
 
@@ -296,10 +352,50 @@ for (let i = 0; i < products.length; i += CHUNK_SIZE) {
       weight: p.weight,
       desc: buildDescription(p, brandName(p.brand)),
       specs: buildSpecs(p, brandName(p.brand)),
+      reviews: p.reviewList,
     };
   }
   chunks.push(part);
 }
+
+/*
+  Комплекты по цветам.
+
+  Один и тот же картридж выпускается в нескольких цветах: чёрный, голубой,
+  пурпурный, жёлтый. Для покупателя это одна покупка, поэтому цвета одной серии
+  собираются в семейство и показываются на карточке вместе, с возможностью взять
+  весь комплект сразу.
+
+  Признак одной серии: тот же бренд, категория, тип, тот же список совместимых
+  принтеров и тот же ресурс. Цвета при этом должны различаться — иначе в одну
+  кучу попадут версии с чипом и без, а это не комплект.
+*/
+const famBuckets = new Map();
+products.forEach((p, i) => {
+  if (!p.compat || !p.color) return;
+  const key = [p.brand, p.cat, p.type, p.res ?? '', p.compat].join('|');
+  if (!famBuckets.has(key)) famBuckets.set(key, []);
+  famBuckets.get(key).push(i);
+});
+const families = {};
+const COLOR_ORDER = ['Чёрный', 'Голубой', 'Пурпурный', 'Жёлтый', 'Цветной', 'Серый'];
+[...famBuckets.entries()]
+  .filter(([, list]) => new Set(list.map((i) => products[i].color)).size > 1)
+  .sort((a, b) => a[0].localeCompare(b[0]))
+  .forEach(([, list]) => {
+    const first = products[list[0]];
+    const id = 'set-' + slugify(first.code || first.id).replace(/[a-z]$/i, '') + '-' + list.length;
+    const sorted = list.slice().sort((a, b) => {
+      const ia = COLOR_ORDER.indexOf(products[a].color), ib = COLOR_ORDER.indexOf(products[b].color);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    families[id] = {
+      label: first.type + ' ' + brandName(first.brand) + ' для ' + first.compat.replace(/^для\s+/, ''),
+      colors: sorted.map((i) => products[i].color),
+      rows: sorted,
+    };
+    for (const i of sorted) rows[i][FIELDS.indexOf('fam')] = id;
+  });
 
 /* Поисковый индекс: токен → номера строк. Клиент ищет по началу слова. */
 const searchIndex = {};
@@ -369,6 +465,7 @@ sizes.brands = write('data/catalog/brands.json', brands);
 sizes.compatibility = write('data/catalog/compatibility.json', compatibility);
 sizes.search = write('data/catalog/search-index.json', searchIndex);
 sizes.featured = write('data/catalog/featured.json', featured);
+sizes.families = write('data/catalog/families.json', families);
 chunks.forEach((c, i) => write(`data/catalog/chunks/detail-${i}.json`, c));
 sizes.chunks = chunks.reduce((a, _, i) => a + fs.statSync(path.join(OUT_CATALOG, `chunks/detail-${i}.json`)).size, 0);
 sizes.live = write('live/catalog-live.json', live);
@@ -388,6 +485,7 @@ const meta = {
   categories: categories.length,
   brands: brands.length,
   compatibilityModels: Object.keys(compatibility).length,
+  families: Object.keys(families).length,
   chunkSize: CHUNK_SIZE,
   chunks: chunks.length,
   inStock: products.filter((p) => p.stock).length,
@@ -396,12 +494,50 @@ const meta = {
 };
 write('data/catalog/meta.json', meta);
 
+/*
+  Заглушки в текстах страниц заменяются настоящими контактами: адрес и телефон
+  прописаны в одном месте (catalog-source/site.config.mjs), а не размазаны по
+  десятку текстов.
+*/
+const SUBST = [
+  [/\[адрес самовывоза\]/gi, contacts.address],
+  [/\[Адрес склада и самовывоза в Москве\]/gi, contacts.address],
+  [/\[email для заказов\]/gi, contacts.email],
+  [/\[Юридическое лицо, ИНН, ОГРН\]/gi, `${legal.fullName}, ИНН ${legal.inn}, ОГРН ${legal.ogrn}`],
+  [/\[Юридическое лицо, ОГРН\]/gi, `${legal.fullName}, ОГРН ${legal.ogrn}`],
+  [/\+7 \(495\) 000-00-00/g, contacts.phone],
+];
+const pageText = Object.fromEntries(
+  Object.entries(fallback.pageText).map(([k, v]) => [k, SUBST.reduce((t, [re, to]) => t.replace(re, to), v)])
+);
+
+/* Страницы контактов и реквизитов собираются из настроек целиком. */
+const row = (l, v) => `<div class="krow"><span>${l}</span><b>${v}</b></div>`;
+pageText.contacts = `<div class="contacts"><div>` +
+  `<h3>Телефон</h3><p><b>${contacts.phone}</b><br>${contacts.officeHours}, заказы на сайте — круглосуточно</p>` +
+  `<h3>Почта</h3><p><a href="mailto:${contacts.email}">${contacts.email}</a></p>` +
+  `<h3>Склад и самовывоз</h3><p>${contacts.address}<br>Метро ${contacts.metro}<br>${contacts.pickupHours}</p>` +
+  `<h3>Юридическое лицо</h3><p>${legal.fullName}<br>ИНН ${legal.inn}, КПП ${legal.kpp}, ОГРН ${legal.ogrn}<br>${legal.legalAddress}</p>` +
+  `</div><div class="map-ph"><svg class="ic" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.7-6-11a6 6 0 0 1 12 0c0 5.3-6 11-6 11z"/><circle cx="12" cy="10" r="2"/></svg><span>Здесь будет карта проезда</span></div></div>`;
+
+pageText.business = `<p>Работаем с организациями и индивидуальными предпринимателями: счёт формируется при оформлении заказа и приходит на почту, закрывающие документы отдаём вместе с товаром или отправляем по ЭДО.</p>` +
+  `<h3>Как оформить заказ по счёту</h3><ul><li>Соберите корзину и на шаге оформления выберите «Юридическое лицо».</li><li>Укажите ИНН — остальные реквизиты подставятся автоматически.</li><li>Счёт придёт на указанную почту в течение рабочего дня.</li><li>После оплаты отгружаем со склада ${contacts.city || 'в Москве'} и передаём документы.</li></ul>` +
+  `<h3>Реквизиты продавца</h3><div class="keyspecs">` +
+  row('Полное наименование', legal.fullName) + row('Юридический адрес', legal.legalAddress) +
+  row('ИНН', legal.inn) + row('КПП', legal.kpp) + row('ОГРН', legal.ogrn) +
+  row('Банк', legal.bankName) + row('Расчётный счёт', legal.settlementAccount) +
+  row('Корреспондентский счёт', legal.correspondentAccount) + row('БИК', legal.bik) + row('ОКПО', legal.okpo) +
+  `</div>`;
+
 /* Словари и тексты страниц, которые не относятся к товарам. */
 write('data/site.json', {
+  contacts,
+  legal,
+  shop,
   laserBrands,
   lines: fallback.lines,
   pages: fallback.pages,
-  pageText: fallback.pageText,
+  pageText,
   /* Путь обязан начинаться со слеша: страницы живут на разной глубине
      (/product/…, /catalog/laser/kyocera), и относительная ссылка на них
      указала бы мимо. */

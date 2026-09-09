@@ -44,6 +44,7 @@ function collectData() {
   put('/data/catalog/featured.json', 'data/catalog/featured.json');
   put('/data/catalog/search-index.json', 'data/catalog/search-index.json');
   put('/data/catalog/compatibility.json', 'data/catalog/compatibility.json');
+  put('/data/catalog/families.json', 'data/catalog/families.json');
   put('/live/catalog-live.json', 'live/catalog-live.json');
   put('/data/site.json', 'data/site.json');
   for (const f of fs.readdirSync(path.join(ROOT, 'data/catalog/chunks'))) {

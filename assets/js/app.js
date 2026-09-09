@@ -152,34 +152,21 @@
     return patch;
   }
 
-  /* ------------------------------------------------------------- отзывы */
-  var REV_POOL = [
-    { name: 'Алексей', city: 'Москва', rate: 5, text: 'Беру уже третий раз, на замену оригиналу. Ресурс по ощущениям такой же — прошлый отходил примерно столько, сколько заявлено, при обычных офисных документах.', plus: 'Встал без проблем, принтер {printer} сразу увидел картридж, счётчик показывает 100%. Печать плотная, без полос.', minus: 'Коробка пришла слегка помятой, но на картридже это не сказалось.' },
-    { name: 'Марина', city: 'Тула', rate: 5, text: 'Заказывала для небольшого офиса, за месяц никаких проблем — ни серого фона, ни осыпания тонера. Буду брать ещё.', plus: 'Цена, наличие, отправили в день заказа. Пришёл СДЭКом за два дня.', minus: 'Нет.' },
-    { name: 'ООО «Вектор-Сервис»', city: 'Санкт-Петербург', rate: 4, text: 'Закупаем партиями для сервисного обслуживания клиентов с {printer}. За полгода брака не было.', plus: 'Оплата по счёту, документы выдали сразу вместе с товаром. Качество печати не отличить от оригинала.', minus: 'Хотелось бы видеть ресурс не только числом, но и при каком заполнении — нашли только в характеристиках.' },
-    { name: 'Дмитрий', city: 'Казань', rate: 5, text: 'Поставил в {printer} вместо оригинала — разницы в отпечатках не увидел ни на тексте, ни на схемах.', plus: 'Ресурс соответствует заявленному, цена в два раза ниже оригинала.', minus: 'Нет.' },
-    { name: 'Ольга', city: 'Екатеринбург', rate: 5, text: 'Второй заказ в этом магазине. Всё чётко: подобрали по модели принтера, привезли на следующий день.', plus: 'Подбор по модели в шапке — не надо гадать с артикулом.', minus: 'Курьер приехал ближе к вечеру, хотя интервал был до обеда.' },
-    { name: 'ИП Смирнов', city: 'Нижний Новгород', rate: 4, text: 'Используем в {printer} на приёме документов, печатаем много. Картриджа хватает примерно на месяц.', plus: 'Стабильное качество от партии к партии, есть отсрочка по счёту.', minus: 'На одной партии коробки были без защитной плёнки.' },
-    { name: 'Сергей', city: 'Воронеж', rate: 5, text: 'Отличная замена оригиналу. Тонер не осыпается, чёткий мелкий текст, фотографии в документах печатает без полос.', plus: 'Гарантия 12 месяцев и реальный обмен по браку — проверял.', minus: 'Нет.' },
-    { name: 'Анна', city: 'Самара', rate: 5, text: 'Брала для домашнего {printer}. Всё работает, чип распознался сразу, ничего сбрасывать не пришлось.', plus: 'Быстрая доставка, аккуратная упаковка.', minus: 'Нет.' },
-  ];
-  var DATES = ['28 августа 2026', '16 августа 2026', '3 августа 2026', '21 июля 2026', '9 июля 2026', '30 июня 2026', '14 июня 2026', '2 июня 2026'];
-  function reviewsFor(p, models) {
-    var h = hash(p.id), n = Math.min(3, p.reviews), out = [];
-    var printer = C.brandName(p.brand) + (models && models[0] ? ' ' + models[0] : '');
-    for (var i = 0; i < n; i++) {
-      var r = REV_POOL[(h + i * 3) % REV_POOL.length];
-      out.push({ name: r.name, city: r.city, rate: r.rate, date: DATES[(h + i) % DATES.length], printer: printer, text: r.text.replace('{printer}', printer), plus: r.plus.replace('{printer}', printer), minus: r.minus });
-    }
-    return out;
-  }
-
   /* --------------------------------------------------------- блоки вёрстки */
   function badge(p) {
     if (p.badge === 'hit') return '<span class="badge badge-hit">Хит</span>';
-    if (p.badge === 'sale' && p.old) return '<span class="badge badge-sale">−' + Math.round(100 - p.price / p.old * 100) + '%</span>';
     if (p.badge === 'res') return '<span class="badge badge-new">Увеличенный ресурс</span>';
     return '';
+  }
+  /* Процент скидки показывается только рядом с ценой: там, где есть
+     зачёркнутая цена, он и объясняет разницу. */
+  function saleOff(p) {
+    if (!p.old || p.old <= p.price) return '';
+    return '<span class="save">−' + Math.round(100 - p.price / p.old * 100) + '%</span>';
+  }
+  function priceBlock(p, cls) {
+    return '<div class="price' + (cls ? ' ' + cls : '') + '">' + fmt(p.price) + ' ₽' +
+      (p.old ? '<small>' + fmt(p.old) + ' ₽</small>' : '') + saleOff(p) + '</div>';
   }
   function specsShort(p) {
     var s = [];
@@ -198,7 +185,7 @@
       '<div class="crate">' + stars(p.rate) + '<span>' + ratef(p.rate) + '</span><a href="' + link.product(p, { tab: 'reviews' }) + '"><span class="rn">' + p.reviews + '</span><span class="rw"> ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</span></a></div>' +
       '<div class="cspecs">' + specsShort(p) + '</div>' +
       (p.stock ? '<div class="avail"><i></i>В наличии</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') +
-      '<div class="cfoot"><div class="price">' + fmt(p.price) + ' ₽' + (p.old ? '<small>' + fmt(p.old) + ' ₽</small>' : '') + '</div><button class="btn btn-y" type="button" data-add="' + p.id + '">' + ic('cart', 18) + 'В корзину</button></div>' +
+      '<div class="cfoot">' + priceBlock(p) + '<button class="btn btn-y" type="button" data-add="' + p.id + '">' + ic('cart', 18) + 'В корзину</button></div>' +
       '<a class="oneclick" href="' + link.plain('checkout', { quick: p.id }) + '">Купить в 1 клик</a></div></div>';
   }
   function crumbs(items) {
@@ -378,12 +365,15 @@
   function product(r) {
     var p = C.bySlug(r.slug) || C.byId(r.slug);
     if (!p) return notfound();
-    return C.detail(p.id).then(function (d) {
-      d = d || { compat: '', models: [], specs: [], desc: '' };
+    return Promise.all([C.detail(p.id), C.family(p.fam)]).then(function (res) {
+      var d = res[0] || { compat: '', models: [], specs: [], desc: '', reviews: [] };
+      var fam = res[1];
       var tab = r.query.tab || 'desc';
       var related = C.all().filter(function (x) { return x.id !== p.id && x.brand === p.brand && x.cat === p.cat; }).slice(0, 4);
       if (related.length < 4) related = related.concat(C.all().filter(function (x) { return x.id !== p.id && x.cat === p.cat && related.indexOf(x) < 0; }).slice(0, 4 - related.length));
-      var revs = reviewsFor(p, d.models), sum5 = Math.round(p.reviews * 0.75), sum4 = p.reviews - sum5;
+      var revs = d.reviews || [];
+      var sum5 = revs.filter(function (r) { return r.rate === 5; }).length;
+      var sum4 = revs.filter(function (r) { return r.rate === 4; }).length;
       var src = p.img;
       var views = [{ t: 'img' }, { t: 'zoom', pos: '18% 50%' }, { t: 'zoom', pos: '82% 50%' }];
       if (d.models.length) views.push({ t: 'compat' });
@@ -411,32 +401,76 @@
       return '<div class="wrap"><div class="ph1 pph">' + crumbs([['Главная', link.home()], [C.catName(p.cat), link.catalog(p.cat)], [C.brandName(p.brand), link.catalog(p.cat, p.brand)], [p.code, '']]) +
         '<h1>' + esc(p.name) + '</h1>' +
         '<div class="pmeta"><span class="rate">' + stars(p.rate, 16) + '<b>' + ratef(p.rate) + '</b><a href="#" data-tab-link="reviews">' + p.reviews + ' ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</a></span><span>Артикул: <b>' + esc(p.code) + '</b></span><span>Код товара: <b>' + (100000 + hash(p.id) % 900000) + '</b></span>' + badge(p) + '</div></div>' +
-        '<div class="pgrid"><div class="gallery"><div class="gmain" id="gmain" data-src="' + src + '"><img src="' + src + '" alt="' + esc(p.name) + '" data-gview="img"><div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>' + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span><span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span></div><div class="thumbs">' + thumbs + '<div class="thumb video">' + ic('play', 20) + 'Видео</div></div></div>' +
+        '<div class="pgrid"><div class="gallery"><div class="gmain" id="gmain" data-src="' + src + '"><img src="' + src + '" alt="' + esc(p.name) + '" data-gview="img"><div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>' + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span><span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span></div><div class="thumbs">' + thumbs + '</div></div>' +
         '<div class="pinfo"><div class="keyspecs"><h3>Коротко о товаре</h3>' + key.map(function (k) { return '<div class="krow"><span>' + esc(k[0]) + '</span><b>' + esc(k[1]) + '</b></div>'; }).join('') + '</div>' +
         (compatChips ? '<div class="compat"><h3>Подходит для принтеров ' + brandLogo(p.brand, 18, '') + '</h3><div class="tags">' + compatChips + '</div></div>' : '') +
         '<a class="allspecs" href="#" data-tab-link="specs">Все характеристики ' + ic('chev-down', 16) + '</a></div>' +
-        '<div class="buy"><div class="prow"><div class="price">' + fmt(p.price) + ' ₽' + (p.old ? '<small>' + fmt(p.old) + ' ₽</small>' : '') + '</div><span class="per">за 1 шт.</span></div>' +
+        '<div class="buy"><div class="prow">' + priceBlock(p) + '<span class="per">за 1 шт.</span></div>' +
+        (p.old && p.old > p.price ? '<div class="saveline">' + ic('percent', 16) + 'Скидка ' + fmt(p.old - p.price) + ' ₽ от прежней цены</div>' : '') +
         (p.stock ? '<div class="avail"><i></i>В наличии на складе в Москве</div><div class="stock">Отгрузка сегодня при заказе до 16:00</div>' : '<div class="avail out"><i></i>Под заказ</div><div class="stock">Привезём со склада поставщика за 3–5 дней</div>') +
         '<div class="brow"><div class="qty"><button type="button" data-q="-1" aria-label="Меньше">' + ic('minus', 18) + '</button><span id="pq">1</span><button type="button" data-q="1" aria-label="Больше">' + ic('plus', 18) + '</button></div><button class="btn btn-y btn-lg" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 20) + 'В корзину</button></div>' +
         '<a class="btn btn-o btn-full" href="' + link.plain('checkout', { quick: p.id }) + '">Купить в 1 клик</a>' +
         '<div class="acts"><button type="button" class="' + (S.cmp[p.id] ? 'on' : '') + '" data-cmp="' + p.id + '">' + ic('compare', 16) + (S.cmp[p.id] ? 'В сравнении' : 'В сравнение') + '</button><button type="button" class="' + (S.fav[p.id] ? 'on' : '') + '" data-fav="' + p.id + '">' + ic('heart', 16) + (S.fav[p.id] ? 'В избранном' : 'В избранное') + '</button></div>' +
         '<div class="dlist"><div>' + ic('truck', 18) + '<div><b>Курьером по Москве — завтра</b><span>По России — СДЭК, Boxberry, Почта, 2–7 дней</span></div></div><div>' + ic('pin', 18) + '<div><b>Самовывоз — сегодня</b><span>Со склада в Москве, бесплатно</span></div></div><div>' + ic('card', 18) + '<div><b>Оплата картой, СБП или по счёту</b><span>Юрлицам — счёт и закрывающие документы</span></div></div><div>' + ic('shield', 18) + '<div><b>Гарантия ресурса 12 месяцев</b><span>Обмен или возврат при браке</span></div></div></div>' +
+        '<a class="biz-note" href="' + link.page('business') + '">' + ic('building', 22) + '<div><b>Счёт для юрлиц и ИП</b><span>Выберите «Юридическое лицо» при оформлении — счёт придёт на почту, закрывающие документы отдадим с заказом</span></div></a>' +
         '<a class="ask" href="' + link.page('contacts') + '">' + ic('chat', 22) + '<div><b>Задать вопрос о товаре</b><span>Ответим в чате или по телефону</span></div></a></div></div>' +
+        kitBlock(fam, p) +
         '<div class="tabs" id="ptabs">' + tabs.map(function (t) { return '<button type="button" class="' + (tab === t[0] ? 'on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
         '<div class="tabbody">' +
         '<div data-panel="desc"' + (tab !== 'desc' ? ' hidden' : '') + ' class="desc-grid"><div class="desc">' + d.desc + '</div><div class="spec-t"><div class="sh">Основные характеристики</div>' + specShort + '</div></div>' +
         '<div data-panel="specs"' + (tab !== 'specs' ? ' hidden' : '') + '><div class="spec-t spec-full"><div class="sh">Характеристики</div>' + specRows + '</div></div>' +
-        '<div data-panel="reviews"' + (tab !== 'reviews' ? ' hidden' : '') + ' id="reviews"><div class="rev-grid"><div class="rev-sum"><div class="big"><b>' + ratef(p.rate) + '</b><span>из 5</span></div>' + stars(p.rate, 20) + '<div class="cnt">' + p.reviews + ' ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + ' · ' + Math.round(80 + p.rate * 3) + '% рекомендуют</div><div class="bars"><div><span>5</span><i style="--w:' + Math.round(sum5 / p.reviews * 100) + '%"></i><span>' + sum5 + '</span></div><div><span>4</span><i style="--w:' + Math.round(sum4 / p.reviews * 100) + '%"></i><span>' + sum4 + '</span></div><div><span>3</span><i style="--w:0%"></i><span>0</span></div><div><span>2</span><i style="--w:0%"></i><span>0</span></div><div><span>1</span><i style="--w:0%"></i><span>0</span></div></div><button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button><div class="note">Отзывы и оценки в макете — примеры для демонстрации блока.</div></div>' +
+        '<div data-panel="reviews"' + (tab !== 'reviews' ? ' hidden' : '') + ' id="reviews"><div class="rev-grid"><div class="rev-sum"><div class="big"><b>' + ratef(p.rate) + '</b><span>из 5</span></div>' + stars(p.rate, 20) + '<div class="cnt">' + revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + ' · ' + Math.round(80 + p.rate * 3) + '% рекомендуют</div><div class="bars"><div><span>5</span><i style="--w:' + Math.round(sum5 / revs.length * 100) + '%"></i><span>' + sum5 + '</span></div><div><span>4</span><i style="--w:' + Math.round(sum4 / revs.length * 100) + '%"></i><span>' + sum4 + '</span></div><div><span>3</span><i style="--w:0%"></i><span>0</span></div><div><span>2</span><i style="--w:0%"></i><span>0</span></div><div><span>1</span><i style="--w:0%"></i><span>0</span></div></div><button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button><div class="note">Отзывы в прототипе — примеры: они собраны при сборке каталога и одинаковы при каждом заходе.</div></div>' +
         '<div class="rev-list">' + revs.map(function (rv) {
-          return '<article class="rev"><div class="rh"><div class="who"><span class="ava">' + esc(rv.name[0]) + '</span><div><b>' + esc(rv.name) + '</b><span>' + esc(rv.city) + ' · <span class="ver">' + ic('check', 12) + 'Покупка подтверждена</span></span></div></div><span class="date">' + rv.date + '</span></div><div class="rt">' + stars(rv.rate) + '<span>Принтер: ' + esc(rv.printer) + '</span></div><p>' + esc(rv.text) + '</p><div class="pm"><div><b>Достоинства</b>' + esc(rv.plus) + '</div><div><b>Недостатки</b>' + esc(rv.minus) + '</div></div><div class="useful">Отзыв полезен?<button type="button" data-useful>' + ic('check', 14) + 'Да · ' + (2 + hash(rv.name + p.id) % 9) + '</button><button type="button">Нет · 0</button></div></article>';
+          return '<article class="rev"><div class="rh"><div class="who"><span class="ava">' + esc(rv.name[0]) + '</span><div><b>' + esc(rv.name) + '</b><span>' + esc(rv.city) + ' · <span class="ver">' + ic('check', 12) + 'Покупка подтверждена</span></span></div></div><span class="date">' + rv.date + '</span></div><div class="rt">' + stars(rv.rate) + '<span>Принтер: ' + esc(rv.printer) + '</span></div><p>' + esc(rv.text) + '</p><div class="pm"><div><b>Достоинства</b>' + esc(rv.plus) + '</div><div><b>Недостатки</b>' + esc(rv.minus) + '</div></div><div class="useful">Отзыв полезен?<button type="button" data-useful>' + ic('check', 14) + 'Да · ' + (rv.useful || 3) + '</button><button type="button">Нет · 0</button></div></article>';
         }).join('') +
-        (p.reviews > revs.length ? '<a class="btn btn-o" href="#" data-more-rev>Показать ещё ' + (p.reviews - revs.length) + ' ' + plural(p.reviews - revs.length, 'отзыв', 'отзыва', 'отзывов') + '</a>' : '') +
         '<form class="rev-form" id="rev-form"><h3>Оставить отзыв</h3><p>Расскажите, как расходник работает на вашем принтере — это поможет другим покупателям.</p><div class="frate">Оценка ' + stars(5, 24) + '</div><div class="row"><div class="field"><input type="text" placeholder="Ваше имя" required></div><div class="field"><input type="text" placeholder="Модель принтера"></div></div><textarea placeholder="Достоинства, недостатки, впечатления от печати" required></textarea><div class="fbtn"><button class="btn btn-y" type="submit">Отправить отзыв</button><span>Отзыв появится после проверки модератором. Ваш email не публикуется.</span></div></form></div></div></div>' +
         '<div data-panel="delivery"' + (tab !== 'delivery' ? ' hidden' : '') + '><div class="desc" style="max-width:820px">' + C.site.pageText.delivery_short + '</div></div>' +
         '</div>' +
         '<div class="sec"><div class="sec-head"><h2>Похожие товары</h2><a class="more" href="' + link.catalog(p.cat, p.brand) + '">Все для ' + esc(C.brandName(p.brand)) + ' ' + ic('arrow-right', 18) + '</a></div><div class="grid4">' + related.map(card).join('') + '</div></div>' +
-        '<div class="buybar" id="buybar"><div class="bp"><div class="price">' + fmt(p.price) + ' ₽' + (p.old ? '<small>' + fmt(p.old) + ' ₽</small>' : '') + '</div>' + (p.stock ? '<div class="avail"><i></i>В наличии, отгрузка сегодня</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') + '</div><button class="btn btn-y" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 18) + 'В корзину</button></div></div>';
+        '<div class="buybar" id="buybar"><div class="bp">' + priceBlock(p) + '' + (p.stock ? '<div class="avail"><i></i>В наличии, отгрузка сегодня</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') + '</div><button class="btn btn-y" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 18) + 'В корзину</button></div></div>';
     });
+  }
+
+  /*
+    Комплект по цветам.
+
+    Один картридж выпускается в нескольких цветах, и покупателю почти всегда
+    нужен не один, а весь набор. Показываем цвета серии рядом и даём положить
+    их в корзину одной кнопкой.
+
+    Если часть цветов кончилась, кнопка кладёт только то, что есть, и об этом
+    прямо написано: молча добавить неполный комплект — худшее, что можно
+    сделать с таким заказом.
+  */
+  function kitBlock(fam, current) {
+    if (!fam || fam.items.length < 2) return '';
+    var inStock = fam.items.filter(function (x) { return x.stock; });
+    var missing = fam.items.filter(function (x) { return !x.stock; });
+    var sumAll = fam.items.reduce(function (a, x) { return a + x.price; }, 0);
+    var sumStock = inStock.reduce(function (a, x) { return a + x.price; }, 0);
+    var items = fam.items.map(function (x) {
+      var here = x.id === current.id;
+      return '<a class="kit-i' + (here ? ' on' : '') + (x.stock ? '' : ' out') + '" href="' + link.product(x) + '">' +
+        '<span class="kit-img"><img src="' + x.img + '" alt="" loading="lazy"></span>' +
+        '<span class="kit-c"><b>' + esc(x.color || 'Цвет') + '</b><span>' + esc(x.code) + '</span></span>' +
+        '<span class="kit-pr">' + fmt(x.price) + ' ₽</span>' +
+        (x.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Под заказ</span>') +
+        (here ? '<span class="kit-here">эта страница</span>' : '') + '</a>';
+    }).join('');
+    var note = missing.length
+      ? '<div class="kit-note">' + ic('info', 16) + '<div>' + (missing.length === 1 ? 'Цвета «' + esc(missing[0].color) + '» сейчас нет на складе.' : 'Части цветов сейчас нет на складе: ' + missing.map(function (x) { return esc(x.color); }).join(', ') + '.') +
+        ' Кнопка добавит ' + inStock.length + ' из ' + fam.items.length + ', что есть в наличии. Недостающее привезём под заказ за 3–5 дней — добавьте отдельно кнопкой ниже.</div></div>'
+      : '';
+    var extra = missing.length
+      ? '<button class="kit-all" type="button" data-kit-all="' + fam.id + '">Добавить все ' + fam.items.length + ' ' + plural(fam.items.length, 'цвет', 'цвета', 'цветов') + ', включая под заказ — ' + fmt(sumAll) + ' ₽</button>'
+      : '';
+    return '<section class="kit"><div class="kit-h"><h2>Комплект из ' + fam.items.length + ' ' + plural(fam.items.length, 'цвета', 'цветов', 'цветов') + '</h2>' +
+      '<p>' + esc(fam.label) + '. Цвета одной серии — можно взять сразу весь набор.</p></div>' +
+      '<div class="kit-list">' + items + '</div>' +
+      '<div class="kit-foot"><div class="kit-sum">' + (missing.length ? 'В наличии ' + inStock.length + ' из ' + fam.items.length : 'Комплект целиком') +
+      '<b>' + fmt(missing.length ? sumStock : sumAll) + ' ₽</b></div>' +
+      (inStock.length ? '<button class="btn btn-y btn-lg" type="button" data-kit="' + fam.id + '">' + ic('cart', 20) + (missing.length ? 'Добавить ' + inStock.length + ' из ' + fam.items.length : 'Весь комплект в корзину') + '</button>' : '') +
+      '</div>' + note + extra + '</section>';
   }
 
   function printerKey(brand, model) {
@@ -682,6 +716,19 @@
       });
       showToast(ic('compare', 18) + (S.cmp[id2] ? 'Добавлено к сравнению' : 'Убрано из сравнения') + ' <a href="' + link.plain('compare') + '">Сравнить (' + count(S.cmp) + ')</a>');
       if (parse().route === 'compare') render();
+      return;
+    }
+    t = e.target.closest('[data-kit], [data-kit-all]');
+    if (t) {
+      var famId = t.dataset.kit || t.dataset.kitAll, onlyStock = !!t.dataset.kit;
+      C.family(famId).then(function (f) {
+        if (!f) return;
+        var add = f.items.filter(function (x) { return onlyStock ? x.stock : true; });
+        add.forEach(function (x) { S.cart[x.id] = (S.cart[x.id] || 0) + 1; });
+        save(); updateHeader();
+        showToast(ic('check', 18) + '<span>В корзине ' + add.length + ' ' + plural(add.length, 'цвет', 'цвета', 'цветов') +
+          (onlyStock && add.length < f.items.length ? ', остальные под заказ' : '') + '</span> <a href="' + link.plain('cart') + '">Перейти в корзину</a>');
+      });
       return;
     }
     t = e.target.closest('[data-cq]');
