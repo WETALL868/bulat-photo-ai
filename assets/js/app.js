@@ -465,7 +465,7 @@
       ? '<button class="kit-all" type="button" data-kit-all="' + fam.id + '">Добавить все ' + fam.items.length + ' ' + plural(fam.items.length, 'цвет', 'цвета', 'цветов') + ', включая под заказ — ' + fmt(sumAll) + ' ₽</button>'
       : '';
     return '<section class="kit"><div class="kit-h"><h2>Комплект из ' + fam.items.length + ' ' + plural(fam.items.length, 'цвета', 'цветов', 'цветов') + '</h2>' +
-      '<p>' + esc(fam.label) + '. Цвета одной серии — можно взять сразу весь набор.</p></div>' +
+      '<p>' + esc(String(fam.label).replace(/\.$/, '')) + '. Цвета одной серии — можно взять сразу весь набор.</p></div>' +
       '<div class="kit-list">' + items + '</div>' +
       '<div class="kit-foot"><div class="kit-sum">' + (missing.length ? 'В наличии ' + inStock.length + ' из ' + fam.items.length : 'Комплект целиком') +
       '<b>' + fmt(missing.length ? sumStock : sumAll) + ' ₽</b></div>' +
@@ -936,6 +936,48 @@
   }
   mobbtn.addEventListener('click', function () { if (mob.classList.contains('open')) closeMob(); else openMob(); });
   mob.addEventListener('click', function (e) { if (e.target.closest('a') || e.target.closest('[data-mm-close]')) closeMob(); });
+
+  /*
+    Обратный звонок. Заявка уходит тем же путём, что и заказ, отдельным типом:
+    без сервера (в сборке одним файлом) показываем, что заявка принята, — форма
+    нужна и в макете, и кнопка не должна выглядеть мёртвой.
+  */
+  var cb = document.getElementById('callback'), cbPrev = null;
+  function cbOpen() {
+    cbPrev = document.activeElement;
+    cb.classList.add('open'); cb.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('noscroll');
+    var f = cb.querySelector('input[name=name]'); if (f) setTimeout(function () { f.focus(); }, 60);
+  }
+  function cbClose() {
+    cb.classList.remove('open'); cb.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('noscroll');
+    if (cbPrev && cbPrev.focus) cbPrev.focus();
+  }
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-callback]')) { e.preventDefault(); closeMob(); cbOpen(); return; }
+    if (e.target.closest('[data-cb-close]')) cbClose();
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && cb.classList.contains('open')) cbClose(); });
+  document.getElementById('cb-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = e.target, name = f.name.value.trim(), phone = f.phone.value.replace(/[^0-9+]/g, '');
+    f.querySelectorAll('.fld').forEach(function (l) { l.classList.remove('bad'); });
+    if (!name) { f.querySelector('input[name=name]').closest('.fld').classList.add('bad'); f.name.focus(); return; }
+    if (phone.replace(/\D/g, '').length < 10) { f.querySelector('input[name=phone]').closest('.fld').classList.add('bad'); f.phone.focus(); return; }
+    var btn = f.querySelector('button[type=submit]'), was = btn.innerHTML;
+    btn.disabled = true; btn.textContent = 'Отправляем…';
+    var body = { type: 'callback', name: name, phone: f.phone.value.trim(), note: f.note.value.trim() };
+    (OFFLINE ? Promise.reject(new Error('offline')) : fetch('/api/callback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }))
+      .catch(function () { return null; })
+      .then(function () {
+        btn.disabled = false; btn.innerHTML = was;
+        f.reset(); cbClose();
+        showToast(ic('check', 18) + '<span>Заявка принята. Перезвоним в рабочее время.</span>');
+      });
+  });
 
   var lb = document.getElementById('lightbox');
   lb.addEventListener('click', function () { lb.classList.remove('open'); });

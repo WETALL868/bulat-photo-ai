@@ -48,7 +48,7 @@
     </form>
     <div class="phone">
       <b><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg><a href="tel:+74954775625">+7 (495) 477-56-25</a></b>
-      <span>Заказать звонок</span>
+      <button class="callback" type="button" data-callback>Заказать звонок</button>
     </div>
     <a class="mphone" href="tel:+74954775625" aria-label="Позвонить +7 (495) 477-56-25">
       <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>
@@ -193,9 +193,25 @@
     <div class="mm-contact">
       <b><a href="tel:+74954775625">+7 (495) 477-56-25</a></b>
       <span>Пн–Пт 09:00–18:00, заказы на сайте — круглосуточно</span>
-      <a class="btn btn-y btn-sm" href="/help/contacts">Заказать звонок</a>
+      <button class="btn btn-y btn-sm" type="button" data-callback>Заказать звонок</button>
     </div>
   </nav>
+</div>
+
+<div class="modal" id="callback" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="cb-h">
+  <div class="modal-bd" data-cb-close></div>
+  <div class="modal-w">
+    <button class="modal-x" type="button" data-cb-close aria-label="Закрыть"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <h3 id="cb-h">Заказать звонок</h3>
+    <p class="muted">Перезвоним в рабочее время, Пн–Пт с 09:00 до 18:00. Поможем подобрать расходник по модели принтера и выставим счёт.</p>
+    <form id="cb-form" novalidate>
+      <label class="fld"><span>Как к вам обращаться</span><input name="name" type="text" autocomplete="name" placeholder="Имя" required></label>
+      <label class="fld"><span>Телефон</span><input name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+7 (___) ___-__-__" required></label>
+      <label class="fld"><span>Что подобрать <i>— необязательно</i></span><input name="note" type="text" placeholder="Модель принтера или артикул"></label>
+      <button class="btn btn-y btn-lg" type="submit">Жду звонка</button>
+      <p class="xs muted">Нажимая кнопку, вы соглашаетесь с <a href="/help/privacy">политикой конфиденциальности</a>.</p>
+    </form>
+  </div>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

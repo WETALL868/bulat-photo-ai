@@ -66,6 +66,56 @@ if ($method === 'GET' && $route === 'status') {
     exit;
 }
 
+/*
+  Обратный звонок. Заявка короткая и без цен, поэтому лежит рядом с заказами
+  отдельным файлом cb-<время>.json — менеджеру важно только имя и телефон.
+*/
+if ($route === 'callback') {
+    if ($method !== 'POST') {
+        header('Allow: POST');
+        fail(405, 'Заявка отправляется методом POST');
+    }
+    $raw = file_get_contents('php://input', false, null, 0, 4096);
+    $in = json_decode((string) $raw, true);
+    if (!is_array($in)) {
+        fail(400, 'Не разобрали заявку');
+    }
+    $cut = static fn (string $k, int $n): string => mb_substr(trim((string) ($in[$k] ?? '')), 0, $n);
+    $name = $cut('name', 120);
+    $phone = $cut('phone', 40);
+    if ($name === '' || preg_match_all('/\d/', $phone) < 10) {
+        fail(422, 'Нужны имя и телефон');
+    }
+    $config = settings();
+    $dir = (string) $config['orders_dir'];
+    if (!is_dir($dir) && !@mkdir($dir, 0770, true) && !is_dir($dir)) {
+        error_log('[hi-black] нет папки для заявок: ' . $dir);
+        fail(503, 'Заявку не приняли. Позвоните нам, пожалуйста.');
+    }
+    $request = [
+        'createdAt' => date('c'),
+        'name' => $name,
+        'phone' => $phone,
+        'note' => $cut('note', 300),
+        'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
+    ];
+    $file = $dir . '/cb-' . date('Ymd-His') . '-' . substr(bin2hex(random_bytes(3)), 0, 6) . '.json';
+    if (file_put_contents($file, json_encode($request, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX) === false) {
+        error_log('[hi-black] не удалось сохранить заявку на звонок');
+        fail(503, 'Заявку не приняли. Позвоните нам, пожалуйста.');
+    }
+    if ($config['manager_email'] !== '') {
+        @mail(
+            (string) $config['manager_email'],
+            'Заявка на звонок — ' . $config['shop_name'],
+            $name . ', ' . $phone . ($request['note'] !== '' ? "\n" . $request['note'] : ''),
+            'Content-Type: text/plain; charset=utf-8'
+        );
+    }
+    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if ($route !== 'order') {
     fail(404, 'Неизвестный запрос');
 }

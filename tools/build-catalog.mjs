@@ -370,10 +370,18 @@ for (let i = 0; i < products.length; i += CHUNK_SIZE) {
   принтеров и тот же ресурс. Цвета при этом должны различаться — иначе в одну
   кучу попадут версии с чипом и без, а это не комплект.
 */
+const COLOR_WORDS = /(?:^|[^a-zа-яё])(black|cyan|magenta|yellow|photo|light|grey|gray|ч[её]рн\w*|голуб\w*|пурпурн\w*|ж[её]лт\w*|син\w*|красн\w*|сер\w*|цветн\w*)(?![a-zа-яё])/gi;
+/*
+  Ключ серии — название без цвета. Раньше сравнивали список совместимых
+  принтеров, но у универсальных чернил его нет вовсе («Универсальные для
+  Brother, Тип B»), и такие товары ни в один комплект не попадали.
+*/
+const noColor = (t) => String(t || '').replace(COLOR_WORDS, ' ').toLowerCase().replace(/[^0-9a-zа-яё]+/g, '');
+const famKey = (p) => [p.brand, p.cat, p.type, p.res ?? '', p.compat || noColor(p.name)].join('|');
 const famBuckets = new Map();
 products.forEach((p, i) => {
-  if (!p.compat || !p.color) return;
-  const key = [p.brand, p.cat, p.type, p.res ?? '', p.compat].join('|');
+  if (!p.color) return;
+  const key = famKey(p);
   if (!famBuckets.has(key)) famBuckets.set(key, []);
   famBuckets.get(key).push(i);
 });
@@ -390,7 +398,12 @@ const COLOR_ORDER = ['Чёрный', 'Голубой', 'Пурпурный', 'Ж
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
     families[id] = {
-      label: first.type + ' ' + brandName(first.brand) + ' для ' + first.compat.replace(/^для\s+/, ''),
+      /* Без списка принтеров (универсальные чернила) заголовок берём из
+         названия, убрав из него только сам цвет, а не каждое слово-цвет:
+         иначе «Hi-Black» превращается в «Hi». */
+      label: first.compat
+        ? first.type + ' ' + brandName(first.brand) + ' для ' + first.compat.replace(/^для\s+/, '')
+        : String(first.name || '').replace(/,\s*(black|cyan|magenta|yellow|light\s+\w+|photo\s+\w+|ч[её]рн\w*|голуб\w*|пурпурн\w*|ж[её]лт\w*)\s*(?=,|$)/i, '').trim(),
       colors: sorted.map((i) => products[i].color),
       rows: sorted,
     };
