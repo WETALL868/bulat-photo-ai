@@ -57,6 +57,11 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .crumbs a{color:var(--muted)}.crumbs a:hover{color:var(--ink)}
 .crumbs svg{color:var(--muted2)}
 .crumbs span{color:var(--ink)}
+.lead{font-size:17px;color:var(--ink2);max-width:68ch;margin-top:14px;line-height:1.55}
+/* Отметка о последнем обновлении цен: цены приходят из внешней системы,
+   и покупателю важно видеть, насколько они свежие. */
+.stamp{display:inline-flex;align-items:center;gap:8px;margin-top:18px;font-size:13px;color:var(--muted)}
+.stamp svg{color:var(--muted2)}
 
 /* 2. Элементы
    -------------------------------------------------------------------------- */
@@ -246,11 +251,11 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .hslider .slide{position:absolute;inset:0;opacity:0;transition:opacity .7s ease;pointer-events:none;display:flex;align-items:center;background:#161616 center/cover no-repeat}
 .hslider .slide.on{opacity:1;pointer-events:auto}
 .hslider .slide::before{content:"";position:absolute;inset:0}
-.hslider .s1{background-image:url(../img/photo/slide-office.jpg);background-position:right 30%;color:var(--ink)}
+.hslider .s1{background-image:url(../img/photo/slide-office.webp);background-position:right 30%;color:var(--ink)}
 .hslider .s1::before{background:linear-gradient(90deg,rgba(246,245,241,.985) 0%,rgba(246,245,241,.96) 40%,rgba(246,245,241,.55) 60%,rgba(246,245,241,0) 80%)}
 .hslider .s2{background:#161616}
 .hslider .s2::before{background:radial-gradient(60% 80% at 78% 50%,rgba(255,210,0,.22),rgba(255,210,0,0) 70%)}
-.hslider .s3{background-image:url(../img/photo/slide-canon.jpg);background-position:right 40%}
+.hslider .s3{background-image:url(../img/photo/slide-canon.webp);background-position:right 40%}
 .hslider .s3::before{background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.86) 42%,rgba(14,14,14,.35) 70%,rgba(14,14,14,.15) 100%)}
 .hslider .wrap{position:relative;width:100%;display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:40px;align-items:center}
 .hslider .s2 .wrap{grid-template-columns:minmax(0,1fr) 520px}
@@ -670,7 +675,7 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 
 /* 12. Подвал
    -------------------------------------------------------------------------- */
-.foot{position:relative;color:#c9c8c2;margin-top:80px;padding:56px 0 32px;background:#141414 url(../img/photo/footer-bg.jpg) 88% 45%/cover no-repeat}
+.foot{position:relative;color:#c9c8c2;margin-top:80px;padding:56px 0 32px;background:#141414 url(../img/photo/footer-bg.webp) 88% 45%/cover no-repeat}
 .foot::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.92) 45%,rgba(14,14,14,.78) 72%,rgba(14,14,14,.6) 100%),linear-gradient(180deg,rgba(14,14,14,.2) 0%,rgba(14,14,14,.5) 100%)}
 .foot .wrap{position:relative}
 .fgrid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr 1.3fr;gap:32px}

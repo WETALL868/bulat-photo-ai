@@ -1,0 +1,26 @@
+# Единая каноническая версия сайта для статических хостингов (Netlify, Cloudflare Pages).
+# На обычном сервере эти же правила выполняет .htaccess.
+http://hi-black.ru/*       https://hi-black.ru/:splat   301!
+http://www.hi-black.ru/*   https://hi-black.ru/:splat   301!
+https://www.hi-black.ru/*  https://hi-black.ru/:splat   301!
+
+# Готовые страницы отдаются напрямую.
+/                 /seo-pages/home.html        200
+/catalog          /seo-pages/catalog.html     200
+/catalog/*        /seo-pages/catalog/:splat.html   200
+/product/*        /seo-pages/product/:splat.html   200
+/printer/*        /seo-pages/printer/:splat.html   200
+/help/*           /seo-pages/help/:splat.html      200
+/finder           /seo-pages/finder.html      200
+
+# Служебные разделы — оболочка приложения.
+/cart             /seo-pages/app.html   200
+/checkout         /seo-pages/app.html   200
+/order/*          /seo-pages/app.html   200
+/favorites        /seo-pages/app.html   200
+/compare          /seo-pages/app.html   200
+/login            /seo-pages/app.html   200
+/search           /seo-pages/app.html   200
+
+# Всё остальное — настоящий 404.
+/*                /seo-pages/404.html   404

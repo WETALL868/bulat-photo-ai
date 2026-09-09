@@ -1,0 +1,82 @@
+# Hi-Black: один канонический домен, готовые страницы из seo-pages, настоящий 404.
+#
+# Витрина — статические файлы. Всё, что требует базы, ключей или денег, уходит
+# в api/index.php. Поисковик и человек получают собранный заранее HTML, не
+# дожидаясь загрузки скрипта; скрипт потом перерисовывает страницу поверх.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Одна каноническая версия: HTTPS без www.
+  # X-Forwarded-Proto нужен, когда SSL завершает nginx перед Apache.
+  RewriteCond %{HTTP_HOST} !^hi-black\.ru$ [NC]
+  RewriteRule ^ https://hi-black.ru%{REQUEST_URI} [R=301,L,NE]
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !^https$ [NC]
+  RewriteRule ^ https://hi-black.ru%{REQUEST_URI} [R=301,L,NE]
+
+  # Технические адреса не должны создавать дубли публичных страниц.
+  RewriteCond %{THE_REQUEST} \s/+index\.html(?:[?\s]) [NC]
+  RewriteRule ^index\.html$ https://hi-black.ru/ [R=301,L,NE]
+  RewriteCond %{THE_REQUEST} \s/+seo-pages/home\.html(?:[?\s]) [NC]
+  RewriteRule ^seo-pages/home\.html$ https://hi-black.ru/ [R=301,L,NE]
+  RewriteCond %{THE_REQUEST} \s/+seo-pages/(.+)\.html(?:[?\s]) [NC]
+  RewriteRule ^seo-pages/(.+)\.html$ https://hi-black.ru/$1 [R=301,L,NE]
+
+  # Заказы и прочие серверные операции.
+  RewriteRule ^api(/.*)?$ api/index.php [L,QSA]
+
+  # Главная — раньше проверки существующей директории.
+  RewriteRule ^$ seo-pages/home.html [L]
+
+  # Настоящие файлы и папки не перехватываем.
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Канонические адреса записаны без завершающего слеша.
+  RewriteCond %{REQUEST_URI} !^/$
+  RewriteCond %{REQUEST_URI} /+$
+  RewriteRule ^(.+?)/+$ https://hi-black.ru/$1 [R=301,L,NE]
+
+  # Публичный адрес отдаём готовой страницей.
+  RewriteCond %{DOCUMENT_ROOT}/seo-pages/$1.html -f
+  RewriteRule ^(.+)$ seo-pages/$1.html [L]
+
+  # Служебные разделы — оболочка приложения, закрытая от индексации.
+  RewriteRule ^(cart|checkout|order|favorites|compare|login|search)(/.*)?$ seo-pages/app.html [L]
+
+  # Неизвестный адрес обязан быть настоящим 404, а не пустой успешной страницей.
+  RewriteRule ^ seo-pages/404.html [L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set X-Robots-Tag "noindex, nofollow" "expr=%{REQUEST_URI} =~ m#^/(cart|checkout|order|favorites|compare|login|search)(?:/|$)#"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+  # Файлы с хешем в имени не меняются — держим в кеше год.
+  <FilesMatch "\.(js|css|svg|webp|avif|woff2|jpe?g|png)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  # Страницы и данные каталога проверяем на каждый заход.
+  <FilesMatch "\.(html|xml|json)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>
+
+# Готовые страницы весят десятки килобайт, но сжимаются в разы.
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/plain text/xml application/javascript application/json image/svg+xml
+</IfModule>
+
+<IfModule mod_mime.c>
+  AddType application/json .json
+  AddType font/woff2 .woff2
+  AddType image/webp .webp
+</IfModule>
+
+ErrorDocument 404 /seo-pages/404.html
+
+# Исходники каталога и служебные папки наружу не отдаём.
+RedirectMatch 404 ^/(catalog-source|tools|var|node_modules)(/|$)

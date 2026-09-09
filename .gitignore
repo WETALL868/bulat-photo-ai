@@ -1,4 +1,12 @@
+# Собранное из исходников: пересобирается командой npm run build
+seo-pages/
+sitemap.xml
+robots.txt
 dist/
-node_modules/
+
+# Локальное
+node_modules
+var/
+api/config-path.php
 .DS_Store
 Thumbs.db

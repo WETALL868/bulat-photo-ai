@@ -1,0 +1,17 @@
+{
+  "name": "hi-black-shop",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Фирменный магазин Hi-Black: статичная витрина, каталог в JSON, цены отдельным файлом",
+  "type": "module",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "catalog": "node tools/build-catalog.mjs",
+    "seo": "node tools/build-seo.mjs",
+    "build": "node tools/build-catalog.mjs && node tools/build-seo.mjs",
+    "single": "node tools/build-single.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}
