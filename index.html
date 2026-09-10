@@ -50,10 +50,9 @@
       <b><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg><a href="tel:+74954775625">+7 (495) 477-56-25</a></b>
       <button class="callback" type="button" data-callback>Заказать звонок</button>
     </div>
-    <!-- Обычная ссылка без target: встроенный браузер (Telegram, WKWebView) может
-     не открывать новое окно под tel:, и нажатие пропадало молча. Переход
-     выполняет обработчик в том же контексте, см. assets/js/app.js. -->
-    <a class="mphone" href="tel:+74954775625" rel="nofollow" aria-label="Позвонить: +7 (495) 477-56-25" title="Позвонить: +7 (495) 477-56-25">
+    <!-- Обычная ссылка tel: и ничего больше: переход делает сам браузер прямо из
+     нажатия. Скриптов, подменяющих это поведение, у кнопки нет. -->
+    <a class="mphone" href="tel:+74954775625" aria-label="Позвонить по телефону +7 (495) 477-56-25" title="Позвонить">
       <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>
     </a>
     <div class="hacts">
@@ -240,20 +239,6 @@
       </div>
       <button class="btn btn-y btn-lg" type="submit">Подтвердить заказ</button>
     </form>
-  </div>
-</div>
-
-<div class="modal" id="telbox" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="tel-h">
-  <div class="modal-bd" data-tel-close></div>
-  <div class="modal-w">
-    <button class="modal-x" type="button" data-tel-close aria-label="Закрыть"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
-    <h3 id="tel-h">Позвонить в магазин</h3>
-    <a class="tel-num" href="tel:+74954775625" rel="nofollow">+7 (495) 477-56-25</a>
-    <div class="tel-acts">
-      <a class="btn btn-y btn-lg" href="tel:+74954775625" rel="nofollow">Позвонить</a>
-      <button class="btn btn-o btn-lg" type="button" id="tel-copy">Скопировать номер</button>
-    </div>
-    <p class="muted small">Если звонок не открылся во встроенном браузере, скопируйте номер или откройте сайт во внешнем браузере.</p>
   </div>
 </div>
 
