@@ -1239,8 +1239,6 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
     состояниях, от нажатия остаётся только короткая подсветка фона.
   */
   .mphone,.mphone:hover,.mphone:focus,.mphone:visited{color:#fff}
-  /* Нажатие должно попадать в саму ссылку, а не в иконку внутри неё. */
-  .mphone svg,.mphone svg *{pointer-events:none}
   .mphone{position:relative;z-index:2;touch-action:manipulation}
   .mphone:active{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.45)}
   .mphone:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
@@ -1518,3 +1516,15 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .thumbs{gap:6px}
   .buy .acts{flex-direction:column}
 }
+
+/* 16. Кнопка звонка: нажатие принадлежит ссылке
+   --------------------------------------------------------------------------
+   Правило намеренно стоит последним в файле и не заключено в медиазапрос:
+   раньше оно жило внутри @media (max-width:700px), и на любой другой ширине
+   getComputedStyle у иконки возвращал pointer-events: auto. Нажатие должно
+   попадать в саму ссылку в любом окружении, поэтому !important и никаких
+   условий. */
+a.mphone > svg,
+a.mphone > svg *,
+a.mphone .ic,
+a.mphone .ic *{pointer-events:none!important}
