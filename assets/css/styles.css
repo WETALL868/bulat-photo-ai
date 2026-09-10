@@ -156,7 +156,13 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .head .wrap{display:flex;align-items:center;gap:22px;height:104px}
 .mobbtn,.mphone{display:none}
 .logo{display:flex;flex-direction:column;align-items:flex-start;gap:5px;flex:none}
+/* Знак Hi-Black чёрный на фирменной жёлтой плашке — как на официальном сайте.
+   Плашка скошена под наклон самого знака; пропорции SVG не трогаем. */
+.logo-plate{display:inline-flex;align-items:center;background:var(--yellow);padding:7px 16px 7px 13px;border-radius:4px;clip-path:polygon(9px 0,100% 0,calc(100% - 9px) 100%,0 100%)}
+.logo-plate img{height:30px;width:auto;display:block}
 .logo img{height:38px;width:auto}
+.mm-head .logo-plate{padding:6px 14px 6px 11px}
+.mm-head .logo-plate img{height:26px}
 .logo-sub{font-size:13.5px;color:#b4b3ac;white-space:nowrap;font-weight:500;letter-spacing:.02em}
 .search{flex:1 1 320px;min-width:210px;display:flex;height:54px;border:2px solid transparent;border-radius:14px;overflow:hidden;background:#fff;min-width:0;transition:box-shadow .15s}
 .search:focus-within{box-shadow:0 0 0 4px rgba(255,210,0,.35)}
@@ -379,8 +385,9 @@ select.fsel{appearance:none;-webkit-appearance:none;border:0;outline:0;font:inhe
 .advi{display:flex;gap:14px;align-items:flex-start;padding:22px;border:1px solid var(--line);border-radius:16px;transition:border-color .15s}
 .advi:hover{border-color:var(--ink)}
 .advi .ico{width:46px;height:46px;border-radius:12px;background:var(--ytint);display:flex;align-items:center;justify-content:center;flex:none;color:var(--ink)}
-.advi b{display:block;font-family:var(--head);font-weight:700;font-size:15px;margin-bottom:4px;line-height:1.25}
-.advi span{font-size:13px;color:var(--muted);line-height:1.45}
+.advi > div{min-width:0}
+.advi b{display:block;font-family:var(--head);font-weight:700;font-size:15px;margin-bottom:4px;line-height:1.25;overflow-wrap:break-word}
+.advi span{font-size:13px;color:var(--muted);line-height:1.45;overflow-wrap:break-word}
 .about{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:40px;padding:40px;border-radius:22px;background:var(--surface)}
 .about p{font-size:15px;color:var(--ink2);margin-top:14px;line-height:1.6}
 .about .btn{margin-top:22px}
@@ -486,32 +493,32 @@ a.line-c:hover{border-color:var(--ink)}
 .pinfo{min-width:0}
 .keyspecs h3{font-size:16px;margin-bottom:10px}
 .krow{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
-.krow span{color:var(--muted)}.krow b{font-weight:600;text-align:right}
+.krow span{color:var(--muted);min-width:0}.krow b{font-weight:600;text-align:right;min-width:0;overflow-wrap:anywhere}
 .compat{margin-top:22px}
 .compat h3{font-size:16px;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .compat h3 img{height:18px;width:auto}
 .compat .tags{gap:6px}
 .compat .chip{height:32px;font-size:13px;padding:0 12px}
 .allspecs{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:14px;margin-top:18px}
-.buy{border:1px solid var(--line);border-radius:20px;padding:24px;display:flex;flex-direction:column;gap:16px;box-shadow:var(--shadow-pop);position:sticky;top:16px;background:#fff;min-width:0}
+.buy{border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:13px;box-shadow:var(--shadow-pop);position:sticky;top:16px;background:#fff;min-width:0}
 .buy .prow{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-.buy .price{font-size:34px}
+.buy .price{font-size:30px}
 .buy .prow .per{font-size:13px;color:var(--muted)}
-.buy .avail{font-size:14px}
+.buy .avail{font-size:13.5px}
 .buy .stock{font-size:13px;color:var(--muted);margin-top:-8px}
 .buy .brow{display:flex;gap:10px;align-items:center}
 .buy .btn-lg{flex:1;min-width:0;padding:0 16px}
 .buy .acts{display:flex;gap:8px}
-.buy .acts button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;border-radius:10px;border:1px solid var(--line);font-size:13px;font-weight:500;color:var(--ink2);min-width:0;white-space:nowrap}
+.buy .acts button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;height:38px;border-radius:10px;border:1px solid var(--line);font-size:12.5px;font-weight:500;color:var(--ink2);min-width:0;white-space:nowrap}
 .buy .acts button.on{border-color:var(--ink);background:var(--surface);color:var(--ink)}
-.dlist{display:flex;flex-direction:column;gap:10px;padding-top:16px;border-top:1px solid var(--line)}
-.dlist > div{display:flex;gap:12px;align-items:flex-start;font-size:14px}
+.dlist{display:flex;flex-direction:column;gap:8px;padding-top:13px;border-top:1px solid var(--line)}
+.dlist > div{display:flex;gap:10px;align-items:flex-start;font-size:13px}
 .dlist svg{color:var(--ink2);margin-top:2px;flex:none}
-.dlist b{font-weight:600;display:block}
-.dlist span{color:var(--muted);font-size:13px}
-.ask{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:12px;background:var(--surface);font-size:14px}
+.dlist b{font-weight:600;display:block;line-height:1.3}
+.dlist span{color:var(--muted);font-size:12.5px;line-height:1.35}
+.ask{display:flex;align-items:center;gap:11px;padding:12px 14px;border-radius:12px;background:var(--surface);font-size:13px}
 .ask b{display:block;font-weight:600}
-.ask span{color:var(--muted);font-size:13px}
+.ask span{color:var(--muted);font-size:12.5px}
 /* Счёт для юрлиц вынесен отдельным блоком: для половины покупателей это
    решающее условие, и оно не должно теряться среди строк про доставку. */
 .biz-note{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-radius:12px;background:var(--ytint);font-size:14px;border:1px solid var(--yellow2)}
@@ -644,13 +651,15 @@ a.step:hover{background:var(--surface)}
 .item .m{font-size:13px;color:var(--muted);margin-top:6px;display:flex;gap:6px 12px;flex-wrap:wrap;align-items:center}
 .item .m span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .item .m img{height:12px;width:auto}
-.item .u{font-size:13px;color:var(--muted);margin-top:8px}
+.item .u{font-size:14px;color:var(--ink2);font-weight:600;margin-top:8px}
 .ictl{display:flex;align-items:center;gap:24px}
 .item .qty{height:44px}
 .item .qty button{width:42px}
-.item .sum{text-align:right;min-width:110px}
+.item .sum{text-align:right;min-width:150px}
 .item .sum .price{font-size:20px}
 .item .sum small{display:block;font-size:12px;color:var(--muted);margin-top:4px}
+/* Расчёт строки стоит над суммой, поэтому отступ ему нужен снизу. */
+.item .sum .calc{margin:0 0 3px;font-size:12.5px;white-space:nowrap}
 .item .rm{width:40px;height:40px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted2)}
 .item .rm:hover{color:var(--red);background:var(--rtint)}
 .cfootr{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;background:var(--surface);gap:16px 20px;flex-wrap:wrap}
@@ -755,6 +764,49 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 .contacts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px}
 .map-ph{border:1px dashed var(--line2);border-radius:20px;min-height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);background:var(--surface)}
 
+/* Контакты: карточки телефона/почты/режима, магазин, форма обращения. */
+.ccards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:22px 0 6px}
+.ccard{border:1px solid var(--line);border-radius:18px;padding:20px;background:#fff;display:flex;flex-direction:column;gap:4px;min-width:0}
+.ccard .cico{width:42px;height:42px;border-radius:12px;background:var(--ytint);color:var(--ink);display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.ccard .ct{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.ccard b{font-family:var(--head);font-weight:700;font-size:21px;letter-spacing:-.01em;line-height:1.25;word-break:break-word}
+.ccard b a{color:var(--ink)}
+.ccard b a:hover{color:var(--ink2)}
+.ccard > span{font-size:14px;color:var(--muted);line-height:1.45}
+.cshop{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:24px;align-items:stretch}
+.cshop > div:first-child{align-self:center}
+.cshop .map-ph{min-height:210px;margin:0}
+.cform{margin-top:6px;max-width:760px}
+.cform .fld{margin-bottom:12px}
+.cform textarea,.cform select{border:1px solid var(--line2);border-radius:12px;padding:12px 16px;font:inherit;font-size:15px;color:var(--ink);outline:0;background:#fff;width:100%;min-width:0;resize:vertical}
+.cform select{height:48px;padding:0 16px}
+.cform textarea:focus,.cform select:focus{border-color:var(--ink)}
+.cform .agree{margin:14px 0 16px;max-width:640px}
+.cform .agree-err{margin:-8px 0 14px}
+.chelp{border:1px solid var(--line);border-radius:18px;padding:22px;background:var(--surface)}
+.chelp p{margin:0 0 14px;color:var(--ink2)}
+.chelp .acts{display:flex;gap:10px;flex-wrap:wrap}
+
+/* Раскрытие полного списка характеристик — на месте, без обрезки. */
+.spec-more{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:48px;border-top:1px solid var(--line);background:var(--surface);font:inherit;font-size:14px;font-weight:600;color:var(--ink);cursor:pointer}
+.spec-more:hover{background:var(--line)}
+.spec-more svg{transition:transform .2s}
+.spec-more.on svg{transform:rotate(180deg)}
+
+/* B2B-блок под характеристиками: горизонтальный, во всю ширину. */
+.b2b{margin-top:32px;border:1px solid var(--yellow2);border-radius:20px;background:var(--ytint);padding:26px 28px}
+.b2b-h{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.b2b-h > svg{color:var(--ink);flex:none}
+.b2b-h > div{flex:1;min-width:220px}
+.b2b-h h2{font-size:23px;margin:0}
+.b2b-h p{color:var(--ink2);font-size:15px;margin:4px 0 0}
+.b2b-h .btn{flex:none}
+.b2b-l{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px;padding-top:20px;border-top:1px solid var(--yellow2)}
+.b2b-l > div{display:flex;gap:12px;align-items:flex-start;min-width:0}
+.b2b-l svg{color:var(--ink);flex:none;margin-top:2px}
+.b2b-l b{display:block;font-weight:600;font-size:15px}
+.b2b-l span{color:var(--ink2);font-size:13.5px;line-height:1.45}
+
 /* 12. Подвал
    -------------------------------------------------------------------------- */
 /* Фотография офиса лежит фоном во всю ширину, поверх — тёмная заливка:
@@ -831,6 +883,30 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .nav-in,.swap-in{animation:none}
   .navline{display:none}
 }
+
+/* Уведомление о cookie: узкая полоса внизу, не перекрывает липкую панель
+   покупки и нижнюю навигацию — на телефоне она поднимается над ними. */
+.cookie{position:fixed;left:0;right:0;bottom:0;z-index:105;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:14px max(var(--gut),env(safe-area-inset-left,0px)) calc(14px + env(safe-area-inset-bottom,0px));
+  background:rgba(20,20,19,.97);color:#e6e5df;border-top:1px solid #3b362e;backdrop-filter:blur(6px)}
+.cookie p{flex:1;min-width:220px;font-size:14px;line-height:1.45;margin:0}
+.cookie a{color:var(--yellow);text-decoration:underline}
+.cookie .btn{flex:none}
+/* Полоса ниже мобильного меню (120), модалки (130) и панели фильтров (110):
+   баннер не должен перекрывать навигацию и кнопки поверх него. */
+body.has-cookie .buybar{bottom:calc(var(--cookie-h,78px) + 8px)}
+body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cookie-h,78px) + 20px)}
+
+/* Обязательные согласия в формах. */
+.agree{display:flex;align-items:flex-start;gap:11px;font-size:14px;line-height:1.45;cursor:pointer;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;transition:border-color .15s,background .15s}
+.agree input{flex:none;width:20px;height:20px;margin:1px 0 0;accent-color:var(--ink);cursor:pointer}
+.agree a{text-decoration:underline}
+.agree:hover{border-color:var(--line2)}
+.agree.bad{border-color:var(--red);background:var(--rtint)}
+.agrees{display:flex;flex-direction:column;gap:10px;margin:18px 0 4px;scroll-margin-top:20px}
+.agrees.bad .agree{border-color:var(--red)}
+.agree-err{display:flex;align-items:flex-start;gap:9px;color:var(--red);font-size:14px;font-weight:500;line-height:1.4}
+.agree-err svg{flex:none;margin-top:1px}
 
 /* 13. Оверлеи
    -------------------------------------------------------------------------- */
@@ -916,11 +992,16 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .head .wrap{flex-wrap:wrap;height:auto;padding-top:12px;padding-bottom:12px;gap:10px 12px}
   .mobbtn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:1px solid var(--hdr-line);color:#fff;flex:none;margin-left:-4px}
   .logo img{height:30px}
+  .logo-plate{padding:6px 13px 6px 10px}
+  .logo-plate img{height:24px}
   .search{order:5;flex-basis:100%;height:48px;border-width:1.5px;border-radius:12px}
   .search input{padding:0 14px;font-size:14px}
   .search .sbtn{width:100px}
   .phone{margin-left:auto}
-  .hact{width:52px}
+  /* Подписи «Сравнение» и «Избранное» шире отведённых 52px и наезжали друг на
+     друга — на планшете оставляем только иконки, названия видны в меню. */
+  .hact{width:44px;font-size:0;gap:0}
+  .hact .cnt{font-size:11px;right:2px}
   .cartbtn{height:44px;padding:0 14px 0 12px;border-radius:12px;margin-left:4px}
   .navbar .wrap{height:auto;gap:0;padding-top:8px;padding-bottom:8px}
   .nav{gap:6px;margin:0 calc(var(--gut)*-1);padding:0 var(--gut);flex:1 1 100%}
@@ -939,16 +1020,22 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .hslider .wrap{grid-template-columns:1fr;gap:0}
   .hslider .slide{padding-bottom:60px}
   .hslider .stext{padding:30px 0;max-width:none}
-  /* На узком экране кадрируется правая четверть снимка — та, где стоит
-     техника. Горизонтальная тень там уже не спасает, поэтому затемняем весь
-     кадр сверху вниз: снимок остаётся фоном, текст читается поверх него. */
-  .hslider .slide{background-position:72% center}
-  .hslider .slide::before{background:linear-gradient(180deg,rgba(11,11,10,.9) 0%,rgba(11,11,10,.82) 45%,rgba(11,11,10,.92) 100%)}
+  /* На планшете кадр остаётся фоном во всю ширину: cover не искажает пропорции,
+     а точку интереса задаём каждому снимку отдельно — иначе техника уезжает
+     за край. Поверх — вертикальное затемнение под текст. */
+  .hslider .slide{background-size:cover}
+  .hslider .s1{background-position:68% center}
+  .hslider .s2{background-position:60% center}
+  .hslider .s3{background-position:74% center}
+  .hslider .slide::before{background:linear-gradient(180deg,rgba(11,11,10,.88) 0%,rgba(11,11,10,.74) 42%,rgba(11,11,10,.55) 72%,rgba(11,11,10,.86) 100%)}
   .hslider .sfeat{max-width:none}
   .finder{max-width:none}
   .tiles,.tiles-s{grid-template-columns:repeat(2,minmax(0,1fr))}
   .grid4,.grid3{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
   .adv{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .ccards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cshop{grid-template-columns:1fr;gap:18px}
+  .cshop .map-ph{min-height:170px}
   .about{grid-template-columns:1fr;padding:28px;gap:24px}
   /* каталог: фильтры в выдвижной панели */
   .mfilterbtn{display:inline-flex}
@@ -1019,6 +1106,8 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   /* шапка */
   .head .wrap{gap:8px 10px;padding-top:10px;padding-bottom:10px}
   .logo img{height:28px}
+  .logo-plate{padding:5px 11px 5px 9px}
+  .logo-plate img{height:21px}
   .logo-sub{display:none}
   .phone,.hact{display:none}
   .mphone{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:1px solid var(--hdr-line);color:#fff;margin-left:auto;flex:none}
@@ -1029,15 +1118,32 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .search .sbtn{width:54px;gap:0}
   .search .sbtn .txt{display:none}
   /* главная */
-  .hslider .slide{padding-bottom:54px}
-  .hslider .stext{padding:22px 0}
-    .hslider h1,.hslider h2{font-size:27px;margin:12px 0 10px}
+  /*
+    Телефон. Кадр 2400×900 в портретной колонке пришлось бы увеличивать втрое —
+    снимок выглядел растянутым и рассыпался на пиксели. Поэтому на узком экране
+    слайд разбирается на две части: сверху фотография своей полосой с честными
+    пропорциями (cover внутри 16:9 — без искажений), снизу тёмное поле с
+    текстом. Между ними градиент, чтобы стыка не было видно.
+  */
+  .hslider{min-height:0}
+  .hslider .slide{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;padding-bottom:52px;background-image:none;background-color:#101010}
+  .hslider .slide::after{content:"";display:block;order:-1;width:100%;aspect-ratio:16/9;background-size:cover;background-repeat:no-repeat}
+  .hslider .s1::after{background-image:url(../img/banners/slide-1.webp);background-position:64% center}
+  .hslider .s2::after{background-image:url(../img/banners/slide-2.webp);background-position:56% center}
+  .hslider .s3::after{background-image:url(../img/banners/slide-3.webp);background-position:72% center}
+  /* Затемнение лежит только на фотографии и растворяется к тексту. */
+  .hslider .slide::before{top:0;bottom:auto;height:calc(56.25vw + 34px);
+    background:linear-gradient(180deg,rgba(16,16,16,.12) 0%,rgba(16,16,16,.3) 46%,rgba(16,16,16,.86) 84%,#101010 100%)}
+  .hslider .wrap{align-items:start}
+  .hslider .stext{padding:18px 0 4px}
+  .hslider h1,.hslider h2{font-size:26px;margin:11px 0 10px;text-wrap:balance}
   .hslider p{font-size:15px}
   .hslider .sfeat{gap:8px;margin-top:18px}
   .hslider .sfeat div{padding:9px 10px;font-size:12.5px;gap:8px;border-radius:10px}
-  .hslider .sctrl{bottom:16px}
+  .hslider .sctrl{bottom:14px}
   .hslider .sarr button{width:40px;height:40px}
-  .hslider .sbtns .btn{flex:1}
+  .hslider .sbtns{gap:8px}
+  .hslider .sbtns .btn{flex:1 1 140px;min-width:0}
   .finder{flex-direction:column;margin-top:20px;padding:8px}
   select.fsel{width:100%}
   .finder .finp{height:46px}
@@ -1064,6 +1170,15 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .tile-s .ph img{max-height:56px;max-width:72px}
   .grid4,.grid3{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .adv{grid-template-columns:1fr;gap:10px}
+  .ccards{grid-template-columns:1fr;gap:12px;margin:18px 0 4px}
+  .ccard{padding:16px 18px;border-radius:16px}
+  .ccard b{font-size:19px}
+  .b2b{padding:20px;border-radius:16px;margin-top:26px}
+  .b2b-h h2{font-size:20px}
+  .b2b-h .btn{width:100%}
+  .b2b-l{grid-template-columns:1fr;gap:12px;margin-top:16px;padding-top:16px}
+  .chelp{padding:18px}
+  .chelp .acts .btn{flex:1 1 160px}
   .advi{padding:14px 16px;gap:12px;align-items:center}
   .advi .ico{width:40px;height:40px;border-radius:10px}
   .advi b{font-size:14px;margin-bottom:2px}
@@ -1118,7 +1233,10 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .applied::-webkit-scrollbar{display:none}
   .pager{flex-direction:column;align-items:stretch;margin-top:20px}
   .pager .btn{width:100%}
-  .pages{justify-content:center}
+  /* На узком экране номеров больше, чем помещается в строку: даём переносить,
+     иначе последняя кнопка выходит за край и появляется горизонтальный скролл. */
+  .pages{justify-content:center;flex-wrap:wrap;row-gap:8px}
+  .pages a,.pages span{width:42px;height:42px}
   .seo{padding:20px 18px;margin-top:36px;border-radius:16px}
   .seo h3{font-size:18px}
   .seo p{font-size:14px}
@@ -1218,6 +1336,13 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 
 /* ---- ≤380: узкие телефоны ------------------------------------------------ */
 @media (max-width:380px){
+  /* На 360px корзина срывалась на вторую строку и шапка вырастала вдвое:
+     ужимаем плашку логотипа и кнопки, чтобы всё осталось в одну строку. */
+  .logo-plate{padding:5px 9px 5px 7px}
+  .logo-plate img{height:18px}
+  .mphone{width:40px;height:40px}
+  .cartbtn{height:40px;padding:0 10px;gap:6px}
+  .mobbtn{width:40px;height:40px}
   .grid4,.grid3{gap:8px}
   .ctitle{font-size:12px}
   .cfoot .btn{font-size:12px;gap:6px}

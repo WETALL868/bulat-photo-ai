@@ -36,7 +36,7 @@
       <svg class="ic" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
     </button>
     <a class="logo" href="/" aria-label="Hi-Black — на главную">
-      <img src="/assets/img/hi-black-logo-light.svg" alt="Hi-Black" width="140" height="34">
+      <span class="logo-plate"><img src="/assets/img/hi-black-logo-dark.svg" alt="Hi-Black" width="140" height="34"></span>
       <span class="logo-sub">Фирменный магазин</span>
     </a>
     <form class="search" id="search-form" role="search" action="/search">
@@ -129,6 +129,11 @@
 
 <div class="navline" id="navline" aria-hidden="true"></div>
 
+<aside class="cookie" id="cookie" hidden aria-label="Уведомление об использовании файлов cookie">
+  <p>Сайт использует файлы cookie, чтобы корзина и оформление заказа работали корректно. Подробнее — в <a href="/help/cookies">Политике использования файлов cookie</a>.</p>
+  <button class="btn btn-y btn-sm" type="button" id="cookie-ok">ОК, согласен</button>
+</aside>
+
 <main id="app" class="app"></main>
 
 <footer class="foot"><div class="wrap">
@@ -150,7 +155,7 @@
   </div>
   <div class="fbottom">
     <span>© 2026 Hi-Black. Фирменный магазин · ООО «ТОНЕРШОП», ИНН 9724128192, ОГРН 1237700243076</span>
-    <div class="links"><a href="/help/privacy">Политика конфиденциальности</a><a href="/help/terms">Пользовательское соглашение</a><a href="/help/offer">Оферта</a></div>
+    <div class="links"><a href="/help/privacy">Политика конфиденциальности</a><a href="/help/pdconsent">Согласие на обработку данных</a><a href="/help/terms">Пользовательское соглашение</a><a href="/help/offer">Публичная оферта</a><a href="/help/cookies">Файлы cookie</a></div>
     <div class="pay"><span>МИР</span><span>VISA</span><span>MC</span><span>СБП</span><span>СЧЁТ</span></div>
   </div>
   <div class="credit">Снимки на баннере и в подвале созданы для этого магазина, фото товаров и логотип — Hi-Black. Чужих изображений на сайте нет.</div>
@@ -160,7 +165,7 @@
   <div class="mm-bd" data-mm-close></div>
   <nav class="mm-panel" aria-label="Меню сайта">
     <div class="mm-head">
-      <a class="logo" href="/"><img src="/assets/img/hi-black-logo.svg" alt="Hi-Black" width="116" height="28"></a>
+      <a class="logo" href="/"><span class="logo-plate"><img src="/assets/img/hi-black-logo-dark.svg" alt="Hi-Black" width="116" height="28"></span></a>
       <button class="x" type="button" data-mm-close aria-label="Закрыть меню"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div class="mm-sec">
@@ -210,8 +215,8 @@
       <label class="fld"><span>Как к вам обращаться</span><input name="name" type="text" autocomplete="name" placeholder="Имя" required></label>
       <label class="fld"><span>Телефон</span><input name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+7 (___) ___-__-__" required></label>
       <label class="fld"><span>Что подобрать <i>— необязательно</i></span><input name="note" type="text" placeholder="Модель принтера или артикул"></label>
+      <label class="agree"><input type="checkbox" name="agree-pd"><span>Я даю <a href="/help/pdconsent">согласие на обработку персональных данных</a> и ознакомлен(а) с <a href="/help/privacy">Политикой конфиденциальности</a></span></label>
       <button class="btn btn-y btn-lg" type="submit">Жду звонка</button>
-      <p class="xs muted">Нажимая кнопку, вы соглашаетесь с <a href="/help/privacy">политикой конфиденциальности</a>.</p>
     </form>
   </div>
 </div>

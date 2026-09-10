@@ -206,10 +206,10 @@
     return '<div class="sbox"><div class="stitle">Информация</div><div class="slist">' + C.site.pages.filter(function (p) { return p.menu; }).map(function (p) {
       return '<a href="' + link.page(p.id) + '">' + esc(p.title) + '</a>';
     }).join('') + '</div></div>' +
-      '<div class="spromo"><b>Юрлицам и ИП</b><p>Счёт за несколько минут, закрывающие документы, доставка на адрес компании.</p><a class="btn btn-sm" href="' + link.page('business') + '">Условия для бизнеса</a></div>';
+      '<div class="spromo"><b>Юрлицам и ИП</b><p>Счёт на оплату, закрывающие документы, доставка на адрес компании.</p><a class="btn btn-sm" href="' + link.page('business') + '">Условия для бизнеса</a></div>';
   }
   function advantages() {
-    var a = [['truck', 'Доставка по всей России', 'Курьером по Москве, СДЭК, Boxberry и Почтой по регионам', 'delivery'], ['card', 'Оплата онлайн и по счёту', 'Карта, СБП, счёт для юрлиц с закрывающими документами', 'payment'], ['shield', 'Гарантия ресурса', 'Заявленный ресурс печати, обмен при браке', 'warranty'], ['pin', 'Самовывоз в Москве', 'Со склада в день заказа, при наличии на складе', 'contacts']];
+    var a = [['truck', 'Доставка по всей России', 'Курьер по Москве, СДЭК до пункта выдачи по регионам', 'delivery'], ['card', 'Оплата при получении и по счёту', 'Наличными или картой курьеру, счёт с закрывающими документами', 'payment'], ['shield', 'Гарантия на расходники', 'Срок в карточке и документах, обмен при браке', 'warranty'], ['pin', 'Самовывоз в Москве', 'По предварительному согласованию с менеджером', 'contacts']];
     return '<div class="adv">' + a.map(function (x) {
       return '<a class="advi" href="' + link.page(x[3]) + '"><div class="ico">' + ic(x[0], 22) + '</div><div><b>' + x[1] + '</b><span>' + x[2] + '</span></div></a>';
     }).join('') + '</div>';
@@ -244,8 +244,8 @@
       }).join('');
       var slides = [
         '<div class="slide s1 on"><div class="wrap"><div class="stext"><img class="slogo" src="/assets/img/hi-black-logo.svg" alt="Hi-Black"><div class="eyebrow"><i></i>Фирменный магазин Hi-Black</div><h1>Картридж для вашего принтера — <em>в наличии</em>, с гарантией ресурса</h1><p>Совместимые картриджи, тонеры и чернила Hi-Black для Brother, Canon, HP, Kyocera, Samsung, Xerox и ещё десяти брендов печатающей техники.</p>' + finderForm() + '<div class="hnote">Не знаете модель? Она указана на наклейке спереди или сзади принтера. <a href="' + link.plain('finder') + '">Как найти модель&nbsp;→</a></div></div></div></div>',
-        '<div class="slide s2"><div class="wrap"><div class="stext"><img class="slogo" src="/assets/img/hi-black-logo.svg" alt="Hi-Black"><div class="eyebrow"><i></i>Hi-Black® — совместимые расходные материалы</div><h2>Расходники для <em>16 брендов</em> принтеров и МФУ</h2><p>Лазерные и струйные картриджи, тонеры, чернила, фотобумага и запчасти — со склада в Москве, с доставкой по всей России.</p><div class="sfeat"><div>' + ic('shield', 18) + 'Гарантия ресурса 12 месяцев, обмен при браке</div><div>' + ic('check', 18) + 'Не нарушают патенты производителей принтеров</div><div>' + ic('refresh', 18) + 'Повторно заправляются и восстанавливаются</div><div>' + ic('truck', 18) + 'Отгрузка в день заказа при наличии на складе</div></div><div class="sbtns"><a class="btn btn-y btn-lg" href="' + link.catalog('laser') + '">В каталог</a><a class="btn btn-lg btn-w" href="' + link.page('about') + '">О бренде</a></div></div></div></div>',
-        '<div class="slide s3"><div class="wrap"><div class="stext"><img class="slogo" src="/assets/img/hi-black-logo.svg" alt="Hi-Black"><div class="eyebrow"><i></i>Юрлицам и сервисным центрам</div><h2>Счёт за несколько минут, документы <em>с заказом</em></h2><p>Оплата по счёту с НДС, закрывающие документы по ЭДО, доставка на адрес компании и персональный менеджер для парка техники.</p><div class="sbtns"><a class="btn btn-y btn-lg" href="' + link.page('business') + '">Условия для бизнеса</a><a class="btn btn-lg btn-w" href="' + link.page('contacts') + '">Контакты</a></div></div></div></div>',
+        '<div class="slide s2"><div class="wrap"><div class="stext"><img class="slogo" src="/assets/img/hi-black-logo.svg" alt="Hi-Black"><div class="eyebrow"><i></i>Hi-Black® — совместимые расходные материалы</div><h2>Расходники для <em>16 брендов</em> принтеров и МФУ</h2><p>Лазерные и струйные картриджи, тонеры, чернила, фотобумага и запчасти — со склада в Москве, с доставкой по всей России.</p><div class="sfeat"><div>' + ic('shield', 18) + 'Гарантия на расходники, обмен при браке</div><div>' + ic('check', 18) + 'Не нарушают патенты производителей принтеров</div><div>' + ic('refresh', 18) + 'Повторно заправляются и восстанавливаются</div><div>' + ic('truck', 18) + 'Отгрузка со склада в Москве, доставка по России</div></div><div class="sbtns"><a class="btn btn-y btn-lg" href="' + link.catalog('laser') + '">В каталог</a><a class="btn btn-lg btn-w" href="' + link.page('about') + '">О бренде</a></div></div></div></div>',
+        '<div class="slide s3"><div class="wrap"><div class="stext"><img class="slogo" src="/assets/img/hi-black-logo.svg" alt="Hi-Black"><div class="eyebrow"><i></i>Юрлицам и сервисным центрам</div><h2>Счёт на оплату, документы <em>с заказом</em></h2><p>Оплата по счёту с НДС, закрывающие документы по ЭДО, доставка на адрес компании и персональный менеджер для парка техники.</p><div class="sbtns"><a class="btn btn-y btn-lg" href="' + link.page('business') + '">Условия для бизнеса</a><a class="btn btn-lg btn-w" href="' + link.page('contacts') + '">Контакты</a></div></div></div></div>',
       ];
       var ctrl = '<div class="sctrl"><div class="wrap"><div class="sdots">' + slides.map(function (_, i) { return '<button type="button" data-dot="' + i + '" class="' + (i === 0 ? 'on' : '') + '" aria-label="Слайд ' + (i + 1) + '"></button>'; }).join('') + '</div><div class="sarr"><button type="button" data-sl="-1" aria-label="Назад">' + ic('chev-left', 18) + '</button><button type="button" data-sl="1" aria-label="Вперёд">' + ic('chev-right', 18) + '</button></div></div></div>';
       return '<section class="hslider" id="slider">' + slides.join('') + ctrl + '</section><div class="wrap">' +
@@ -397,8 +397,18 @@
         return '<a class="chip" href="' + link.printer(printerKey(p.brand, m)) + '">' + esc(C.brandName(p.brand) + ' ' + m) + '</a>';
       }).join('');
       var tabs = [['desc', 'Описание'], ['specs', 'Характеристики'], ['reviews', 'Отзывы <i>' + p.reviews + '</i>'], ['delivery', 'Доставка и оплата']];
-      var specRows = (d.specs || []).map(function (s) { return '<div class="sr"><span>' + esc(s[0]) + '</span><b>' + esc(s[1]) + '</b></div>'; }).join('');
-      var specShort = (d.specs || []).slice(0, 9).map(function (s) { return '<div class="sr"><span>' + esc(s[0]) + '</span><b>' + esc(s[1]) + '</b></div>'; }).join('');
+      var allSpecs = d.specs || [];
+      var srow = function (x) { return '<div class="sr"><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b></div>'; };
+      var specRows = allSpecs.map(srow).join('');
+      var SHORT = 9;
+      /* Компактный набор и полный список лежат рядом: раскрытие идёт на месте,
+         без подгрузки и без перескока страницы, повторное нажатие сворачивает. */
+      var specShort = allSpecs.slice(0, SHORT).map(srow).join('');
+      var specMore = allSpecs.length > SHORT
+        ? '<div class="sr-rest" hidden>' + allSpecs.slice(SHORT).map(srow).join('') + '</div>' +
+          '<button class="spec-more" type="button" data-spec-more aria-expanded="false">' +
+          '<span data-more-txt>Все характеристики (' + allSpecs.length + ')</span>' + ic('chev-down', 16) + '</button>'
+        : '';
 
       return '<div class="wrap"><div class="ph1 pph">' + crumbs([['Главная', link.home()], [C.catName(p.cat), link.catalog(p.cat)], [C.brandName(p.brand), link.catalog(p.cat, p.brand)], [p.code, '']]) +
         '<h1>' + esc(p.name) + '</h1>' +
@@ -406,20 +416,19 @@
         '<div class="pgrid"><div class="gallery"><div class="gmain" id="gmain" data-src="' + src + '"><img src="' + src + '" alt="' + esc(p.name) + '" data-gview="img"><div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>' + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span><span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span></div><div class="thumbs">' + thumbs + '</div></div>' +
         '<div class="pinfo"><div class="keyspecs"><h3>Коротко о товаре</h3>' + key.map(function (k) { return '<div class="krow"><span>' + esc(k[0]) + '</span><b>' + esc(k[1]) + '</b></div>'; }).join('') + '</div>' +
         (compatChips ? '<div class="compat"><h3>Подходит для принтеров ' + brandLogo(p.brand, 18, '') + '</h3><div class="tags">' + compatChips + '</div></div>' : '') +
-        '<a class="allspecs" href="#" data-tab-link="specs">Все характеристики ' + ic('chev-down', 16) + '</a></div>' +
+        '<a class="allspecs" href="#" data-spec-jump>Все характеристики ' + ic('chev-down', 16) + '</a></div>' +
         '<div class="buy"><div class="prow">' + priceBlock(p) + '<span class="per">за 1 шт.</span></div>' +
         (p.old && p.old > p.price ? '<div class="saveline">' + ic('percent', 16) + 'Скидка ' + fmt(p.old - p.price) + ' ₽ от прежней цены</div>' : '') +
-        (p.stock ? '<div class="avail"><i></i>В наличии на складе в Москве</div><div class="stock">Отгрузка сегодня при заказе до 16:00</div>' : '<div class="avail out"><i></i>Под заказ</div><div class="stock">Привезём со склада поставщика за 3–5 дней</div>') +
+        (p.stock ? '<div class="avail"><i></i>В наличии на складе в Москве</div><div class="stock">Дату отгрузки подтверждает менеджер</div>' : '<div class="avail out"><i></i>Под заказ</div><div class="stock">Привезём со склада поставщика за 3–5 дней</div>') +
         '<div class="brow"><div class="qty"><button type="button" data-q="-1" aria-label="Меньше">' + ic('minus', 18) + '</button><span id="pq">1</span><button type="button" data-q="1" aria-label="Больше">' + ic('plus', 18) + '</button></div><button class="btn btn-y btn-lg" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 20) + 'В корзину</button></div>' +
         '<a class="btn btn-o btn-full" href="' + link.plain('checkout', { quick: p.id }) + '">Купить в 1 клик</a>' +
         '<div class="acts"><button type="button" class="' + (S.cmp[p.id] ? 'on' : '') + '" data-cmp="' + p.id + '">' + ic('compare', 16) + (S.cmp[p.id] ? 'В сравнении' : 'В сравнение') + '</button><button type="button" class="' + (S.fav[p.id] ? 'on' : '') + '" data-fav="' + p.id + '">' + ic('heart', 16) + (S.fav[p.id] ? 'В избранном' : 'В избранное') + '</button></div>' +
-        '<div class="dlist"><div>' + ic('truck', 18) + '<div><b>Курьером по Москве — завтра</b><span>По России — СДЭК, Boxberry, Почта, 2–7 дней</span></div></div><div>' + ic('pin', 18) + '<div><b>Самовывоз — сегодня</b><span>Со склада в Москве, бесплатно</span></div></div><div>' + ic('card', 18) + '<div><b>Оплата картой, СБП или по счёту</b><span>Юрлицам — счёт и закрывающие документы</span></div></div><div>' + ic('shield', 18) + '<div><b>Гарантия ресурса 12 месяцев</b><span>Обмен или возврат при браке</span></div></div></div>' +
-        '<a class="biz-note" href="' + link.page('business') + '">' + ic('building', 22) + '<div><b>Счёт для юрлиц и ИП</b><span>Выберите «Юридическое лицо» при оформлении — счёт придёт на почту, закрывающие документы отдадим с заказом</span></div></a>' +
+        '<div class="dlist"><div>' + ic('truck', 18) + '<div><b>Курьер по Москве</b><span>Дату и интервал подтверждает менеджер</span></div></div><div>' + ic('pin', 18) + '<div><b>Самовывоз по предварительному согласованию</b><span>Москва, Ясеневая ул., д. 50</span></div></div><div>' + ic('card', 18) + '<div><b>Оплата картой, СБП или по счёту</b><span>Юрлицам — счёт и закрывающие документы</span></div></div><div>' + ic('shield', 18) + '<div><b>Гарантия ресурса</b><span>Срок указан в карточке и документах</span></div></div></div>' +
         '<a class="ask" href="' + link.page('contacts') + '">' + ic('chat', 22) + '<div><b>Задать вопрос о товаре</b><span>Ответим в чате или по телефону</span></div></a></div></div>' +
         kitBlock(fam, p) +
         '<div class="tabs" id="ptabs">' + tabs.map(function (t) { return '<button type="button" class="' + (tab === t[0] ? 'on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
         '<div class="tabbody">' +
-        '<div data-panel="desc"' + (tab !== 'desc' ? ' hidden' : '') + ' class="desc-grid"><div class="desc">' + d.desc + '</div><div class="spec-t"><div class="sh">Основные характеристики</div>' + specShort + '</div></div>' +
+        '<div data-panel="desc"' + (tab !== 'desc' ? ' hidden' : '') + ' class="desc-grid"><div class="desc">' + d.desc + '</div><div class="spec-t"><div class="sh">Основные характеристики</div>' + specShort + specMore + '</div></div>' +
         '<div data-panel="specs"' + (tab !== 'specs' ? ' hidden' : '') + '><div class="spec-t spec-full"><div class="sh">Характеристики</div>' + specRows + '</div></div>' +
         '<div data-panel="reviews"' + (tab !== 'reviews' ? ' hidden' : '') + ' id="reviews"><div class="rev-grid"><div class="rev-sum"><div class="big"><b>' + ratef(p.rate) + '</b><span>из 5</span></div>' + stars(p.rate, 20) + '<div class="cnt">' + revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + ' · ' + Math.round(80 + p.rate * 3) + '% рекомендуют</div><div class="bars"><div><span>5</span><i style="--w:' + Math.round(sum5 / revs.length * 100) + '%"></i><span>' + sum5 + '</span></div><div><span>4</span><i style="--w:' + Math.round(sum4 / revs.length * 100) + '%"></i><span>' + sum4 + '</span></div><div><span>3</span><i style="--w:0%"></i><span>0</span></div><div><span>2</span><i style="--w:0%"></i><span>0</span></div><div><span>1</span><i style="--w:0%"></i><span>0</span></div></div><button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button><div class="note">Отзывы в прототипе — примеры: они собраны при сборке каталога и одинаковы при каждом заходе.</div></div>' +
         '<div class="rev-list">' + revs.map(function (rv) {
@@ -428,8 +437,16 @@
         '<form class="rev-form" id="rev-form"><h3>Оставить отзыв</h3><p>Расскажите, как расходник работает на вашем принтере — это поможет другим покупателям.</p><div class="frate">Оценка ' + stars(5, 24) + '</div><div class="row"><div class="field"><input type="text" placeholder="Ваше имя" required></div><div class="field"><input type="text" placeholder="Модель принтера"></div></div><textarea placeholder="Достоинства, недостатки, впечатления от печати" required></textarea><div class="fbtn"><button class="btn btn-y" type="submit">Отправить отзыв</button><span>Отзыв появится после проверки модератором. Ваш email не публикуется.</span></div></form></div></div></div>' +
         '<div data-panel="delivery"' + (tab !== 'delivery' ? ' hidden' : '') + '><div class="desc" style="max-width:820px">' + C.site.pageText.delivery_short + '</div></div>' +
         '</div>' +
+        /* Счёт юрлицам вынесен из правой колонки: там он тонул среди мелких
+           плашек, а компаниям это первое, что нужно увидеть. */
+        '<section class="b2b"><div class="b2b-h">' + ic('building', 26) + '<div><h2>Счёт для юридических лиц и ИП</h2>' +
+        '<p>Оплата по безналичному расчёту с полным пакетом документов.</p></div>' +
+        '<a class="btn btn-o" href="' + link.page('business') + '">Условия для юрлиц' + ic('arrow-right', 18) + '</a></div>' +
+        '<div class="b2b-l"><div>' + ic('doc', 20) + '<div><b>Счёт на оплату</b><span>Придёт на почту после оформления заказа</span></div></div>' +
+        '<div>' + ic('check', 20) + '<div><b>Закрывающие документы</b><span>УПД или накладная и счёт-фактура — вместе с заказом</span></div></div>' +
+        '<div>' + ic('user', 20) + '<div><b>Выбор «Юридическое лицо»</b><span>Отметьте на шаге оформления и укажите реквизиты</span></div></div></div></section>' +
         '<div class="sec"><div class="sec-head"><h2>Похожие товары</h2><a class="more" href="' + link.catalog(p.cat, p.brand) + '">Все для ' + esc(C.brandName(p.brand)) + ' ' + ic('arrow-right', 18) + '</a></div><div class="grid4">' + related.map(card).join('') + '</div></div>' +
-        '<div class="buybar" id="buybar"><div class="bp">' + priceBlock(p) + '' + (p.stock ? '<div class="avail"><i></i>В наличии, отгрузка сегодня</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') + '</div><button class="btn btn-y" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 18) + 'В корзину</button></div></div>';
+        '<div class="buybar" id="buybar"><div class="bp">' + priceBlock(p) + '' + (p.stock ? '<div class="avail"><i></i>В наличии на складе</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') + '</div><button class="btn btn-y" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 18) + 'В корзину</button></div></div>';
     });
   }
 
@@ -510,29 +527,47 @@
       var p = it.p;
       return '<div class="item"><a class="img" href="' + link.product(p) + '"><img src="' + p.img + '" alt="" loading="lazy"></a>' +
         '<div class="ibody"><a class="t" href="' + link.product(p) + '">' + esc(p.name) + '</a><div class="m"><span>Артикул ' + esc(p.code) + '</span>' + (p.res ? '<span>Ресурс ' + fmt(p.res) + ' стр.</span>' : '') + '<span>Для ' + brandLogo(p.brand, 12, '') + '</span>' + (p.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Под заказ</span>') + '</div><div class="u">' + fmt(p.price) + ' ₽ за шт.</div></div>' +
-        '<div class="ictl"><div class="qty"><button type="button" data-cq="' + p.id + '" data-d="-1" aria-label="Меньше">' + ic('minus', 18) + '</button><span>' + it.q + '</span><button type="button" data-cq="' + p.id + '" data-d="1" aria-label="Больше">' + ic('plus', 18) + '</button></div><div class="sum"><div class="price">' + fmt(p.price * it.q) + ' ₽</div><small>' + it.q + ' шт.</small></div></div>' +
+        '<div class="ictl"><div class="qty"><button type="button" data-cq="' + p.id + '" data-d="-1" aria-label="Меньше">' + ic('minus', 18) + '</button><span>' + it.q + '</span><button type="button" data-cq="' + p.id + '" data-d="1" aria-label="Больше">' + ic('plus', 18) + '</button></div>' +
+        /* Расчёт строки пишем целиком, включая одну штуку: покупателю не
+           приходится держать в голове, откуда взялась сумма. */
+        '<div class="sum"><small class="calc">' + it.q + ' шт. × ' + fmt(p.price) + ' ₽ =</small><div class="price">' + fmt(p.price * it.q) + ' ₽</div></div></div>' +
         '<button class="rm" type="button" data-rm="' + p.id + '" aria-label="Удалить">' + ic('trash', 18) + '</button></div>';
     }).join('');
     return '<div class="wrap"><div class="ph1">' + crumbs([['Главная', link.home()], ['Корзина', '']]) + '<h1>Корзина <span>' + n + ' ' + plural(n, 'товар', 'товара', 'товаров') + ' · ' + fmt(sum) + ' ₽</span></h1>' +
       '<div class="steps"><div class="step on"><i>1</i><span>Корзина</span></div><div class="step"><i>2</i><span>Доставка и оплата</span></div><div class="step"><i>3</i><span>Подтверждение</span></div></div></div>' +
       '<div class="cgrid"><div class="clist"><div class="chead"><span>' + n + ' ' + plural(n, 'товар', 'товара', 'товаров') + '</span><div class="r"><a href="#" data-fav-all>' + ic('heart', 16) + 'Всё в избранное</a><a href="#" data-clear-cart>' + ic('trash', 16) + 'Очистить корзину</a></div></div>' + rows +
       '<div class="cfootr"><form class="promo" id="promo-form"><div class="field"><input type="text" name="promo" placeholder="Промокод" value="' + esc(S.promo || '') + '" aria-label="Промокод"></div><button class="btn btn-o" type="submit">Применить</button>' + (promo ? '<span class="ok">' + ic('check', 16) + 'Скидка 5% применена</span>' : (S.promoErr ? '<span class="err">Промокод не найден</span>' : '<span class="muted xs">Для теста: HIBLACK5</span>')) + '</form><a class="back" href="' + link.catalog('') + '">' + ic('chev-left', 16) + 'Продолжить покупки</a></div></div>' +
-      '<div class="summary"><h3>Ваш заказ</h3><div class="srow"><span>Товары, ' + n + ' шт.</span><b>' + fmt(sum) + ' ₽</b></div><div class="srow"><span>Скидка</span><b>' + (promo ? '−' + fmt(promo) + ' ₽' : '0 ₽') + '</b></div><div class="srow"><span>Доставка</span><b class="soft">рассчитаем на следующем шаге</b></div><div class="srow total"><span>Итого</span><b>' + fmt(sum - promo) + ' ₽</b></div><a class="btn btn-y btn-lg btn-full" href="' + link.plain('checkout') + '">Оформить заказ' + ic('arrow-right', 20) + '</a><div class="payrow"><span>МИР</span><span>VISA</span><span>MC</span><span>СБП</span><span>СЧЁТ ДЛЯ ЮРЛИЦ</span></div><div class="biz">' + ic('building', 20) + '<div><b>Заказ для компании?</b>На следующем шаге выберите «Юридическое лицо» — счёт придёт на почту, документы отдадим с заказом.</div></div><div class="note">Нажимая «Оформить заказ», вы соглашаетесь с условиями <a href="' + link.page('offer') + '">оферты</a> и <a href="' + link.page('privacy') + '">политикой обработки персональных данных</a>.</div></div>' +
+      '<div class="summary"><h3>Ваш заказ</h3><div class="srow"><span>Товары, ' + n + ' шт.</span><b>' + fmt(sum) + ' ₽</b></div><div class="srow"><span>Скидка</span><b>' + (promo ? '−' + fmt(promo) + ' ₽' : '0 ₽') + '</b></div><div class="srow"><span>Доставка</span><b class="soft">рассчитаем на следующем шаге</b></div><div class="srow total"><span>Итого</span><b>' + fmt(sum - promo) + ' ₽</b></div><a class="btn btn-y btn-lg btn-full" href="' + link.plain('checkout') + '">Оформить заказ' + ic('arrow-right', 20) + '</a><div class="payrow"><span>НАЛИЧНЫМИ</span><span>КАРТОЙ КУРЬЕРУ</span><span>ПО СЧЁТУ</span></div><div class="biz">' + ic('building', 20) + '<div><b>Заказ для компании?</b>На следующем шаге выберите «Юридическое лицо» — счёт придёт на почту, документы отдадим с заказом.</div></div><div class="note">Согласия на обработку персональных данных и условия оферты подтверждаются на шаге оформления — отдельными галочками.</div></div>' +
       '<div class="sec addon-sec"><div class="sec-head"><h3>Добавить к заказу</h3><a class="more" href="' + link.catalog('') + '">Ещё ' + ic('arrow-right', 18) + '</a></div><div class="addon">' + addon.map(function (p) {
         return '<div class="mini"><a class="img" href="' + link.product(p) + '"><img src="' + p.img + '" alt="" loading="lazy"></a><div class="mb"><a class="t" href="' + link.product(p) + '">' + esc(p.name) + '</a><div class="p"><div class="price">' + fmt(p.price) + ' ₽</div><button class="add" type="button" data-add="' + p.id + '" aria-label="В корзину">' + ic('plus', 18) + '</button></div></div></div>';
       }).join('') + '</div></div></div>' +
       '<div class="sec">' + advantages() + '</div></div>';
   }
 
-  var DEL = [['courier', 'Курьером по Москве', 'завтра, с 10:00 до 18:00', 350], ['pickup', 'Самовывоз в Москве', 'сегодня после 14:00', 0], ['cdek', 'СДЭК до пункта выдачи', '2–5 дней по России', 300], ['post', 'Почта России', '4–10 дней', 350]];
-  var PAY = [['card', 'Картой онлайн', 'МИР, Visa, Mastercard'], ['sbp', 'СБП', 'По QR-коду в приложении банка'], ['cash', 'При получении', 'Наличными или картой курьеру'], ['invoice', 'По счёту для юрлиц', 'Счёт на email, закрывающие документы с заказом']];
+  /*
+    Тарифы и формулировки совпадают со страницей «Доставка». Там, где сумму
+    считает менеджер (за МКАД, СДЭК), в цене стоит null: писать «бесплатно»
+    или выдумывать число нельзя.
+  */
+  var DEL = [
+    ['courier', 'Курьер по Москве в пределах МКАД', 'До подъезда, интервал 09:00–18:00. Дату и интервал подтверждает менеджер', 500],
+    ['courier-out', 'Курьер за МКАД', '1 000 ₽ за первые 5 км от МКАД, далее 50 ₽ за километр. Итог подтверждает менеджер', null],
+    ['cdek', 'СДЭК до пункта выдачи или постамата', 'По России, в выбранную вами точку. Стоимость — по тарифам СДЭК', null],
+    ['pickup', 'Самовывоз по предварительному согласованию', 'Москва, Ясеневая ул., д. 50. Приезжайте после подтверждения менеджера', 0],
+  ];
+  var PAY = [
+    ['cash', 'При получении', 'Наличными или картой курьеру магазина'],
+    ['invoice', 'По счёту', 'Счёт придёт на почту. Организациям — закрывающие документы с заказом'],
+  ];
 
   function checkout(r) {
     if (r.query.quick && C.byId(r.query.quick) && !S.cart[r.query.quick]) { S.cart[r.query.quick] = 1; save(); updateHeader(); }
     var items = cartItems(), sum = cartSum(), promo = S.promo === 'HIBLACK5' ? Math.round(sum * 0.05) : 0;
     if (!items.length) return cart();
-    var d = S.co || {}, deliv = d.deliv || 'courier', pay = d.pay || 'card', biz = d.biz === '1';
-    var dcost = DEL.filter(function (x) { return x[0] === deliv; })[0][3];
+    var d = S.co || {}, deliv = d.deliv || 'courier', pay = d.pay || 'cash', biz = d.biz === '1';
+    var drow = DEL.filter(function (x) { return x[0] === deliv; })[0] || DEL[0];
+    var dcost = drow[3] == null ? 0 : drow[3];
+    var dtext = drow[3] == null ? 'рассчитает менеджер' : (drow[3] ? fmt(drow[3]) + ' ₽' : 'бесплатно');
     return '<div class="wrap"><div class="ph1">' + crumbs([['Главная', link.home()], ['Корзина', link.plain('cart')], ['Оформление заказа', '']]) + '<h1>Оформление заказа</h1>' +
       '<div class="steps"><a class="step done" href="' + link.plain('cart') + '"><i>' + ic('check', 14) + '</i><span>Корзина</span></a><div class="step on"><i>2</i><span>Доставка и оплата</span></div><div class="step"><i>3</i><span>Подтверждение</span></div></div></div>' +
       '<form class="cgrid" id="co-form"><div class="co">' +
@@ -541,17 +576,22 @@
       '<div class="row2"><label class="fld"><span>Email</span><input type="email" name="email" value="' + esc(d.email || '') + '" placeholder="Для чека и статуса заказа"></label>' + (biz ? '<label class="fld"><span>ИНН компании</span><input type="text" name="inn" value="' + esc(d.inn || '') + '" placeholder="10 или 12 цифр"></label>' : '<span></span>') + '</div>' +
       (biz ? '<label class="fld"><span>Название организации</span><input type="text" name="company" value="' + esc(d.company || '') + '" placeholder="ООО «Компания»"></label>' : '') + '</section>' +
       '<section class="cobox"><h3>2. Доставка</h3><div class="opts">' + DEL.map(function (x) {
-        return '<label class="opt' + (deliv === x[0] ? ' on' : '') + '"><input type="radio" name="deliv" value="' + x[0] + '"' + (deliv === x[0] ? ' checked' : '') + '><span class="rd"></span><span class="ot"><b>' + x[1] + '</b><span>' + x[2] + '</span></span><span class="oc">' + (x[3] ? fmt(x[3]) + ' ₽' : 'бесплатно') + '</span></label>';
+        return '<label class="opt' + (deliv === x[0] ? ' on' : '') + '"><input type="radio" name="deliv" value="' + x[0] + '"' + (deliv === x[0] ? ' checked' : '') + '><span class="rd"></span><span class="ot"><b>' + x[1] + '</b><span>' + x[2] + '</span></span><span class="oc">' + (x[3] == null ? 'по расчёту' : (x[3] ? fmt(x[3]) + ' ₽' : 'бесплатно')) + '</span></label>';
       }).join('') + '</div>' +
-      (deliv === 'pickup' ? '<div class="pickup">' + ic('pin', 18) + '<div><b>Склад в Москве</b><span>[Адрес самовывоза] · Пн–Пт 9:00–18:00</span></div></div>' : '<label class="fld"><span>Адрес доставки</span><input type="text" name="address" value="' + esc(d.address || '') + '" placeholder="Город, улица, дом, квартира или офис"></label>') +
+      (deliv === 'pickup' ? '<div class="pickup">' + ic('pin', 18) + '<div><b>Магазин и склад</b><span>' + esc(C.site.contacts.address) + ' · ' + esc(C.site.contacts.pickupHours) + '</span></div></div>' : '<label class="fld"><span>Адрес доставки</span><input type="text" name="address" value="' + esc(d.address || '') + '" placeholder="Город, улица, дом, квартира или офис"></label>') +
       '<label class="fld"><span>Комментарий к заказу</span><input type="text" name="comment" value="' + esc(d.comment || '') + '" placeholder="Код домофона, удобное время, пожелания"></label></section>' +
       '<section class="cobox"><h3>3. Оплата</h3><div class="opts">' + PAY.map(function (x) {
-        if (x[0] === 'invoice' && !biz) return '';
         return '<label class="opt' + (pay === x[0] ? ' on' : '') + '"><input type="radio" name="pay" value="' + x[0] + '"' + (pay === x[0] ? ' checked' : '') + '><span class="rd"></span><span class="ot"><b>' + x[1] + '</b><span>' + x[2] + '</span></span></label>';
       }).join('') + '</div><div class="note">Заказ уходит на сервер магазина, оплата в прототипе не проводится.</div></section></div>' +
       '<div class="summary"><h3>Ваш заказ</h3><div class="colist">' + items.map(function (it) {
         return '<div class="coi"><img src="' + it.p.img + '" alt="" loading="lazy"><span>' + esc(it.p.name) + '</span><b>' + it.q + ' × ' + fmt(it.p.price) + ' ₽</b></div>';
-      }).join('') + '</div><div class="srow"><span>Товары</span><b>' + fmt(sum) + ' ₽</b></div>' + (promo ? '<div class="srow"><span>Скидка</span><b>−' + fmt(promo) + ' ₽</b></div>' : '') + '<div class="srow"><span>Доставка</span><b>' + (dcost ? fmt(dcost) + ' ₽' : 'бесплатно') + '</b></div><div class="srow total"><span>Итого</span><b>' + fmt(sum - promo + dcost) + ' ₽</b></div><button class="btn btn-y btn-lg btn-full" type="submit">Подтвердить заказ' + ic('arrow-right', 20) + '</button><div class="note">Нажимая «Подтвердить заказ», вы соглашаетесь с условиями <a href="' + link.page('offer') + '">оферты</a> и <a href="' + link.page('privacy') + '">политикой обработки персональных данных</a>.</div></div></form></div>';
+      }).join('') + '</div><div class="srow"><span>Товары</span><b>' + fmt(sum) + ' ₽</b></div>' + (promo ? '<div class="srow"><span>Скидка</span><b>−' + fmt(promo) + ' ₽</b></div>' : '') + '<div class="srow"><span>Доставка</span><b' + (drow[3] == null ? ' class="soft"' : '') + '>' + dtext + '</b></div><div class="srow total"><span>Итого</span><b>' + fmt(sum - promo + dcost) + ' ₽</b></div>' +
+      '<div class="agrees" id="agrees">' +
+      '<label class="agree"><input type="checkbox" name="agree-pd"><span>Я даю согласие на <a href="' + link.page('pdconsent') + '">обработку персональных данных</a> и ознакомлен(а) с <a href="' + link.page('privacy') + '">Политикой конфиденциальности</a></span></label>' +
+      '<label class="agree"><input type="checkbox" name="agree-terms"><span>Я принимаю <a href="' + link.page('terms') + '">Пользовательское соглашение</a> и условия <a href="' + link.page('offer') + '">Публичной оферты</a></span></label>' +
+      '<div class="agree-err" id="agree-err" hidden>' + ic('info', 16) + '<span>Без подтверждения двух обязательных согласий оформить заказ нельзя</span></div>' +
+      '</div>' +
+      '<button class="btn btn-y btn-lg btn-full" type="submit">Подтвердить заказ' + ic('arrow-right', 20) + '</button></div></form></div>';
   }
 
   function order(r) {
@@ -730,7 +770,11 @@
     return ready.then(function (html) {
       app.classList.remove('nav-out', 'swap-out');
       app.innerHTML = html;
-      document.body.className = 'pg-' + r.route + (r.route === 'catalog' && r.query.f === '1' ? ' noscroll' : '');
+      /* Класс страницы переписывается целиком, поэтому переносим отметку о
+         показанном баннере cookie — иначе липкая панель покупки на телефоне
+         уезжает под него. */
+      var hadCookie = document.body.classList.contains('has-cookie');
+      document.body.className = 'pg-' + r.route + (r.route === 'catalog' && r.query.f === '1' ? ' noscroll' : '') + (hadCookie ? ' has-cookie' : '');
       var s2 = app.querySelector('.side.open'); if (s2) s2.scrollTop = sideY;
       var h1 = app.querySelector('h1');
       document.title = r.route === 'home' ? 'Hi-Black — фирменный магазин расходных материалов для принтеров'
@@ -891,10 +935,29 @@
     if (t) { e.preventDefault(); Object.keys(S.cart).forEach(function (id) { S.fav[id] = true; }); save(); updateHeader(); showToast(ic('heart', 18) + 'Товары из корзины добавлены в избранное'); return; }
     t = e.target.closest('[data-q]');
     if (t) { var pq2 = document.getElementById('pq'); pq2.textContent = Math.max(1, (+pq2.textContent || 1) + (+t.dataset.q)); return; }
+    t = e.target.closest('[data-spec-more]');
+    if (t) {
+      var rest = t.parentNode.querySelector('.sr-rest'), open = rest.hidden;
+      rest.hidden = !open;
+      t.setAttribute('aria-expanded', open ? 'true' : 'false');
+      t.classList.toggle('on', open);
+      var tx = t.querySelector('[data-more-txt]');
+      if (tx) tx.textContent = open ? 'Свернуть характеристики' : 'Все характеристики (' + (t.parentNode.querySelectorAll('.sr').length) + ')';
+      return;
+    }
     t = e.target.closest('[data-tab]');
     if (t) { showTab(t.dataset.tab); return; }
     t = e.target.closest('[data-tab-link]');
     if (t) { e.preventDefault(); showTab(t.dataset.tabLink); document.getElementById('ptabs').scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+    t = e.target.closest('[data-spec-jump]');
+    if (t) {
+      e.preventDefault();
+      showTab('desc');
+      var st = app.querySelector('.desc-grid .spec-t'), mb = st && st.querySelector('[data-spec-more]');
+      if (mb && mb.getAttribute('aria-expanded') !== 'true') mb.click();
+      if (st) st.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' });
+      return;
+    }
     t = e.target.closest('[data-scroll]');
     if (t) { var el = document.querySelector(t.dataset.scroll); if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
     t = e.target.closest('[data-more-rev]');
@@ -957,6 +1020,51 @@
     return o;
   }
 
+  /*
+    Обязательные согласия. Галочки намеренно не проставлены заранее и кнопка
+    остаётся живой: пользователь должен нажать её и увидеть, чего не хватает,
+    а не гадать, почему всё серое. Работает и мышью, и с клавиатуры — проверка
+    висит на submit формы, а не на click кнопки.
+  */
+  function agreesOk(f, msg) {
+    var boxes = f.querySelectorAll('.agree input[type=checkbox]');
+    if (!boxes.length) return true;
+    var bad = null;
+    Array.prototype.forEach.call(boxes, function (b) {
+      var l = b.closest('.agree');
+      if (b.checked) { if (l) l.classList.remove('bad'); return; }
+      if (l) l.classList.add('bad');
+      if (!bad) bad = b;
+    });
+    var box = f.querySelector('.agrees') || (bad && bad.closest('.agree'));
+    if (!bad) { if (box) box.classList.remove('bad'); var okErr = f.querySelector('.agree-err'); if (okErr) okErr.hidden = true; return true; }
+    if (box) box.classList.add('bad');
+    var err = f.querySelector('.agree-err');
+    if (!err) {
+      err = document.createElement('div');
+      err.className = 'agree-err';
+      err.innerHTML = ic('info', 16) + '<span></span>';
+      var host = f.querySelector('.agrees') || bad.closest('.agree');
+      if (host) host.parentNode.insertBefore(err, host.nextSibling);
+    }
+    var sp = err.querySelector('span'); if (sp) sp.textContent = msg;
+    err.hidden = false;
+    try { err.scrollIntoView({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' }); } catch (e2) { err.scrollIntoView(); }
+    try { bad.focus({ preventScroll: true }); } catch (e3) { bad.focus(); }
+    return false;
+  }
+  /* Снимаем подсветку сразу, как только галочку поставили. */
+  document.addEventListener('change', function (e) {
+    var b = e.target;
+    if (!b || b.type !== 'checkbox' || !b.closest('.agree')) return;
+    var f = b.form || b.closest('form'); if (!f) return;
+    b.closest('.agree').classList.toggle('bad', !b.checked);
+    var left = Array.prototype.filter.call(f.querySelectorAll('.agree input[type=checkbox]'), function (x) { return !x.checked; });
+    if (left.length) return;
+    var box = f.querySelector('.agrees'); if (box) box.classList.remove('bad');
+    var err = f.querySelector('.agree-err'); if (err) err.hidden = true;
+  });
+
   /* Заказ уходит на сервер; если сервера нет (статичный просмотр), сохраняем локально. */
   function submitOrder(data, items, total) {
     return fetch('/api/order', {
@@ -986,6 +1094,7 @@
     }
     if (f.id === 'co-form') {
       e.preventDefault();
+      if (!agreesOk(f, 'Без подтверждения двух обязательных согласий оформить заказ нельзя')) return;
       var d2 = formData(f), items = cartItems(), total = cartSum();
       S.co = d2;
       var btn = f.querySelector('button[type=submit]');
@@ -993,6 +1102,31 @@
       (OFFLINE ? Promise.reject(new Error('offline')) : submitOrder(d2, items, total))
         .then(function (res) { finishOrder(d2, res.number, false); })
         .catch(function () { finishOrder(d2, 10240 + (S.orders = (S.orders || 0) + 1), true); });
+      return;
+    }
+    if (f.id === 'contact-form') {
+      e.preventDefault();
+      if (!agreesOk(f, 'Без согласия на обработку персональных данных отправить обращение нельзя')) return;
+      f.querySelectorAll('.fld').forEach(function (l) { l.classList.remove('bad'); });
+      var need = ['name', 'email', 'message'], miss = null;
+      need.forEach(function (k) {
+        var el = f.elements[k];
+        if (!el || miss) return;
+        if (!String(el.value).trim() || (k === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(el.value.trim()))) miss = el;
+      });
+      if (miss) { var fl = miss.closest('.fld'); if (fl) fl.classList.add('bad'); miss.focus(); return; }
+      var cbtn = f.querySelector('button[type=submit]'), cwas = cbtn.innerHTML;
+      cbtn.disabled = true; cbtn.textContent = 'Отправляем…';
+      var cbody = { type: 'contact', name: f.elements.name.value.trim(), email: f.elements.email.value.trim(), phone: f.elements.phone.value.trim(), topic: f.elements.topic.value, note: f.elements.message.value.trim() };
+      (OFFLINE ? Promise.reject(new Error('offline')) : fetch('/api/callback', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cbody),
+      }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }))
+        .catch(function () { return null; })
+        .then(function () {
+          cbtn.disabled = false; cbtn.innerHTML = cwas;
+          f.reset();
+          showToast(ic('check', 18) + '<span>Обращение отправлено. Ответим в рабочее время.</span>');
+        });
       return;
     }
     if (f.id === 'rev-form') { e.preventDefault(); f.innerHTML = '<h3>Спасибо за отзыв!</h3><p>Он появится на странице после проверки модератором.</p>'; return; }
@@ -1050,13 +1184,14 @@
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && cb.classList.contains('open')) cbClose(); });
   document.getElementById('cb-form').addEventListener('submit', function (e) {
     e.preventDefault();
-    var f = e.target, name = f.name.value.trim(), phone = f.phone.value.replace(/[^0-9+]/g, '');
+    var f = e.target, name = f.elements.name.value.trim(), phone = f.elements.phone.value.replace(/[^0-9+]/g, '');
     f.querySelectorAll('.fld').forEach(function (l) { l.classList.remove('bad'); });
-    if (!name) { f.querySelector('input[name=name]').closest('.fld').classList.add('bad'); f.name.focus(); return; }
-    if (phone.replace(/\D/g, '').length < 10) { f.querySelector('input[name=phone]').closest('.fld').classList.add('bad'); f.phone.focus(); return; }
+    if (!agreesOk(f, 'Без согласия на обработку персональных данных заявку отправить нельзя')) return;
+    if (!name) { f.querySelector('input[name=name]').closest('.fld').classList.add('bad'); f.elements.name.focus(); return; }
+    if (phone.replace(/\D/g, '').length < 10) { f.querySelector('input[name=phone]').closest('.fld').classList.add('bad'); f.elements.phone.focus(); return; }
     var btn = f.querySelector('button[type=submit]'), was = btn.innerHTML;
     btn.disabled = true; btn.textContent = 'Отправляем…';
-    var body = { type: 'callback', name: name, phone: f.phone.value.trim(), note: f.note.value.trim() };
+    var body = { type: 'callback', name: name, phone: f.elements.phone.value.trim(), note: f.elements.note.value.trim() };
     (OFFLINE ? Promise.reject(new Error('offline')) : fetch('/api/callback', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }))
@@ -1124,6 +1259,33 @@
     }, { threshold: 0 });
     bbObs.observe(buy);
   }
+
+  /*
+    Уведомление о cookie. Показывается один раз: отметка живёт в localStorage,
+    поэтому при недоступном хранилище (приватный режим) баннер просто появится
+    снова — это лучше, чем упасть с ошибкой.
+  */
+  (function () {
+    var box = document.getElementById('cookie'), KEY = 'hb-cookie-ok';
+    if (!box) return;
+    var ok = false;
+    try { ok = localStorage.getItem(KEY) === '1'; } catch (e) { }
+    if (window.HB_STATIC || ok) return;
+    box.hidden = false;
+    document.body.classList.add('has-cookie');
+    /* На телефоне баннер занимает три строки: фиксированный отступ в 78px не
+       спасал, и панель покупки пряталась под ним. Меряем реальную высоту. */
+    var fit = function () { document.documentElement.style.setProperty('--cookie-h', Math.round(box.getBoundingClientRect().height) + 'px'); };
+    fit();
+    window.addEventListener('resize', fit);
+    document.getElementById('cookie-ok').addEventListener('click', function () {
+      box.hidden = true;
+      document.body.classList.remove('has-cookie');
+      window.removeEventListener('resize', fit);
+      document.documentElement.style.removeProperty('--cookie-h');
+      try { localStorage.setItem(KEY, '1'); } catch (e) { }
+    });
+  })();
 
   /* Точка входа для сборщика статических страниц (tools/build-seo.mjs):
      он переключает адрес и дожидается отрисовки, чтобы снять готовый HTML. */
