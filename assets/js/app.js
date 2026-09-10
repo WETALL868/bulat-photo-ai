@@ -232,7 +232,9 @@
     return C.featured().then(function (best) {
       var tags = ['HP LaserJet Pro M125', 'Kyocera M2135dn', 'Canon i-SENSYS MF3010', 'Brother HL-L2300', 'Samsung ML-2160', 'Xerox Phaser 3020', 'Pantum P2207', 'Ricoh SP 3400N', 'HP LaserJet 1018', 'Kyocera FS-1040', 'HP LJ Pro M104', 'Canon LBP6030', 'Brother DCP-L2500', 'Kyocera M2040dn', 'Xerox WorkCentre 3025', 'HP LJ Pro 400 M401', 'Epson L3150', 'Canon PIXMA G3411'];
       var tiles = C.cats.slice(0, 3).map(function (c) {
-        return '<a class="tile" href="' + link.catalog(c.id) + '"><div class="tt"><h3>' + esc(c.name) + '</h3><p>' + esc(c.desc) + '</p><span class="cta">' + c.count + ' ' + plural(c.count, 'товар', 'товара', 'товаров') + ' ' + ic('arrow-right', 16) + '</span></div><span class="ph"><img src="' + c.img + '" alt="" loading="lazy"></span></a>';
+        return '<a class="tile" href="' + link.catalog(c.id) + '"><span class="ph"><img src="' + c.img + '" alt="" loading="lazy"></span>' +
+          '<span class="tt"><h3>' + esc(c.name) + '</h3><p>' + esc(c.desc) + '</p>' +
+          '<span class="cta">' + c.count + ' ' + plural(c.count, 'товар', 'товара', 'товаров') + ic('arrow-right', 16) + '</span></span></a>';
       }).join('');
       var tilesS = C.cats.slice(3).map(function (c) {
         return '<a class="tile-s" href="' + link.catalog(c.id) + '"><span><b>' + esc(c.name) + '</b><span>' + esc(c.desc) + '</span></span><span class="ph"><img src="' + c.img + '" alt="" loading="lazy"></span></a>';
