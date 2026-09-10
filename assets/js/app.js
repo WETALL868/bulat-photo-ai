@@ -186,6 +186,20 @@
     return s.join('');
   }
   function cmpLabel(id) { return S.cmp[id] ? 'В сравнении' : 'Сравнить'; }
+  /* Количество на карточке товара: одно место, где оно читается и пишется. */
+  function pickedQty() { var pq = document.getElementById('pq'); return pq ? Math.max(1, +pq.textContent || 1) : 1; }
+  function setQty(q) {
+    var pq = document.getElementById('pq'); if (!pq) return;
+    q = Math.max(1, q | 0);
+    pq.textContent = q;
+    var minus = document.querySelector('[data-q="-1"]'); if (minus) minus.disabled = q <= 1;
+    var box = document.getElementById('qsum');
+    if (box) {
+      var unit = +pq.dataset.price || 0;
+      box.querySelector('[data-qs-q]').textContent = q;
+      box.querySelector('[data-qs-t]').textContent = fmt(unit * q) + ' ₽';
+    }
+  }
   function card(p) {
     var fav = S.fav[p.id] ? ' on' : '', cmp = S.cmp[p.id] ? ' on' : '';
     return '<div class="card" data-id="' + p.id + '">' +
@@ -200,7 +214,7 @@
       '<div class="cside"><div class="cfoot">' + priceBlock(p) + '<button class="btn btn-y" type="button" data-add="' + p.id + '">' + ic('cart', 18) + 'В корзину</button></div>' +
       /* Иконка в углу карточки читалась как декорация — сравнение получило
          подпись и место в нижнем ряду, рядом с покупкой в один клик. */
-      '<div class="cbot"><a class="oneclick" href="' + link.plain('checkout', { quick: p.id }) + '">Купить в 1 клик</a>' +
+      '<div class="cbot"><button class="oneclick" type="button" data-quick="' + p.id + '" data-qty="1">Купить в 1 клик</button>' +
       '<button class="cmp-b' + cmp + '" type="button" data-cmp="' + p.id + '" aria-pressed="' + !!S.cmp[p.id] + '" title="' + cmpLabel(p.id) + '" aria-label="' + cmpLabel(p.id) + ' — ' + esc(p.name) + '">' +
       ic('compare', 16) + '<span>' + cmpLabel(p.id) + '</span></button></div></div></div>';
   }
@@ -447,8 +461,11 @@
         '<div class="buy"><div class="prow">' + priceBlock(p) + '<span class="per">за 1 шт.</span></div>' +
         (p.old && p.old > p.price ? '<div class="saveline">' + ic('percent', 16) + 'Скидка ' + fmt(p.old - p.price) + ' ₽ от прежней цены</div>' : '') +
         (p.stock ? '<div class="avail"><i></i>В наличии на складе в Москве</div><div class="stock">Дату отгрузки подтверждает менеджер</div>' : '<div class="avail out"><i></i>Под заказ</div><div class="stock">Привезём со склада поставщика за 3–5 дней</div>') +
-        '<div class="brow"><div class="qty"><button type="button" data-q="-1" aria-label="Меньше">' + ic('minus', 18) + '</button><span id="pq">1</span><button type="button" data-q="1" aria-label="Больше">' + ic('plus', 18) + '</button></div><button class="btn btn-y btn-lg" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 20) + 'В корзину</button></div>' +
-        '<a class="btn btn-o btn-full" href="' + link.plain('checkout', { quick: p.id }) + '">Купить в 1 клик</a>' +
+        '<div class="brow"><div class="qty"><button type="button" data-q="-1" aria-label="Меньше" disabled>' + ic('minus', 18) + '</button><span id="pq" data-price="' + p.price + '">1</span><button type="button" data-q="1" aria-label="Больше">' + ic('plus', 18) + '</button></div><button class="btn btn-y btn-lg" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 22) + 'В корзину</button></div>' +
+        /* Сумма считается от действующей цены и обновляется на месте: покупателю
+           не приходится умножать в уме и гадать, что попадёт в корзину. */
+        '<div class="qsum" id="qsum" aria-live="polite">Итого за <b data-qs-q>1</b> шт.: <b data-qs-t>' + fmt(p.price) + ' ₽</b></div>' +
+        '<button class="btn btn-o btn-full" type="button" data-quick="' + p.id + '">Купить в 1 клик</button>' +
         '<div class="acts"><button type="button" class="' + (S.cmp[p.id] ? 'on' : '') + '" data-cmp="' + p.id + '" aria-pressed="' + !!S.cmp[p.id] + '" title="' + (S.cmp[p.id] ? 'Убрать из сравнения' : 'Добавить к сравнению') + '">' + ic('compare', 16) + (S.cmp[p.id] ? 'В сравнении' : 'В сравнение') + '</button><button type="button" class="' + (S.fav[p.id] ? 'on' : '') + '" data-fav="' + p.id + '">' + ic('heart', 16) + (S.fav[p.id] ? 'В избранном' : 'В избранное') + '</button></div>' +
         '<div class="dlist"><div>' + ic('truck', 18) + '<div><b>Курьер по Москве</b><span>Дату и интервал подтверждает менеджер</span></div></div><div>' + ic('pin', 18) + '<div><b>Самовывоз по предварительному согласованию</b><span>Москва, Ясеневая ул., д. 50</span></div></div><div>' + ic('card', 18) + '<div><b>Оплата картой, СБП или по счёту</b><span>Юрлицам — счёт и закрывающие документы</span></div></div><div>' + ic('shield', 18) + '<div><b>Гарантия ресурса</b><span>Срок указан в карточке и документах</span></div></div></div>' +
         '<a class="ask" href="' + link.page('contacts') + '">' + ic('chat', 22) + '<div><b>Задать вопрос о товаре</b><span>Ответим в чате или по телефону</span></div></a></div></div>' +
@@ -907,7 +924,7 @@
     var t = e.target.closest('[data-add]');
     if (t) {
       var q = 1;
-      if (t.dataset.useq) { var pq = document.getElementById('pq'); q = pq ? +pq.textContent || 1 : 1; }
+      if (t.dataset.useq) q = pickedQty();
       addToCart(t.dataset.add, q);
       var old = t.innerHTML; t.classList.add('added'); t.innerHTML = ic('check', 18) + 'Добавлено';
       setTimeout(function () { t.innerHTML = old; t.classList.remove('added'); }, 1400);
@@ -988,7 +1005,7 @@
     t = e.target.closest('[data-fav-all]');
     if (t) { e.preventDefault(); Object.keys(S.cart).forEach(function (id) { S.fav[id] = true; }); save(); updateHeader(); showToast(ic('heart', 18) + 'Товары из корзины добавлены в избранное'); return; }
     t = e.target.closest('[data-q]');
-    if (t) { var pq2 = document.getElementById('pq'); pq2.textContent = Math.max(1, (+pq2.textContent || 1) + (+t.dataset.q)); return; }
+    if (t) { setQty(Math.max(1, (+(document.getElementById('pq') || {}).textContent || 1) + (+t.dataset.q))); return; }
     t = e.target.closest('[data-spec-more]');
     if (t) {
       var rest = t.parentNode.querySelector('.sr-rest'), open = rest.hidden;
@@ -1257,6 +1274,86 @@
       });
   });
 
+  /*
+    Быстрый заказ. Это не оформление: ни адреса, ни доставки, ни оплаты —
+    только имя, телефон и два обязательных согласия. Остальное менеджер
+    уточняет по телефону, поэтому спрашивать это в модалке нечего.
+  */
+  var qm = document.getElementById('quick'), qPrev = null, qItem = null;
+  function qOpen(id, q) {
+    var p = C.byId(id); if (!p || !qm) return;
+    qItem = { p: p, q: Math.max(1, q | 0) };
+    var sum = p.price * qItem.q;
+    document.getElementById('q-prod').innerHTML =
+      '<img src="' + p.img + '" alt="" loading="lazy">' +
+      '<div class="qp-t"><b>' + esc(p.name) + '</b><span>Артикул ' + esc(p.code) + '</span></div>' +
+      '<div class="qp-s"><span>' + qItem.q + ' шт. × ' + fmt(p.price) + ' ₽</span><b>' + fmt(sum) + ' ₽</b></div>';
+    var f = document.getElementById('q-form');
+    f.reset();
+    /* Галочки не должны «помнить» прошлое открытие: согласие даётся заново. */
+    f.querySelectorAll('.agree').forEach(function (l) { l.classList.remove('bad'); });
+    f.querySelectorAll('.fld').forEach(function (l) { l.classList.remove('bad'); });
+    var box = f.querySelector('.agrees'); if (box) box.classList.remove('bad');
+    var err = f.querySelector('.agree-err'); if (err) err.hidden = true;
+    f.querySelectorAll('.fld-err').forEach(function (n) { n.remove(); });
+    qPrev = document.activeElement;
+    qm.classList.add('open'); qm.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('noscroll');
+    setTimeout(function () { var n = f.elements.name; if (n) n.focus(); }, 60);
+  }
+  function qClose() {
+    if (!qm || !qm.classList.contains('open')) return;
+    qm.classList.remove('open'); qm.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('noscroll');
+    if (qPrev && qPrev.focus) qPrev.focus();
+  }
+  function fldErr(el, msg) {
+    var fld = el.closest('.fld'); if (!fld) return;
+    fld.classList.add('bad');
+    if (!fld.querySelector('.fld-err')) {
+      var n = document.createElement('span');
+      n.className = 'fld-err'; n.textContent = msg;
+      fld.appendChild(n);
+    } else fld.querySelector('.fld-err').textContent = msg;
+    el.focus();
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-quick]');
+    if (t) { e.preventDefault(); qOpen(t.dataset.quick, t.dataset.qty ? +t.dataset.qty : pickedQty()); return; }
+    if (e.target.closest('[data-q-close]')) qClose();
+    /* Ссылка из модалки уводит на страницу — окно надо закрыть, иначе фон
+       останется заблокированным. */
+    var a = e.target.closest('.modal.open a[href]');
+    if (a && a.getAttribute('href') && a.getAttribute('href')[0] !== '#') { qClose(); cbClose(); }
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') qClose(); });
+  if (qm) document.getElementById('q-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = e.target;
+    f.querySelectorAll('.fld').forEach(function (l) { l.classList.remove('bad'); });
+    f.querySelectorAll('.fld-err').forEach(function (n) { n.remove(); });
+    var name = f.elements.name.value.trim(), phone = f.elements.phone.value.trim();
+    if (!name) { fldErr(f.elements.name, 'Укажите имя — менеджеру нужно знать, к кому обращаться'); return; }
+    if (phone.replace(/\D/g, '').length < 10) { fldErr(f.elements.phone, 'Укажите телефон из 10 цифр — по нему подтвердим заказ'); return; }
+    if (!agreesOk(f, 'Без подтверждения двух обязательных согласий оформить заказ нельзя')) return;
+    if (!qItem) return;
+    var btn = f.querySelector('button[type=submit]'), was = btn.innerHTML;
+    btn.disabled = true; btn.textContent = 'Отправляем…';
+    var d = { name: name, phone: phone, type: 'quick' };
+    var items = [{ p: qItem.p, q: qItem.q }], total = qItem.p.price * qItem.q;
+    (OFFLINE ? Promise.reject(new Error('offline')) : submitOrder(d, items, total))
+      .then(function (res) { finishQuick(d, res.number, false); })
+      .catch(function () { finishQuick(d, 10240 + (S.orders = (S.orders || 0) + 1), true); })
+      .then(function () { btn.disabled = false; btn.innerHTML = was; });
+  });
+  function finishQuick(d, number, offline) {
+    /* Корзину быстрый заказ не трогает: это отдельная покупка одного товара. */
+    S.lastOrder = { n: number, name: d.name, email: '', deliv: '', offline: offline, quick: true };
+    save();
+    qClose();
+    go(url('/order/' + number));
+  }
+
   var lb = document.getElementById('lightbox');
   lb.addEventListener('click', function () { lb.classList.remove('open'); });
 
@@ -1323,7 +1420,9 @@
     снова — это лучше, чем упасть с ошибкой.
   */
   (function () {
-    var box = document.getElementById('cookie'), KEY = 'hb-cookie-ok';
+    /* Ключ с версией: когда текст или вид уведомления меняются, согласие
+       спрашивается заново — старая отметка hb-cookie-ok больше не читается. */
+    var box = document.getElementById('cookie'), KEY = 'hb_cookie_consent_v2';
     if (!box) return;
     var ok = false;
     try { ok = localStorage.getItem(KEY) === '1'; } catch (e) { }
