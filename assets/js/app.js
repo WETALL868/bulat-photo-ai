@@ -657,6 +657,26 @@
   var routes = { home: home, catalog: catalog, product: product, printer: printer, cart: cart, checkout: checkout, order: order, favorites: favorites, compare: compare, page: page, finder: finder, login: login, notfound: notfound };
 
   /* --------------------------------------------------------- отрисовка */
+  /*
+    Прокрутка при смене маршрута.
+
+    html{scroll-behavior:smooth} превращает обычный scrollTo в анимацию, а
+    переход по хешу её обрывает: в сборке одним файлом карточка похожего товара
+    открывалась там же, где стояла прокрутка, а на сервере доезжала до верха
+    почти секунду. Поэтому здесь прокрутка всегда мгновенная — на время вызова
+    плавность отключается инлайновым стилем, а браузерам поновее хватает
+    behavior:'instant'.
+  */
+  function scrollToY(y) {
+    var el = document.documentElement, prev = el.style.scrollBehavior;
+    el.style.scrollBehavior = 'auto';
+    try { window.scrollTo({ top: y, left: 0, behavior: 'instant' }); }
+    catch (e) { window.scrollTo(0, y); }
+    el.style.scrollBehavior = prev;
+  }
+  /* Свою прокрутку по истории браузер бы восстанавливал поверх нашей. */
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
   var lastKey = null, lastPath = null;
   function render() {
     var r = parse(), fn = routes[r.route] || notfound;
@@ -675,10 +695,14 @@
         a.classList.toggle('on', a.getAttribute('href') === link.catalog(r.cat || ' '));
       });
       closeMenu(); closeMob();
-      if (keepScroll) window.scrollTo(0, y); else window.scrollTo(0, 0);
-      if (r.route === 'product' && r.query.tab) {
+      var toTab = r.route === 'product' && r.query.tab && key !== lastKey;
+      scrollToY(keepScroll ? y : 0);
+      /* Ещё раз на следующем кадре: переход по хешу браузер доделывает после
+         нас и иначе возвращает страницу туда, где она стояла. */
+      if (!keepScroll && !toTab) requestAnimationFrame(function () { scrollToY(0); });
+      if (toTab) {
         var t = document.getElementById('ptabs');
-        if (t && key !== lastKey) setTimeout(function () { t.scrollIntoView({ block: 'start' }); }, 30);
+        if (t) setTimeout(function () { t.scrollIntoView({ block: 'start' }); }, 30);
       }
       lastKey = key; lastPath = r.route;
       updateHeader();

@@ -744,8 +744,10 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 
 /* 12. Подвал
    -------------------------------------------------------------------------- */
-.foot{position:relative;color:#d8d7d1;margin-top:80px;padding:56px 0 32px;font-size:16px;background:#141312 url(../img/art/footer.svg) center/cover no-repeat}
-.foot::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.9) 42%,rgba(14,14,14,.66) 70%,rgba(14,14,14,.42) 100%),linear-gradient(180deg,rgba(14,14,14,.18) 0%,rgba(14,14,14,.42) 100%)}
+/* Фотография офиса лежит фоном во всю ширину, поверх — тёмная заливка:
+   ссылки и реквизиты читаются, но снимок остаётся виден. */
+.foot{position:relative;color:#d8d7d1;margin-top:80px;padding:56px 0 32px;font-size:16px;background:#141312 url(../img/banners/footer-office.webp) center/cover no-repeat}
+.foot::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,12,11,.9) 0%,rgba(12,12,11,.82) 40%,rgba(12,12,11,.9) 100%)}
 .foot .wrap{position:relative}
 .fgrid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr 1.3fr;gap:32px}
 .foot h4{color:#fff;font-size:15px;margin-bottom:16px;letter-spacing:.07em;text-transform:uppercase;font-weight:700}
@@ -920,6 +922,11 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .step{padding:14px 16px}
   .finder-page,.contacts{grid-template-columns:1fr}
   .fgrid{grid-template-columns:1fr 1fr}
+  /* Подвал здесь вытягивается в высокий столбец, и cover раздул бы
+     горизонтальный снимок вдвое. Поэтому он идёт полосой во всю ширину
+     сверху и плавно растворяется в тёмном фоне. */
+  .foot{background-size:200% auto;background-position:center top}
+  .foot::before{background:linear-gradient(180deg,rgba(12,12,11,.72) 0px,rgba(12,12,11,.86) 120px,rgba(12,12,11,.97) 185px,#141312 240px)}
 }
 
 /* ---- ≤640: телефоны ----------------------------------------------------- */
