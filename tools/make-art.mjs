@@ -123,18 +123,23 @@ const svgWide = (defs, body) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MW} ${MH}" width="${MW}" height="${MH}" preserveAspectRatio="xMaxYMid slice">` +
   `<defs>${defs}</defs>${body}</svg>`;
 
-/* Слайд 1: лазерный принтер и картридж перед ним, свет справа. */
+/*
+  На слайдах техники нет намеренно: нарисованный кодом принтер читается как
+  схема из инструкции, а не как витрина магазина. Здесь остаются только свет и
+  фирменная растровая фактура, а правая половина держится пустой под
+  фотографию. Когда снимки появятся в assets/img/banners/, в styles.css
+  меняется одна строка на слайд. Требования к снимкам — в ASSET_SOURCES.md.
+*/
+/* Слайд 1: тёплый свет и растр справа. */
 const slide1 = svg(
   `<radialGradient id="bg" cx="70%" cy="42%" r="72%"><stop offset="0" stop-color="#38332a"/>` +
   `<stop offset="55%" stop-color="#1c1b18"/><stop offset="100%" stop-color="#0f0f0e"/></radialGradient>` +
   SHADOW + dots('d1', 22, 3.6, YEL) + spot('m1', '86%', '24%', '30%', .8),
   `<rect width="${W}" height="${H}" fill="url(#bg)"/>` +
-  `<rect width="${W}" height="${H}" fill="url(#d1)" mask="url(#m1)"/>` +
-  `<g transform="translate(900 300)">${printer(500)}</g>` +
-  `<g transform="translate(880 646)">${cartridge(290)}</g>`
+  `<rect width="${W}" height="${H}" fill="url(#d1)" mask="url(#m1)"/>`
 );
 
-/* Слайд 2: МФУ и два картриджа, холодный свет слева. */
+/* Слайд 2: холодный свет слева, тёплый растр справа. */
 const slide2 = svg(
   `<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#191a1d"/>` +
   `<stop offset="55%" stop-color="#141413"/><stop offset="100%" stop-color="#2a2519"/></linearGradient>` +
@@ -142,10 +147,7 @@ const slide2 = svg(
   dots('d2', 32, 2.4, '#9dc0e4') + spot('m2', '12%', '16%', '38%', .5),
   `<rect width="${W}" height="${H}" fill="url(#bg)"/>` +
   `<rect width="${W}" height="${H}" fill="url(#d2)" mask="url(#m2)"/>` +
-  `<rect width="${W}" height="${H}" fill="url(#d1)" mask="url(#m1)"/>` +
-  `<g transform="translate(900 260)">${printer(480, true)}</g>` +
-  `<g transform="translate(690 660)">${cartridge(260)}</g>` +
-  `<g transform="translate(1200 686)">${cartridge(210, { top: '#4a4844', front: '#31302c', side: '#1b1b19' })}</g>`
+  `<rect width="${W}" height="${H}" fill="url(#d1)" mask="url(#m1)"/>`
 );
 
 /* Подвал: ряд техники справа, приглушённо — сверху ляжет тёмная заливка. */
