@@ -989,6 +989,15 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
    --cookie-h ставит скрипт: это расстояние от верха карточки до низа экрана. */
 body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cookie-h,120px) + 14px)}
 
+/* Запасное окно звонка: крупный номер, отдельная ссылка и копирование. */
+#telbox .modal-w{text-align:center}
+.tel-num{display:block;font-family:var(--head);font-weight:800;font-size:30px;letter-spacing:-.02em;margin:6px 0 18px;color:var(--ink)}
+.tel-num:hover,.tel-num:focus{color:var(--ink)}
+.tel-acts{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.tel-acts .btn{width:100%}
+#tel-copy.added{background:var(--ink);border-color:var(--ink);color:#fff}
+#telbox .small{margin:0;line-height:1.5}
+
 /* Быстрый заказ: короткая форма с резюме товара. */
 .qprod{display:grid;grid-template-columns:60px minmax(0,1fr) auto;gap:12px;align-items:center;margin:4px 0 16px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
 .qprod img{width:60px;height:60px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:10px;padding:4px}
@@ -1239,6 +1248,9 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
     состояниях, от нажатия остаётся только короткая подсветка фона.
   */
   .mphone,.mphone:hover,.mphone:focus,.mphone:visited{color:#fff}
+  /* Нажатие должно попадать в саму ссылку, а не в иконку внутри неё. */
+  .mphone svg{pointer-events:none}
+  .mphone{position:relative;z-index:2;touch-action:manipulation}
   .mphone:active{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.45)}
   .mphone:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
   .hacts{gap:0}

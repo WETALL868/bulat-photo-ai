@@ -869,8 +869,9 @@
     var a = e.target.closest('a');
     if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
     var href = a.getAttribute('href');
-    /* tel:, mailto: и прочие схемы отдаём системе как есть — ни отмены действия,
-       ни перехвата: иначе на телефоне не откроется звонилка. */
+    /* Звонки, почта и прочие внешние схемы отдаются системе как есть: ни отмены
+       действия, ни перехвата — иначе на телефоне не откроется звонилка. */
+    if (href && /^(tel|mailto|sms|facetime|facetime-audio|callto|whatsapp|viber|geo|maps):/i.test(href)) return;
     if (href && /^[a-z][a-z0-9+.-]*:/i.test(href) && href.slice(0, 1) !== '/') return;
     /* Ссылки в шапке, подвале и мобильном меню записаны в разметке обычными
        путями и про режим «весь сайт одним файлом» не знают. Перехватываем их
@@ -1360,6 +1361,94 @@
     qClose();
     go(url('/order/' + number));
   }
+
+  /*
+    Звонок из мобильной шапки.
+
+    Во встроенных браузерах (Telegram, WKWebView внутри приложения) обычный
+    переход по ссылке tel: нередко просто отбрасывается: окно под него не
+    создаётся, а сообщения об ошибке нет — нажатие пропадает молча. Поэтому
+    переход выполняется здесь, в том же контексте и прямо в обработчике
+    пользовательского жеста: это единственный вариант, который встроенные
+    браузеры пропускают чаще прочих.
+
+    Гарантировать открытие звонилки со стороны страницы нельзя — решение
+    принимает оболочка. Поэтому есть честный запасной путь: если через
+    полторы секунды страница осталась на месте (или пользователь нажал
+    второй раз), показываем номер, отдельную ссылку и кнопку копирования.
+    Утверждать, что звонок начался, мы не имеем права.
+  */
+  var TEL_HREF = 'tel:+74954775625', TEL_PLAIN = '+74954775625';
+  var telAt = 0, telTimer = null, telLeft = false, telPrev = null;
+  var telBox = document.getElementById('telbox');
+  function telLeave() { telLeft = true; if (telTimer) { clearTimeout(telTimer); telTimer = null; } }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') telLeave(); });
+  window.addEventListener('pagehide', telLeave);
+  /* Системный запрос «Позвонить по номеру?» забирает фокус у страницы —
+     значит, передача состоялась и запасное окно не нужно. */
+  window.addEventListener('blur', telLeave);
+
+  function telOpen() {
+    if (!telBox || telBox.classList.contains('open')) return;
+    if (telTimer) { clearTimeout(telTimer); telTimer = null; }
+    telPrev = document.activeElement;
+    telBox.classList.add('open'); telBox.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('noscroll');
+    var c = document.getElementById('tel-copy');
+    if (c) { c.textContent = 'Скопировать номер'; c.classList.remove('added'); }
+    var f = telBox.querySelector('.tel-num'); if (f) setTimeout(function () { f.focus(); }, 60);
+  }
+  function telClose() {
+    if (!telBox || !telBox.classList.contains('open')) return;
+    telBox.classList.remove('open'); telBox.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('noscroll');
+    if (telPrev && telPrev.focus) telPrev.focus();
+  }
+  /*
+    Слушаем на фазе перехвата: обработчик срабатывает раньше любого другого,
+    и всплытие к общему роутеру останавливается здесь же.
+  */
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a.mphone');
+    if (!a) return;
+    e.stopPropagation();
+    e.preventDefault();                  // переход делаем сами, ровно один раз
+    var now = Date.now();
+    if (now - telAt < 5000) { telOpen(); return; }   // повторное нажатие — сразу запасной путь
+    telAt = now; telLeft = false;
+    try { window.location.assign(TEL_HREF); } catch (err) { telLeft = false; }
+    if (telTimer) clearTimeout(telTimer);
+    telTimer = setTimeout(function () {
+      telTimer = null;
+      if (!telLeft && document.visibilityState === 'visible') telOpen();
+    }, 1500);
+  }, true);
+
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-tel-close]')) { telClose(); return; }
+    var c = e.target.closest('#tel-copy');
+    if (!c) return;
+    var done = function (ok) {
+      c.textContent = ok ? 'Номер скопирован' : 'Скопируйте вручную';
+      c.classList.toggle('added', ok);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(TEL_PLAIN).then(function () { done(true); }, function () { done(telCopyFallback()); });
+    } else done(telCopyFallback());
+  });
+  /* Без Clipboard API (старые встроенные браузеры) — через скрытое поле. */
+  function telCopyFallback() {
+    var t = document.createElement('textarea');
+    t.value = TEL_PLAIN;
+    t.setAttribute('readonly', '');
+    t.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(t);
+    var ok = false;
+    try { t.select(); t.setSelectionRange(0, t.value.length); ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(t);
+    return ok;
+  }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') telClose(); });
 
   var lb = document.getElementById('lightbox');
   lb.addEventListener('click', function () { lb.classList.remove('open'); });
