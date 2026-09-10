@@ -133,6 +133,10 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .blogo{height:18px;width:auto;display:inline-block}
 .btext{font-family:var(--head);font-weight:800;font-size:13px;letter-spacing:.04em;text-transform:uppercase}
 .sel{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--line2);font-size:14px;font-weight:500;background:#fff;cursor:pointer;white-space:nowrap}
+/* Непопулярный порядок — не режим «по умолчанию»: подсвечиваем, чтобы было
+   видно, что список отсортирован. */
+.sel.picked{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.sel.picked svg{color:var(--ink)}
 .sel select{appearance:none;-webkit-appearance:none;border:0;outline:0;background:transparent;font:inherit;font-size:14px;font-weight:500;color:var(--ink);cursor:pointer;padding-right:2px;min-width:0}
 .sel .fn{font-style:normal;background:var(--yellow);border-radius:6px;padding:1px 6px;font-size:12px;font-family:var(--head);font-weight:700;margin-left:2px}
 .empty{padding:48px 24px;text-align:center;border:1px dashed var(--line2);border-radius:20px;display:flex;flex-direction:column;align-items:center;gap:12px}
@@ -411,17 +415,49 @@ a.line-c:hover{border-color:var(--ink)}
 .cacts .ibtn:hover{color:var(--ink);border-color:var(--line)}
 .cacts .ibtn.on{color:var(--red);border-color:var(--red);background:#fff}
 .cacts .ibtn.cmpb.on{color:var(--ink);border-color:var(--ink)}
-.cbody{padding:16px 18px 18px;display:flex;flex-direction:column;gap:10px;flex:1;min-width:0}
+.cbody{padding:16px 18px 10px;display:flex;flex-direction:column;gap:10px;flex:1;min-width:0}
+.cside{padding:0 18px 18px;display:flex;flex-direction:column;gap:12px;min-width:0}
 .ctitle{font-weight:600;font-size:15px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:40px}
 .crate{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;min-width:0}
 .crate a{color:var(--muted);font-weight:400;border-bottom:1px dashed var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crate a:hover{color:var(--ink)}
 .cspecs{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--muted)}
 .cspecs b{color:var(--ink2);font-weight:500}
-.cfoot{display:flex;flex-direction:column;align-items:stretch;margin-top:auto;padding-top:6px;gap:12px}
+.cfoot{display:flex;flex-direction:column;align-items:stretch;gap:12px}
 .cfoot .btn{width:100%;height:44px}
-.oneclick{font-size:13px;color:var(--muted);border-bottom:1px dashed var(--muted2);align-self:flex-start;line-height:1.3}
+.oneclick{font-size:13px;color:var(--muted);border-bottom:1px dashed var(--muted2);line-height:1.3}
 .oneclick:hover{color:var(--ink)}
+/* Нижний ряд карточки: покупка в один клик и заметная кнопка сравнения. */
+.cbot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.cmp-b{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border:1px solid var(--line2);border-radius:9px;
+  font:inherit;font-size:13px;font-weight:600;color:var(--ink2);background:#fff;cursor:pointer;white-space:nowrap;
+  transition:border-color .15s,background .15s,color .15s}
+.cmp-b svg{flex:none;color:var(--muted)}
+.cmp-b:hover{border-color:var(--ink);color:var(--ink)}
+.cmp-b:hover svg{color:var(--ink)}
+.cmp-b:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.cmp-b.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.cmp-b.on svg{color:var(--yellow)}
+
+/*
+  Список: одна карточка в строку — фото слева, название и характеристики по
+  центру, цена и кнопки справа. Разметка карточки та же, меняется только сетка,
+  поэтому в обоих видах одинаковые данные и одинаковые обработчики.
+*/
+.cards.clist{display:flex;flex-direction:column;gap:12px}
+.clist .card{display:grid;grid-template-columns:200px minmax(0,1fr) 268px;align-items:stretch;border-radius:16px}
+.clist .cmedia{aspect-ratio:auto;border-bottom:0;border-right:1px solid var(--line);padding:16px;min-height:180px}
+.clist .cbadges{left:12px;top:12px;max-width:calc(100% - 24px)}
+.clist .cbrand{left:12px;bottom:10px}
+.clist .cacts{right:auto;left:12px;top:12px;flex-direction:row}
+.clist .cbody{padding:20px 22px;gap:9px;justify-content:center}
+.clist .ctitle{-webkit-line-clamp:2;min-height:0;font-size:16px}
+.clist .cspecs{gap:4px 16px}
+.clist .cside{padding:20px 22px;border-left:1px solid var(--line);justify-content:center;gap:10px}
+.clist .cbot{flex-direction:column;align-items:stretch;gap:8px}
+.clist .cbot .oneclick{align-self:center}
+.clist .cmp-b{justify-content:center;width:100%}
+.clist .price{font-size:24px}
 @media (hover:hover){
   .card:hover{box-shadow:var(--shadow-card);border-color:var(--line2)}
   .card:hover .cmedia img{transform:scale(1.04)}
@@ -444,9 +480,13 @@ a.line-c:hover{border-color:var(--ink)}
 .toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px 16px;padding:0 0 18px;border-bottom:1px solid var(--line);margin-bottom:20px;flex-wrap:wrap}
 .toolbar .l{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 .toolbar .r{display:flex;align-items:center;gap:12px}
-.view{display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden}
-.view span{width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
-.view span.on{background:var(--ink);color:#fff}
+.view{display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden;flex:none}
+.view button{width:42px;height:42px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:#fff;border:0;cursor:pointer;transition:background .15s,color .15s}
+.view button + button{border-left:1px solid var(--line2)}
+.view button:hover{color:var(--ink);background:var(--surface)}
+.view button.on{background:var(--ink);color:#fff}
+.view button.on:hover{background:var(--ink);color:#fff}
+.view button:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
 .mfilterbtn{display:none}
 .applied{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center}
 .applied .chip{height:32px;font-size:13px;gap:8px}
@@ -814,6 +854,11 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 .b2b-l svg{color:var(--ink);flex:none;margin-top:2px}
 .b2b-l b{display:block;font-weight:600;font-size:15px}
 .b2b-l span{color:var(--ink2);font-size:13.5px;line-height:1.45}
+/* Продолжение блока, а не четвёртая колонка: одна строка во всю ширину. */
+.b2b-note{display:flex;align-items:flex-start;gap:12px;margin:16px 0 0;padding:14px 16px;border-radius:12px;
+  background:rgba(255,255,255,.6);border:1px solid var(--yellow2);font-size:14px;line-height:1.5;color:var(--ink2)}
+.b2b-note svg{flex:none;margin-top:2px;color:var(--ink)}
+.b2b-note a{font-weight:600;color:var(--ink);text-decoration:underline;white-space:nowrap}
 
 /* 12. Подвал
    -------------------------------------------------------------------------- */
@@ -1044,6 +1089,9 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .finder{max-width:none}
   .tiles,.tiles-s{grid-template-columns:repeat(2,minmax(0,1fr))}
   .grid4,.grid3{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+  .clist .card{grid-template-columns:170px minmax(0,1fr) 226px}
+  .clist .cside{padding:16px 18px}
+  .clist .cbody{padding:16px 18px}
   .adv{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   .ccards{grid-template-columns:repeat(2,minmax(0,1fr))}
   .cshop{grid-template-columns:1fr;gap:18px}
@@ -1099,6 +1147,16 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
 
 /* ---- ≤700: телефон, каталог живёт в выдвижной панели --------------------- */
 @media (max-width:700px){
+  /* На телефоне список складывается в столбец: фото сверху во всю ширину,
+     под ним данные, ещё ниже цена и кнопки — узкой колонки не остаётся. */
+  .clist .card{grid-template-columns:1fr}
+  .clist .cmedia{border-right:0;border-bottom:1px solid var(--line);aspect-ratio:4/3;min-height:0}
+  .clist .cbody{padding:14px 16px 4px}
+  .clist .cside{border-left:0;padding:10px 16px 16px}
+  .clist .cbot{flex-direction:row;align-items:center}
+  .clist .cmp-b{width:auto}
+  .clist .price{font-size:22px}
+
   .catbtn{display:none}
   .catmenu{display:none!important}
   /* Панель — единственный каталог на телефоне, поэтому зоны нажатия крупнее. */
@@ -1236,14 +1294,24 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .brands{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;margin:16px calc(var(--gut)*-1) 0;padding-left:var(--gut);padding-right:var(--gut);scrollbar-width:none}
   .brands::-webkit-scrollbar{display:none}
   .layout.cat{padding-top:20px}
+  /*
+    Панель каталога на телефоне в две строки: сверху фильтры и переключатель
+    вида, снизу сортировка и количество на странице. display:contents убирает
+    промежуточную обёртку, чтобы все четыре элемента раскладывались одной
+    сеткой, а не жались в одну узкую строку.
+  */
   .toolbar{padding-bottom:12px;margin-bottom:14px;gap:8px}
-  .toolbar .l{flex:1;flex-wrap:nowrap;width:100%}
-  .toolbar .r{display:none}
-  .mfilterbtn{flex:none;height:42px}
+  .toolbar .l{display:contents}
+  .toolbar .r{display:flex;order:2;flex:none}
+  .mfilterbtn{order:1;flex:1 1 auto;height:42px}
   .toolbar .sel{height:42px}
-  .toolbar .sel-sort{flex:1;min-width:0}
-  .toolbar .sel-sort select{flex:1;width:100%}
-  .toolbar .sel-pp{display:none}
+  /* Каждому селекту своя строка: «Показывать по 12» в половину ширины
+     телефона обрезается прямо посередине слова. */
+  .toolbar .sel-sort{order:3;flex:1 1 100%;min-width:0}
+  .toolbar .sel-sort select{flex:1;width:100%;min-width:0}
+  .toolbar .sel-pp{order:4;display:inline-flex;flex:1 1 100%;min-width:0}
+  .toolbar .sel-pp select{flex:1;width:100%;min-width:0}
+  .view button{width:40px;height:42px}
   .applied{overflow-x:auto;flex-wrap:nowrap;margin:0 calc(var(--gut)*-1) 14px;padding:0 var(--gut);scrollbar-width:none}
   .applied::-webkit-scrollbar{display:none}
   .pager{flex-direction:column;align-items:stretch;margin-top:20px}

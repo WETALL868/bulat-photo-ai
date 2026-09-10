@@ -90,9 +90,10 @@
   }
 
   /* ------------------------------------------------------------ состояние */
-  var S = { cart: null, fav: {}, cmp: {}, orders: 0 };
+  var S = { cart: null, fav: {}, cmp: {}, orders: 0, view: 'tiles' };
   try { var saved = JSON.parse(localStorage.getItem('hb-shop') || 'null'); if (saved) S = Object.assign(S, saved); } catch (e) { }
   if (!S.cart) S.cart = {};
+  if (S.view !== 'list') S.view = 'tiles';
   function save() { try { localStorage.setItem('hb-shop', JSON.stringify(S)); } catch (e) { } }
   function cartItems() {
     return Object.keys(S.cart).map(function (id) { return { p: C.byId(id), q: S.cart[id] }; }).filter(function (x) { return x.p && x.q > 0; });
@@ -137,12 +138,20 @@
     if (except !== 'type' && list(q.type).length) { var ts = list(q.type); l = l.filter(function (x) { return ts.indexOf(x.type) >= 0; }); }
     return l;
   }
+  /*
+    Порядок строк индекса — это и есть порядок по популярности: сборщик
+    сортирует каталог по полю pop. Тот же номер строки служит вторым ключом
+    во всех режимах, иначе при равных ценах и рейтингах список тасуется от
+    страницы к странице и после смены фильтров.
+  */
   function sortList(l, s) {
+    var by = function (f) { return function (a, b) { return f(a, b) || a.row - b.row; }; };
     l = l.slice();
-    if (s === 'price') l.sort(function (a, b) { return a.price - b.price; });
-    else if (s === '-price') l.sort(function (a, b) { return b.price - a.price; });
-    else if (s === 'rating') l.sort(function (a, b) { return b.rate - a.rate || b.reviews - a.reviews; });
-    else if (s === 'new') l.sort(function (a, b) { return hash(b.id) - hash(a.id); });
+    if (s === 'price') l.sort(by(function (a, b) { return a.price - b.price; }));
+    else if (s === '-price') l.sort(by(function (a, b) { return b.price - a.price; }));
+    else if (s === 'rating') l.sort(by(function (a, b) { return b.rate - a.rate || b.reviews - a.reviews; }));
+    else if (s === 'new') l.sort(by(function (a, b) { return hash(b.id) - hash(a.id); }));
+    else l.sort(function (a, b) { return a.row - b.row; });
     return l;
   }
   function toggleValue(q, key, val) {
@@ -176,17 +185,24 @@
     if (!p.res && p.type) s.push('<span><b>' + esc(p.type) + '</b></span>');
     return s.join('');
   }
+  function cmpLabel(id) { return S.cmp[id] ? 'В сравнении' : 'Сравнить'; }
   function card(p) {
     var fav = S.fav[p.id] ? ' on' : '', cmp = S.cmp[p.id] ? ' on' : '';
     return '<div class="card" data-id="' + p.id + '">' +
       '<a class="cmedia" href="' + link.product(p) + '"><img src="' + p.img + '" alt="' + esc(p.name) + '" loading="lazy">' + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="cbrand" title="Для принтеров ' + esc(C.brandName(p.brand)) + '">' + brandLogo(p.brand, 16) + '</span></a>' +
-      '<div class="cacts"><button class="ibtn fav' + fav + '" type="button" data-fav="' + p.id + '" title="В избранное">' + ic('heart', 18) + '</button><button class="ibtn cmpb' + cmp + '" type="button" data-cmp="' + p.id + '" title="Сравнить">' + ic('compare', 18) + '</button></div>' +
+      '<div class="cacts"><button class="ibtn fav' + fav + '" type="button" data-fav="' + p.id + '" title="' + (S.fav[p.id] ? 'Убрать из избранного' : 'В избранное') + '" aria-label="' + (S.fav[p.id] ? 'Убрать из избранного' : 'В избранное') + '">' + ic('heart', 18) + '</button></div>' +
       '<div class="cbody"><a class="ctitle" href="' + link.product(p) + '">' + esc(p.name) + '</a>' +
       '<div class="crate">' + stars(p.rate) + '<span>' + ratef(p.rate) + '</span><a href="' + link.product(p, { tab: 'reviews' }) + '"><span class="rn">' + p.reviews + '</span><span class="rw"> ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</span></a></div>' +
       '<div class="cspecs">' + specsShort(p) + '</div>' +
-      (p.stock ? '<div class="avail"><i></i>В наличии</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') +
-      '<div class="cfoot">' + priceBlock(p) + '<button class="btn btn-y" type="button" data-add="' + p.id + '">' + ic('cart', 18) + 'В корзину</button></div>' +
-      '<a class="oneclick" href="' + link.plain('checkout', { quick: p.id }) + '">Купить в 1 клик</a></div></div>';
+      (p.stock ? '<div class="avail"><i></i>В наличии</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') + '</div>' +
+      /* Цена и кнопки — отдельный блок, а не хвост описания: в виде списком он
+         становится третьей колонкой карточки, в плитке просто идёт следом. */
+      '<div class="cside"><div class="cfoot">' + priceBlock(p) + '<button class="btn btn-y" type="button" data-add="' + p.id + '">' + ic('cart', 18) + 'В корзину</button></div>' +
+      /* Иконка в углу карточки читалась как декорация — сравнение получило
+         подпись и место в нижнем ряду, рядом с покупкой в один клик. */
+      '<div class="cbot"><a class="oneclick" href="' + link.plain('checkout', { quick: p.id }) + '">Купить в 1 клик</a>' +
+      '<button class="cmp-b' + cmp + '" type="button" data-cmp="' + p.id + '" aria-pressed="' + !!S.cmp[p.id] + '" title="' + cmpLabel(p.id) + '" aria-label="' + cmpLabel(p.id) + ' — ' + esc(p.name) + '">' +
+      ic('compare', 16) + '<span>' + cmpLabel(p.id) + '</span></button></div></div></div>';
   }
   function crumbs(items) {
     return '<div class="crumbs">' + items.map(function (it, i) {
@@ -334,13 +350,18 @@
       }).join('') + '<a class="clear" href="' + link.catalog(cat) + '">Сбросить всё</a></div>' : '';
 
       var sortOpts = [['pop', 'По популярности'], ['price', 'Сначала дешевле'], ['-price', 'Сначала дороже'], ['rating', 'По рейтингу'], ['new', 'Новинки']];
-      var toolbar = '<div class="toolbar"><div class="l"><button class="sel mfilterbtn" type="button" data-open-f>' + ic('sliders', 18) + 'Фильтры' + (applied.length ? ' <i class="fn">' + applied.length + '</i>' : '') + '</button><label class="sel sel-sort">' + ic('sort', 18) + '<select data-f="sort" aria-label="Сортировка">' + sortOpts.map(function (o) {
+      var toolbar = '<div class="toolbar"><div class="l"><button class="sel mfilterbtn" type="button" data-open-f>' + ic('sliders', 18) + 'Фильтры' + (applied.length ? ' <i class="fn">' + applied.length + '</i>' : '') + '</button><label class="sel sel-sort' + ((q.sort && q.sort !== 'pop') ? ' picked' : '') + '">' + ic('sort', 18) + '<select data-f="sort" aria-label="Сортировка">' + sortOpts.map(function (o) {
         return '<option value="' + o[0] + '"' + ((q.sort || 'pop') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
       }).join('') + '</select>' + ic('chev-down', 14) + '</label><label class="sel sel-pp"><select data-f="pp" aria-label="Товаров на странице">' + [12, 24, 48].map(function (n) {
         return '<option value="' + n + '"' + (pp === n ? ' selected' : '') + '>Показывать по ' + n + '</option>';
-      }).join('') + '</select>' + ic('chev-down', 14) + '</label></div><div class="r"><a class="muted small" href="' + link.plain('compare') + '">Сравнить: ' + count(S.cmp) + '</a><div class="view"><span class="on">' + ic('grid', 18) + '</span><span>' + ic('list', 18) + '</span></div></div></div>';
+      }).join('') + '</select>' + ic('chev-down', 14) + '</label></div><div class="r">' +
+        /* Счётчик сравнения один — в шапке. Здесь остаётся только выбор вида. */
+        '<div class="view" role="group" aria-label="Вид каталога">' +
+        '<button class="' + (S.view === 'tiles' ? 'on' : '') + '" type="button" data-view-mode="tiles" title="Показать плиткой" aria-label="Показать плиткой" aria-pressed="' + (S.view === 'tiles') + '">' + ic('grid', 18) + '</button>' +
+        '<button class="' + (S.view === 'list' ? 'on' : '') + '" type="button" data-view-mode="list" title="Показать списком" aria-label="Показать списком" aria-pressed="' + (S.view === 'list') + '">' + ic('list', 18) + '</button>' +
+        '</div></div></div>';
 
-      var grid = shown.length ? '<div class="grid3">' + shown.map(card).join('') + '</div>' :
+      var grid = shown.length ? '<div class="cards ' + (S.view === 'list' ? 'clist' : 'grid3') + '" id="cards">' + shown.map(card).join('') + '</div>' :
         '<div class="empty"><h3>Ничего не нашлось</h3><p>Попробуйте изменить фильтры или ввести другую модель принтера. Например, «M2135dn» или «CF283A».</p><a class="btn btn-o" href="' + link.catalog(cat) + '">Сбросить фильтры</a></div>';
 
       var pager = '';
@@ -428,7 +449,7 @@
         (p.stock ? '<div class="avail"><i></i>В наличии на складе в Москве</div><div class="stock">Дату отгрузки подтверждает менеджер</div>' : '<div class="avail out"><i></i>Под заказ</div><div class="stock">Привезём со склада поставщика за 3–5 дней</div>') +
         '<div class="brow"><div class="qty"><button type="button" data-q="-1" aria-label="Меньше">' + ic('minus', 18) + '</button><span id="pq">1</span><button type="button" data-q="1" aria-label="Больше">' + ic('plus', 18) + '</button></div><button class="btn btn-y btn-lg" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 20) + 'В корзину</button></div>' +
         '<a class="btn btn-o btn-full" href="' + link.plain('checkout', { quick: p.id }) + '">Купить в 1 клик</a>' +
-        '<div class="acts"><button type="button" class="' + (S.cmp[p.id] ? 'on' : '') + '" data-cmp="' + p.id + '">' + ic('compare', 16) + (S.cmp[p.id] ? 'В сравнении' : 'В сравнение') + '</button><button type="button" class="' + (S.fav[p.id] ? 'on' : '') + '" data-fav="' + p.id + '">' + ic('heart', 16) + (S.fav[p.id] ? 'В избранном' : 'В избранное') + '</button></div>' +
+        '<div class="acts"><button type="button" class="' + (S.cmp[p.id] ? 'on' : '') + '" data-cmp="' + p.id + '" aria-pressed="' + !!S.cmp[p.id] + '" title="' + (S.cmp[p.id] ? 'Убрать из сравнения' : 'Добавить к сравнению') + '">' + ic('compare', 16) + (S.cmp[p.id] ? 'В сравнении' : 'В сравнение') + '</button><button type="button" class="' + (S.fav[p.id] ? 'on' : '') + '" data-fav="' + p.id + '">' + ic('heart', 16) + (S.fav[p.id] ? 'В избранном' : 'В избранное') + '</button></div>' +
         '<div class="dlist"><div>' + ic('truck', 18) + '<div><b>Курьер по Москве</b><span>Дату и интервал подтверждает менеджер</span></div></div><div>' + ic('pin', 18) + '<div><b>Самовывоз по предварительному согласованию</b><span>Москва, Ясеневая ул., д. 50</span></div></div><div>' + ic('card', 18) + '<div><b>Оплата картой, СБП или по счёту</b><span>Юрлицам — счёт и закрывающие документы</span></div></div><div>' + ic('shield', 18) + '<div><b>Гарантия ресурса</b><span>Срок указан в карточке и документах</span></div></div></div>' +
         '<a class="ask" href="' + link.page('contacts') + '">' + ic('chat', 22) + '<div><b>Задать вопрос о товаре</b><span>Ответим в чате или по телефону</span></div></a></div></div>' +
         kitBlock(fam, p) +
@@ -450,7 +471,9 @@
         '<a class="btn btn-o" href="' + link.page('business') + '">Условия для юрлиц' + ic('arrow-right', 18) + '</a></div>' +
         '<div class="b2b-l"><div>' + ic('doc', 20) + '<div><b>Счёт на оплату</b><span>Придёт на почту после оформления заказа</span></div></div>' +
         '<div>' + ic('check', 20) + '<div><b>Закрывающие документы</b><span>УПД или накладная и счёт-фактура — вместе с заказом</span></div></div>' +
-        '<div>' + ic('user', 20) + '<div><b>Выбор «Юридическое лицо»</b><span>Отметьте на шаге оформления и укажите реквизиты</span></div></div></div></section>' +
+        '<div>' + ic('user', 20) + '<div><b>Выбор «Юридическое лицо»</b><span>Отметьте на шаге оформления и укажите реквизиты</span></div></div></div>' +
+        '<p class="b2b-note">' + ic('mail', 18) + '<span>На шаге оформления выберите «Юридическое лицо» и заполните реквизиты компании. ' +
+        'Если удобнее, отправьте карточку организации и запрос на <a href="mailto:info@nvprint-msk.ru">info@nvprint-msk.ru</a>.</span></p></section>' +
         '<div class="sec"><div class="sec-head"><h2>Похожие товары</h2><a class="more" href="' + link.catalog(p.cat, p.brand) + '">Все для ' + esc(C.brandName(p.brand)) + ' ' + ic('arrow-right', 18) + '</a></div><div class="grid4">' + related.map(card).join('') + '</div></div>' +
         '<div class="buybar" id="buybar"><div class="bp">' + priceBlock(p) + '' + (p.stock ? '<div class="avail"><i></i>В наличии на складе</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') + '</div><button class="btn btn-y" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 18) + 'В корзину</button></div></div>';
     });
@@ -904,6 +927,22 @@
       if (parse().route === 'favorites') render();
       return;
     }
+    t = e.target.closest('[data-view-mode]');
+    if (t) {
+      /* Меняем только класс контейнера: перерисовка сбросила бы прокрутку, а
+         адрес страницы вид не хранит — фильтры, сортировка и номер страницы
+         остаются ровно теми же. */
+      var mode = t.dataset.viewMode === 'list' ? 'list' : 'tiles';
+      var box = document.getElementById('cards');
+      if (box) { box.classList.toggle('clist', mode === 'list'); box.classList.toggle('grid3', mode !== 'list'); }
+      app.querySelectorAll('[data-view-mode]').forEach(function (b) {
+        var on = b.dataset.viewMode === mode;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      if (S.view !== mode) { S.view = mode; save(); }
+      return;
+    }
     t = e.target.closest('[data-cmp]');
     if (t) {
       e.preventDefault();
@@ -912,8 +951,16 @@
       if (count(S.cmp) > 4) { delete S.cmp[id2]; showToast('В сравнении может быть не больше 4 товаров'); return; }
       save(); updateHeader();
       document.querySelectorAll('[data-cmp="' + id2 + '"]').forEach(function (b) {
-        b.classList.toggle('on', !!S.cmp[id2]);
-        if (b.closest('.acts')) b.innerHTML = ic('compare', 16) + (S.cmp[id2] ? 'В сравнении' : 'В сравнение');
+        var on = !!S.cmp[id2];
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        if (b.closest('.acts')) {
+          b.innerHTML = ic('compare', 16) + (on ? 'В сравнении' : 'В сравнение');
+          b.title = on ? 'Убрать из сравнения' : 'Добавить к сравнению';
+        } else if (b.classList.contains('cmp-b')) {
+          b.innerHTML = ic('compare', 16) + '<span>' + (on ? 'В сравнении' : 'Сравнить') + '</span>';
+          b.title = on ? 'Убрать из сравнения' : 'Сравнить';
+        }
       });
       showToast(ic('compare', 18) + (S.cmp[id2] ? 'Добавлено к сравнению' : 'Убрано из сравнения') + ' <a href="' + link.plain('compare') + '">Сравнить (' + count(S.cmp) + ')</a>');
       if (parse().route === 'compare') render();
