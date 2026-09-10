@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /*
-  Фоновая графика подвала и меню каталога.
+  Фоновая графика подвала.
 
-  Слайдер сюда не входит: там лежат фотографии из assets/img/banners/, рисовать
-  технику кодом для витрины оказалось плохой идеей.
+  Слайдер и меню каталога сюда не входят: там лежат фотографии
+  (assets/img/banners/, assets/img/catalog-menu-light.webp). Рисовать технику
+  кодом для витрины оказалось плохой идеей.
 
   Раньше здесь стояли снимки принтеров с Wikimedia Commons: лицензии CC BY и
   CC BY-SA разрешают коммерческое использование, но требуют указывать автора,
@@ -141,28 +142,8 @@ const footer = svg(
   `<g transform="translate(770 620)">${cartridge(240)}</g>`
 );
 
-/* Меню каталога: светлый фон с картриджами у правого края, поверх идут ссылки.
-   Полоса меню низкая и широкая, поэтому холст здесь свой, не 16:9. */
-const catmenu = svgWide(
-  SHADOW +
-  `<linearGradient id="bg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffffff"/>` +
-  `<stop offset="55%" stop-color="#fdfcf9"/><stop offset="100%" stop-color="#f4f2ea"/></linearGradient>` +
-  dots('d1', 26, 2.6, '#ffd200') +
-  `<linearGradient id="mg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/>` +
-  `<stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".55"/></linearGradient>` +
-  `<mask id="m1"><rect width="${MW}" height="${MH}" fill="url(#mg)"/></mask>`,
-  `<rect width="${MW}" height="${MH}" fill="url(#bg)"/>` +
-  `<rect width="${MW}" height="${MH}" fill="url(#d1)" mask="url(#m1)"/>` +
-  /* Поверх фона идут плитки брендов, поэтому картриджи здесь — почти
-     невидимая фактура: заметны углом глаза и не спорят с логотипами. */
-  `<g opacity=".07">` +
-  `<g transform="translate(1250 130)">${cartridge(300)}</g>` +
-  `<g transform="translate(1095 288)">${cartridge(215)}</g>` +
-  `</g>`
-);
-
 fs.mkdirSync(OUT, { recursive: true });
-for (const [name, s] of [['footer.svg', footer], ['catmenu.svg', catmenu]]) {
+for (const [name, s] of [['footer.svg', footer]]) {
   fs.writeFileSync(path.join(OUT, name), s);
   console.log('  ' + name.padEnd(14) + (s.length / 1024).toFixed(1) + ' КБ');
 }

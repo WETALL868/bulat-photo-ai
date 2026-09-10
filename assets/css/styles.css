@@ -158,9 +158,10 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .logo{display:flex;flex-direction:column;align-items:flex-start;gap:5px;flex:none}
 .logo img{height:38px;width:auto}
 .logo-sub{font-size:13.5px;color:#b4b3ac;white-space:nowrap;font-weight:500;letter-spacing:.02em}
-.search{flex:1;display:flex;height:54px;border:2px solid transparent;border-radius:14px;overflow:hidden;background:#fff;min-width:0;transition:box-shadow .15s}
+.search{flex:1 1 320px;min-width:210px;display:flex;height:54px;border:2px solid transparent;border-radius:14px;overflow:hidden;background:#fff;min-width:0;transition:box-shadow .15s}
 .search:focus-within{box-shadow:0 0 0 4px rgba(255,210,0,.35)}
-.search input{flex:1;border:0;outline:0;padding:0 20px;font:inherit;font-size:17px;color:var(--ink);min-width:0;background:transparent;-webkit-appearance:none;appearance:none}
+/* min-width:0 обязателен: без него поле не сжимается и уезжает под кнопку. */
+.search input{flex:1 1 0;min-width:0;width:100%;border:0;outline:0;padding:0 20px;font:inherit;font-size:17px;color:var(--ink);background:transparent;text-overflow:ellipsis;-webkit-appearance:none;appearance:none}
 .search input::placeholder{color:var(--muted)}
 .search input::-webkit-search-cancel-button{-webkit-appearance:none}
 .search .sbtn{width:132px;flex:none;background:var(--yellow);color:var(--ink);display:flex;align-items:center;justify-content:center;gap:8px;font-family:var(--head);font-weight:700;font-size:16px}
@@ -199,21 +200,33 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .navr a{color:#e6e5df}
 .navr a.y{background:rgba(255,210,0,.16);color:var(--yellow)}.navr a.y:hover{background:var(--yellow);color:var(--ink)}
 .navr a.r{color:#ff8f8e}.navr a.r:hover{background:rgba(211,64,63,.2);color:#ff8f8e}
-.catmenu{display:none;position:absolute;left:0;right:0;top:100%;background:#fff url(../img/art/catmenu.svg) right center/cover no-repeat;color:var(--ink);border-bottom:1px solid var(--line);box-shadow:var(--shadow-menu);z-index:40}
+/*
+  Большое меню каталога. Фон — фотография светлого офиса: техника справа,
+  слева свободное место под категории. Поверх фотографии лежит белый градиент,
+  иначе текст на светлом снимке теряется. Никакой рисованной графики и точек
+  здесь нет — они возвращались при каждой пересборке и мешали.
+*/
+.catmenu{display:none;position:absolute;left:0;right:0;top:100%;color:var(--ink);border-bottom:1px solid var(--line);box-shadow:var(--shadow-menu);z-index:40;background:#fff url(../img/catalog-menu-light.webp) right center/cover no-repeat}
 .catmenu.open{display:block}
-.catmenu .wrap{display:grid;grid-template-columns:300px minmax(0,1fr);gap:0;align-items:stretch;height:auto}
-.catmenu .cats{border-right:1px solid var(--line);padding:16px 0}
-.catmenu .cats a{display:flex;align-items:center;justify-content:space-between;padding:12px 20px 12px 0;font-weight:600;font-size:15px}
-.catmenu .cats a svg{color:var(--muted2)}
-.catmenu .cats a.sale{justify-content:flex-start;gap:8px;color:var(--red);margin-top:8px}
+.catmenu::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.97) 0%,rgba(255,255,255,.95) 40%,rgba(255,255,255,.88) 62%,rgba(255,255,255,.78) 100%)}
+.catmenu .wrap{position:relative;display:grid;grid-template-columns:390px minmax(0,1fr);gap:0;align-items:stretch;height:auto;max-height:calc(100vh - 210px);overflow:auto;overscroll-behavior:contain}
+.catmenu .cats{border-right:1px solid var(--line);padding:22px 28px 22px 0;display:flex;flex-direction:column;gap:2px}
+.catmenu .cats a{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 18px;border-radius:14px;font-weight:600;font-size:19px;transition:background .15s,color .15s}
+.catmenu .cats a svg{color:var(--muted2);flex:none;width:20px;height:20px;transition:transform .15s,color .15s}
+.catmenu .cats a:hover{background:var(--yellow);color:var(--ink)}
+.catmenu .cats a:hover svg{color:var(--ink);transform:translateX(3px)}
+.catmenu .cats a.on{background:var(--ink);color:#fff}
+.catmenu .cats a.on svg{color:var(--yellow)}
+.catmenu .cats a.sale{justify-content:flex-start;gap:10px;color:var(--red);margin-top:10px}
 .catmenu .cats a.sale svg{color:var(--red)}
-.catmenu .brands{padding:24px 0 24px 32px}
-.catmenu .brands h4{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
-.bgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.bgrid a{display:flex;align-items:center;gap:12px;height:56px;padding:0 14px;border:1px solid var(--line);border-radius:12px;font-size:14px;font-weight:500}
-.bgrid a:hover{border-color:var(--ink)}
-.bgrid a img{height:20px;width:auto;max-width:72px}
-.bgrid a .btext{font-size:12px}
+.catmenu .cats a.sale:hover{background:var(--rtint);color:var(--red)}
+.catmenu .brands{padding:26px 0 30px 40px;min-width:0}
+.catmenu .brands h4{font-size:16px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);margin-bottom:18px;font-weight:700}
+.bgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.bgrid a{display:flex;align-items:center;gap:14px;height:72px;padding:0 18px;border:1px solid var(--line);border-radius:14px;font-size:16px;font-weight:500;background:rgba(255,255,255,.86);transition:border-color .15s,background .15s,box-shadow .15s}
+.bgrid a:hover{border-color:var(--ink);background:#fff;box-shadow:var(--shadow-card)}
+.bgrid a img{height:26px;width:auto;max-width:88px}
+.bgrid a .btext{font-size:14px}
 
 /* 4. Мобильное меню
    -------------------------------------------------------------------------- */
@@ -750,18 +763,19 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 .foot::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,12,11,.9) 0%,rgba(12,12,11,.82) 40%,rgba(12,12,11,.9) 100%)}
 .foot .wrap{position:relative}
 .fgrid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr 1.3fr;gap:32px}
-.foot h4{color:#fff;font-size:15px;margin-bottom:16px;letter-spacing:.07em;text-transform:uppercase;font-weight:700}
+.foot h4{color:#fff;font-size:17px;margin-bottom:18px;letter-spacing:.06em;text-transform:uppercase;font-weight:700}
 .foot a{color:#d2d1cb}
 .foot a:hover{color:#fff}
-.fcol a{display:block;padding:6px 0;font-size:16px}
+.fcol a{display:block;padding:7px 0;font-size:17.5px;font-weight:500}
 .fbrand .logo img{height:30px;filter:brightness(0) invert(1)}
 .fbrand .logo-sub{color:#a9a8a1}
-.fbrand p{font-size:16px;color:#a9a8a1;line-height:1.55;margin-top:14px;max-width:320px}
-.fcontact{display:flex;flex-direction:column;gap:12px;font-size:16px}
-.fcontact b{color:#fff;font-family:var(--head);font-size:24px;font-weight:800;letter-spacing:-.01em}
+.fbrand p{font-size:17px;color:#b3b2ab;line-height:1.55;margin-top:14px;max-width:330px}
+.fcontact{display:flex;flex-direction:column;gap:12px;font-size:17px}
+.fcontact b{color:#fff;font-family:var(--head);font-size:28px;font-weight:700;letter-spacing:-.015em}
 .fcontact b a{color:#fff}
 .fcontact span{display:flex;gap:10px;align-items:flex-start;color:#d2d1cb}
 .fcontact span svg{margin-top:3px}
+.fcontact a[href^="mailto:"]{font-size:18px;font-weight:500}
 .fbottom{border-top:1px solid #33322d;margin-top:44px;padding-top:24px;display:flex;justify-content:space-between;align-items:center;font-size:15px;color:#b6b5ae;gap:16px 24px;flex-wrap:wrap}
 .fbottom .links{display:flex;gap:20px;flex-wrap:wrap}
 .fbottom .links a{color:#b6b5ae;font-size:15px}
@@ -789,6 +803,34 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 .cmpt-i:hover{border-color:var(--line2);box-shadow:var(--shadow-card)}
 .cmpt-i b{font-weight:600;font-size:15px}
 .cmpt-i span{font-size:13px;color:var(--muted)}
+
+/* Переходы между страницами и смена цветового варианта.
+
+   Прокрутка при этом остаётся мгновенной: глобальный smooth возвращать нельзя,
+   он ломал переход к началу страницы. Анимируется только содержимое. */
+.app{will-change:auto}
+.nav-out{opacity:.25;transform:translateY(4px);transition:opacity .18s ease,transform .18s ease}
+.nav-in{animation:navIn .26s cubic-bezier(.22,.7,.3,1) both}
+@keyframes navIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.swap-out{opacity:.3;transition:opacity .19s ease}
+.swap-in{animation:swapIn .19s ease both}
+@keyframes swapIn{from{opacity:.3}to{opacity:1}}
+
+/* Тонкая жёлтая полоса под шапкой на время перехода. */
+.navline{position:fixed;left:0;top:0;height:3px;width:0;background:var(--yellow);z-index:250;opacity:0;pointer-events:none}
+.navline.on{opacity:1;width:82%;transition:width .42s cubic-bezier(.2,.8,.3,1),opacity .1s}
+.navline.on.done{width:100%;opacity:0;transition:width .16s ease,opacity .22s ease .1s}
+
+/* Выбранный цвет в комплекте виден сразу, ещё до отрисовки новой карточки. */
+.kit-i.picking{border-color:var(--yellow2);box-shadow:0 0 0 2px var(--ytint)}
+.kit-i.on{position:relative}
+.kit-i.on::after{content:"";position:absolute;inset:-1px;border:2px solid var(--yellow);border-radius:14px;pointer-events:none}
+
+@media (prefers-reduced-motion:reduce){
+  .nav-out,.swap-out{opacity:1;transform:none;transition:none}
+  .nav-in,.swap-in{animation:none}
+  .navline{display:none}
+}
 
 /* 13. Оверлеи
    -------------------------------------------------------------------------- */
@@ -824,11 +866,24 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 /* 14. Адаптив
    ========================================================================== */
 
+/* ---- 981–1240: шапка в одну строку уже не помещается --------------------- */
+@media (min-width:981px) and (max-width:1240px){
+  /* Логотип, телефон и действия занимают почти всю строку, и поле поиска
+     сжималось до сорока пикселей. Переносим его на свою строку целиком. */
+  .head .wrap{flex-wrap:wrap;height:auto;padding-top:14px;padding-bottom:14px;gap:12px 16px}
+  .search{order:5;flex-basis:100%;height:50px}
+  .phone{margin-left:auto}
+}
+
 /* ---- ≤1400: узкий десктоп ----------------------------------------------- */
 @media (max-width:1400px){
   /* «Акции» есть отдельным пунктом в каталоге и в мобильном меню, поэтому
      в тесноте убираем её первой — иначе обрезается последний пункт меню. */
   .navr a.r{display:none}
+  /* Ужимаем правую часть шапки, чтобы поиску осталась рабочая ширина. */
+  .head .wrap{gap:18px}
+  .hact{width:66px;font-size:12.5px}
+  .phone b{font-size:20px}
 }
 
 /* ---- ≤1240: ноутбуки ---------------------------------------------------- */
@@ -848,7 +903,9 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .rev-grid{grid-template-columns:1fr}
   .rev-sum{position:static}
   .fgrid{grid-template-columns:1.2fr 1fr 1fr;row-gap:36px}
-  .catmenu .wrap{grid-template-columns:240px minmax(0,1fr)}
+  .catmenu .wrap{grid-template-columns:330px minmax(0,1fr)}
+  .catmenu .cats a{font-size:18px;padding:13px 16px}
+  .bgrid a{height:66px;font-size:15px;padding:0 15px}
   .bgrid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 
@@ -856,7 +913,7 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 @media (max-width:980px){
   :root{--gut:28px}
   .topbar{display:none}
-  .head .wrap{flex-wrap:wrap;height:auto;padding:12px 0 12px;gap:10px 12px}
+  .head .wrap{flex-wrap:wrap;height:auto;padding-top:12px;padding-bottom:12px;gap:10px 12px}
   .mobbtn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:1px solid var(--hdr-line);color:#fff;flex:none;margin-left:-4px}
   .logo img{height:30px}
   .search{order:5;flex-basis:100%;height:48px;border-width:1.5px;border-radius:12px}
@@ -866,14 +923,13 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .hact{width:52px}
   .cartbtn{height:44px;padding:0 14px 0 12px;border-radius:12px;margin-left:4px}
   .navbar .wrap{height:auto;gap:0;padding-top:8px;padding-bottom:8px}
-  .catbtn{display:none}
   .nav{gap:6px;margin:0 calc(var(--gut)*-1);padding:0 var(--gut);flex:1 1 100%}
   .nav a{display:inline-flex;align-items:center;height:36px;padding:0 13px;border:1px solid var(--hdr-line);border-radius:999px;font-size:13.5px;font-weight:500;line-height:1}
   .nav a.on{background:var(--yellow);color:var(--ink);border-color:var(--yellow);font-weight:600}
   .nav .mob-only{display:inline-flex}
   .nav a.y{background:rgba(255,210,0,.16);border-color:transparent;color:var(--yellow);font-weight:600}
   .nav a.r{color:#ff8f8e;border-color:rgba(211,64,63,.35);background:rgba(211,64,63,.15);font-weight:600}
-  .navr,.catmenu{display:none!important}
+  .navr{display:none!important}
   .layout{grid-template-columns:minmax(0,1fr);gap:24px;padding-top:20px}
   .side{display:none}
   .ph1{padding-top:18px}
@@ -929,6 +985,26 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .foot::before{background:linear-gradient(180deg,rgba(12,12,11,.72) 0px,rgba(12,12,11,.86) 120px,rgba(12,12,11,.97) 185px,#141312 240px)}
 }
 
+/* ---- 701–980: планшет, меню каталога перестраивается в две колонки ------- */
+@media (min-width:701px) and (max-width:980px){
+  .catmenu .wrap{grid-template-columns:1fr;max-height:calc(100vh - 150px)}
+  .catmenu .cats{border-right:0;border-bottom:1px solid var(--line);padding:16px 0 16px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+  .catmenu .cats a{font-size:17px;padding:13px 16px}
+  .catmenu .cats a.sale{margin-top:0}
+  .catmenu .brands{padding:20px 0 26px}
+  .bgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* ---- ≤700: телефон, каталог живёт в выдвижной панели --------------------- */
+@media (max-width:700px){
+  .catbtn{display:none}
+  .catmenu{display:none!important}
+  /* Панель — единственный каталог на телефоне, поэтому зоны нажатия крупнее. */
+  .mm-sec a{font-size:17px;min-height:56px;padding:0 22px}
+  .mm-sec .stitle{padding:10px 22px 6px;font-size:18px}
+  .mm-sec a.y{min-height:58px;font-size:17px}
+}
+
 /* ---- ≤640: телефоны ----------------------------------------------------- */
 @media (max-width:640px){
   :root{--gut:22px}
@@ -941,7 +1017,7 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .sec-head{margin-bottom:16px;gap:6px 16px}
   .sec-head a.more{font-size:14px}
   /* шапка */
-  .head .wrap{gap:8px 10px;padding:10px 0}
+  .head .wrap{gap:8px 10px;padding-top:10px;padding-bottom:10px}
   .logo img{height:28px}
   .logo-sub{display:none}
   .phone,.hact{display:none}

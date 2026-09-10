@@ -677,14 +677,58 @@
   /* Свою прокрутку по истории браузер бы восстанавливал поверх нашей. */
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
+  /*
+    Смена страницы должна быть заметной, но не медленной. Порядок такой:
+    гасим текущее содержимое (~180 мс), одновременно готовим новое, потом
+    мгновенно подменяем, ставим прокрутку в ноль и проявляем с лёгким
+    движением вверх (~260 мс). Итого около 440 мс.
+
+    Смена цвета внутри одной серии — отдельный случай: там страница остаётся
+    на месте, а меняется только карточка, поэтому кроссфейд короче и без
+    прокрутки. Иначе выбор цвета выбрасывал бы наверх.
+  */
+  var NAV_OUT = 180, NAV_IN = 260, SWAP = 380;
+  var navLine = document.getElementById('navline');
+  var navMode = 'page', navBusy = false;
+  function reduced() {
+    /* HB_STATIC ставит предрендер: снимок страницы не должен содержать
+       классов анимации и включённой полосы прогресса. */
+    return !!window.HB_STATIC || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function lineOn() { if (navLine) { navLine.classList.remove('done'); navLine.classList.add('on'); } }
+  function lineOff() {
+    if (!navLine) return;
+    navLine.classList.add('done');
+    setTimeout(function () { navLine.classList.remove('on', 'done'); }, 260);
+  }
+
   var lastKey = null, lastPath = null;
   function render() {
     var r = parse(), fn = routes[r.route] || notfound;
     var key = r.route + ':' + (r.slug || r.id || r.key || '');
     var keepScroll = (r.route === 'catalog' && lastPath === 'catalog') || (r.route === 'product' && key === lastKey) || (r.route === 'cart' && lastPath === 'cart') || (r.route === 'checkout' && lastPath === 'checkout');
+    var mode = navMode; navMode = 'page';
+    if (mode === 'variant') keepScroll = true;
+    var soft = !reduced() && lastPath !== null;
     var y = window.scrollY;
     var sideEl = app.querySelector('.side.open'), sideY = sideEl ? sideEl.scrollTop : 0;
-    return Promise.resolve(fn(r)).then(function (html) {
+
+    if (soft) {
+      navBusy = true;
+      lineOn();
+      /* Класс проявления мог остаться от предыдущего перехода: если его не
+         снять, два состояния наложатся и содержимое мигнёт. */
+      app.classList.remove('nav-in', 'swap-in');
+      app.classList.add(mode === 'variant' ? 'swap-out' : 'nav-out');
+    }
+    var ready = Promise.all([
+      Promise.resolve(fn(r)),
+      soft ? wait(mode === 'variant' ? SWAP / 2 : NAV_OUT) : null,
+    ]).then(function (a) { return a[0]; });
+
+    return ready.then(function (html) {
+      app.classList.remove('nav-out', 'swap-out');
       app.innerHTML = html;
       document.body.className = 'pg-' + r.route + (r.route === 'catalog' && r.query.f === '1' ? ' noscroll' : '');
       var s2 = app.querySelector('.side.open'); if (s2) s2.scrollTop = sideY;
@@ -697,6 +741,15 @@
       closeMenu(); closeMob();
       var toTab = r.route === 'product' && r.query.tab && key !== lastKey;
       scrollToY(keepScroll ? y : 0);
+      if (soft) {
+        var cls = mode === 'variant' ? 'swap-in' : 'nav-in';
+        app.classList.add(cls);
+        setTimeout(function () {
+          app.classList.remove(cls);
+          navBusy = false;
+          lineOff();
+        }, mode === 'variant' ? SWAP / 2 : NAV_IN);
+      }
       /* Ещё раз на следующем кадре: переход по хешу браузер доделывает после
          нас и иначе возвращает страницу туда, где она стояла. */
       if (!keepScroll && !toTab) requestAnimationFrame(function () { scrollToY(0); });
@@ -726,6 +779,16 @@
        здесь: без этого браузер уйдёт по /catalog/laser и откроет пустоту. */
     if (!href || href[0] !== '/' || href.indexOf('//') === 0) return;
     e.preventDefault();
+    if (navBusy) return;                       // пока идёт переход, второй клик не нужен
+    /* Ссылка на другой цвет той же серии — это смена варианта, а не переход
+       на новую страницу: прокрутка остаётся на месте, подсветка сразу. */
+    var kit = a.closest('.kit-i');
+    if (kit && !kit.classList.contains('on')) {
+      navMode = 'variant';
+      var list = kit.parentNode;
+      if (list) list.querySelectorAll('.kit-i').forEach(function (n) { n.classList.remove('on', 'picking'); });
+      kit.classList.add('picking');
+    }
     if (!OFFLINE && href === location.pathname + location.search) return;
     go(href);
   });
@@ -1061,9 +1124,6 @@
     }, { threshold: 0 });
     bbObs.observe(buy);
   }
-
-  var sInp = document.querySelector('#search-form input');
-  if (sInp && window.matchMedia('(max-width:640px)').matches) sInp.placeholder = 'Модель принтера или артикул';
 
   /* Точка входа для сборщика статических страниц (tools/build-seo.mjs):
      он переключает адрес и дожидается отрисовки, чтобы снять готовый HTML. */
