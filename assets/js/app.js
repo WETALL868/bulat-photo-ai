@@ -410,10 +410,16 @@
           '<span data-more-txt>Все характеристики (' + allSpecs.length + ')</span>' + ic('chev-down', 16) + '</button>'
         : '';
 
-      return '<div class="wrap"><div class="ph1 pph">' + crumbs([['Главная', link.home()], [C.catName(p.cat), link.catalog(p.cat)], [C.brandName(p.brand), link.catalog(p.cat, p.brand)], [p.code, '']]) +
+      /*
+         Название товара — отдельная строка сетки во всю ширину контента:
+         раньше оно жило в собственном блоке с max-width и на широком экране
+         прижималось к левому краю, оставляя половину строки пустой.
+      */
+      return '<div class="wrap"><div class="ph1 pph">' + crumbs([['Главная', link.home()], [C.catName(p.cat), link.catalog(p.cat)], [C.brandName(p.brand), link.catalog(p.cat, p.brand)], [p.code, '']]) + '</div>' +
+        '<div class="pgrid"><header class="phead">' +
         '<h1>' + esc(p.name) + '</h1>' +
-        '<div class="pmeta"><span class="rate">' + stars(p.rate, 16) + '<b>' + ratef(p.rate) + '</b><a href="#" data-tab-link="reviews">' + p.reviews + ' ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</a></span><span>Артикул: <b>' + esc(p.code) + '</b></span><span>Код товара: <b>' + (100000 + hash(p.id) % 900000) + '</b></span>' + badge(p) + '</div></div>' +
-        '<div class="pgrid"><div class="gallery"><div class="gmain" id="gmain" data-src="' + src + '"><img src="' + src + '" alt="' + esc(p.name) + '" data-gview="img"><div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>' + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span><span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span></div><div class="thumbs">' + thumbs + '</div></div>' +
+        '<div class="pmeta"><span class="rate">' + stars(p.rate, 16) + '<b>' + ratef(p.rate) + '</b><a href="#" data-tab-link="reviews">' + p.reviews + ' ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</a></span><span>Артикул: <b>' + esc(p.code) + '</b></span><span>Код товара: <b>' + (100000 + hash(p.id) % 900000) + '</b></span>' + badge(p) + '</div></header>' +
+        '<div class="gallery"><div class="gmain" id="gmain" data-src="' + src + '"><img src="' + src + '" alt="' + esc(p.name) + '" data-gview="img"><div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>' + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span><span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span></div><div class="thumbs">' + thumbs + '</div></div>' +
         '<div class="pinfo"><div class="keyspecs"><h3>Коротко о товаре</h3>' + key.map(function (k) { return '<div class="krow"><span>' + esc(k[0]) + '</span><b>' + esc(k[1]) + '</b></div>'; }).join('') + '</div>' +
         (compatChips ? '<div class="compat"><h3>Подходит для принтеров ' + brandLogo(p.brand, 18, '') + '</h3><div class="tags">' + compatChips + '</div></div>' : '') +
         '<a class="allspecs" href="#" data-spec-jump>Все характеристики ' + ic('chev-down', 16) + '</a></div>' +
@@ -774,6 +780,7 @@
          показанном баннере cookie — иначе липкая панель покупки на телефоне
          уезжает под него. */
       var hadCookie = document.body.classList.contains('has-cookie');
+      /* bar-on выставляет наблюдатель липкой панели; при смене страницы сбрасываем. */
       document.body.className = 'pg-' + r.route + (r.route === 'catalog' && r.query.f === '1' ? ' noscroll' : '') + (hadCookie ? ' has-cookie' : '');
       var s2 = app.querySelector('.side.open'); if (s2) s2.scrollTop = sideY;
       var h1 = app.querySelector('h1');
@@ -1255,7 +1262,10 @@
     if (!bar || !buy || !('IntersectionObserver' in window)) return;
     bbObs = new IntersectionObserver(function (en) {
       var x = en[0];
-      bar.classList.toggle('show', !x.isIntersecting && x.boundingClientRect.top < 0);
+      var on = !x.isIntersecting && x.boundingClientRect.top < 0;
+      bar.classList.toggle('show', on);
+      /* Пока панель не выехала, плашке cookie незачем висеть выше нижнего края. */
+      document.body.classList.toggle('bar-on', on);
     }, { threshold: 0 });
     bbObs.observe(buy);
   }
@@ -1273,9 +1283,13 @@
     if (window.HB_STATIC || ok) return;
     box.hidden = false;
     document.body.classList.add('has-cookie');
-    /* На телефоне баннер занимает три строки: фиксированный отступ в 78px не
-       спасал, и панель покупки пряталась под ним. Меряем реальную высоту. */
-    var fit = function () { document.documentElement.style.setProperty('--cookie-h', Math.round(box.getBoundingClientRect().height) + 'px'); };
+    /* Карточка плавает над нижним краем, и её высота зависит от ширины экрана.
+       Меряем расстояние от её верха до низа окна — по нему поднимаются
+       всплывающие уведомления, чтобы не оказаться под ней. */
+    var fit = function () {
+      var r = box.getBoundingClientRect();
+      document.documentElement.style.setProperty('--cookie-h', Math.round(window.innerHeight - r.top) + 'px');
+    };
     fit();
     window.addEventListener('resize', fit);
     document.getElementById('cookie-ok').addEventListener('click', function () {
