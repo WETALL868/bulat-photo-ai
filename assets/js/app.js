@@ -315,7 +315,11 @@
       if (cat === 'laser' || (!cat && !q.q && !q.sale)) {
         chips = '<div class="brands"><a class="chip ' + (!brand ? 'chip-on' : '') + '" href="' + link.catalog(cat || 'laser') + '">Все бренды</a>' +
           C.site.laserBrands.map(function (b) {
-            return '<a class="chip ' + (brand === b ? 'chip-on' : '') + '" href="' + link.catalog('laser', b) + '">' + (C.brandLogo(b) ? brandLogo(b, 16, '') : '') + esc(C.brandName(b)) + '</a>';
+            /* Название лежит в отдельном span: на телефоне оно скрыто, потому что
+               уже написано на логотипе, а доступное имя даёт aria-label. */
+            var nm = esc(C.brandName(b));
+            return '<a class="chip ' + (brand === b ? 'chip-on' : '') + '" href="' + link.catalog('laser', b) + '" aria-label="' + nm + '"' + (brand === b ? ' aria-current="true"' : '') + '>' +
+              (C.brandLogo(b) ? brandLogo(b, 16, '') + '<span class="bname">' + nm + '</span>' : nm) + '</a>';
           }).join('') + '</div>';
       }
 

@@ -95,6 +95,7 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .chip-on:hover{border-color:var(--yellow2)}
 .chip-y{background:var(--ytint);border-color:transparent}
 .chip img{height:16px;width:auto}
+.brands .chip{flex:0 0 auto}
 .tags{display:flex;flex-wrap:wrap;gap:8px}
 .avail{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--green);font-weight:500}
 .avail i{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;flex:none}
@@ -1231,7 +1232,15 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .logo-plate img{height:21px}
   .logo-sub{display:none}
   .phone,.hact{display:none}
-  .mphone{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:1px solid var(--hdr-line);color:#fff;margin-left:auto;flex:none}
+  .mphone{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:1px solid var(--hdr-line);color:#fff;margin-left:auto;flex:none;-webkit-tap-highlight-color:transparent}
+  /*
+    Глобальное a:hover{color:#000} на тач-экране «залипает» после касания, и
+    белая трубка на тёмной шапке оставалась чёрной. Цвет закреплён во всех
+    состояниях, от нажатия остаётся только короткая подсветка фона.
+  */
+  .mphone,.mphone:hover,.mphone:focus,.mphone:visited{color:#fff}
+  .mphone:active{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.45)}
+  .mphone:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
   .hacts{gap:0}
   .cartbtn{margin-left:0;gap:8px;padding:0 12px}
   .cartbtn .sum{display:none}
@@ -1339,8 +1348,20 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   /* каталог */
   .ph1 h1{gap:10px}
   .ph1 h1 span{font-size:14px}
-  .brands{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;margin:16px calc(var(--gut)*-1) 0;padding-left:var(--gut);padding-right:var(--gut);scrollbar-width:none}
+  /*
+    Лента брендов. Без flex:0 0 auto чипы сжимались ниже своей ширины, и
+    логотип наезжал на обрезанное название. Название рядом с логотипом на
+    телефоне не показываем — оно и так написано на самом логотипе, а для
+    доступности остаётся aria-label чипа.
+  */
+  .brands{overflow-x:auto;flex-wrap:nowrap;gap:9px;padding-bottom:4px;margin:16px calc(var(--gut)*-1) 0;padding-left:var(--gut);padding-right:var(--gut);scrollbar-width:none;
+    scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
   .brands::-webkit-scrollbar{display:none}
+  .brands .chip{flex:0 0 auto;scroll-snap-align:start;padding:0 14px;height:38px}
+  /* Высоту логотипа выставляет inline-стиль общего помощника brandLogo, поэтому
+     здесь нужен !important: на телефоне подписи рядом нет и логотип крупнее. */
+  .brands .chip img{height:18px!important;max-width:104px}
+  .brands .bname{display:none}
   .layout.cat{padding-top:20px}
   /*
     Панель каталога на телефоне в две строки: сверху фильтры и переключатель
