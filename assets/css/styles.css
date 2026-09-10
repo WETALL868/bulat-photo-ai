@@ -277,13 +277,15 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .hslider .slide{grid-area:1/1;position:relative;min-width:0;padding-bottom:66px;opacity:0;visibility:hidden;transition:opacity .7s ease,visibility 0s linear .7s;pointer-events:none;display:flex;align-items:center;background:#161616 center/cover no-repeat}
 .hslider .slide.on{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .7s ease,visibility 0s}
 .hslider .slide::before{content:"";position:absolute;inset:0}
-.hslider .s1{background-image:url(../img/art/slide-1.svg);background-position:right center;color:#fff}
-.hslider .s1::before{background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.88) 42%,rgba(14,14,14,.45) 68%,rgba(14,14,14,.2) 100%)}
-.hslider .s2{background:#161616}
-.hslider .s2::before{background:radial-gradient(60% 80% at 78% 50%,rgba(255,210,0,.22),rgba(255,210,0,0) 70%)}
-.hslider .s3{background-image:url(../img/art/slide-2.svg);background-position:right center}
-.hslider .s3::before{background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.86) 42%,rgba(14,14,14,.35) 70%,rgba(14,14,14,.15) 100%)}
-.hslider .wrap{position:relative;width:100%;display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:40px;align-items:center}
+/* Фотографии сняты под этот баннер: техника справа, левая половина тёмная и
+   пустая. Поверх — только мягкая тень слева под текст, справа снимок остаётся
+   в полную силу. Никакой декоративной графики поверх фото нет. */
+.hslider .s1{background-image:url(../img/banners/slide-1.webp);background-position:right center;color:#fff}
+.hslider .s2{background-image:url(../img/banners/slide-2.webp);background-position:right center}
+.hslider .s3{background-image:url(../img/banners/slide-3.webp);background-position:right center}
+.hslider .slide::before{background:linear-gradient(90deg,rgba(11,11,10,.94) 0%,rgba(11,11,10,.86) 30%,rgba(11,11,10,.6) 48%,rgba(11,11,10,.18) 66%,rgba(11,11,10,0) 80%)}
+/* Правая колонка пустая: там на фотографии стоит техника, текст в неё не лезет. */
+.hslider .wrap{position:relative;width:100%;display:grid;grid-template-columns:minmax(0,1fr) 46%;gap:40px;align-items:center}
 .hslider .stext{max-width:660px;padding:40px 0;min-width:0}
 /* Логотип живёт в шапке и виден на любой странице, поэтому на слайдах он не
    повторяется: два знака подряд читаются как ошибка вёрстки. */
@@ -304,8 +306,6 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .hslider .btn-w{background:transparent;border-color:rgba(255,255,255,.35);color:#fff}
 .hslider .btn-w:hover{border-color:#fff;color:#fff}
 .hslider .btn{text-decoration:none}
-.hslider .svis{position:relative;display:flex;align-items:center;justify-content:center}
-.hslider .svis img{width:100%;height:auto;filter:drop-shadow(0 30px 40px rgba(0,0,0,.5))}
 .hslider .sfeat{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:26px;max-width:560px}
 .hslider .sfeat div{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:#e6e5df;padding:12px 14px;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:rgba(255,255,255,.04)}
 .hslider .sfeat svg{color:var(--yellow);flex:none;margin-top:1px}
@@ -837,7 +837,7 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .topbar .l span:nth-child(3),.topbar .r a:nth-child(1){display:none}
   .navbar .wrap{gap:20px}
   .nav{gap:18px}
-  .hslider .wrap{grid-template-columns:minmax(0,1fr) 340px}
+  .hslider .wrap{grid-template-columns:minmax(0,1fr) 40%}
   .hslider h1,.hslider h2{font-size:38px}
   .grid4{grid-template-columns:repeat(3,minmax(0,1fr))}
   .pgrid{grid-template-columns:minmax(0,1fr) 340px;grid-template-areas:"g b" "i b"}
@@ -876,13 +876,16 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .side{display:none}
   .ph1{padding-top:18px}
   .sec{margin-top:40px}
-  .hslider{min-height:0}
+  /* Снизу слайдер держит высоту, чтобы фотография не превращалась в полоску. */
+  .hslider{min-height:520px}
   .hslider .wrap{grid-template-columns:1fr;gap:0}
-  .hslider .svis{max-width:260px;margin:20px auto 0;order:-1}
-  .hslider .s3 .svis{display:none}
   .hslider .slide{padding-bottom:60px}
   .hslider .stext{padding:30px 0;max-width:none}
-  .hslider .s1::before{background:linear-gradient(90deg,rgba(14,14,14,.96) 0%,rgba(14,14,14,.9) 55%,rgba(14,14,14,.6) 100%)}
+  /* На узком экране кадрируется правая четверть снимка — та, где стоит
+     техника. Горизонтальная тень там уже не спасает, поэтому затемняем весь
+     кадр сверху вниз: снимок остаётся фоном, текст читается поверх него. */
+  .hslider .slide{background-position:72% center}
+  .hslider .slide::before{background:linear-gradient(180deg,rgba(11,11,10,.9) 0%,rgba(11,11,10,.82) 45%,rgba(11,11,10,.92) 100%)}
   .hslider .sfeat{max-width:none}
   .finder{max-width:none}
   .tiles,.tiles-s{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -947,7 +950,6 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   .hslider .stext{padding:22px 0}
     .hslider h1,.hslider h2{font-size:27px;margin:12px 0 10px}
   .hslider p{font-size:15px}
-  .hslider .svis{display:none}
   .hslider .sfeat{gap:8px;margin-top:18px}
   .hslider .sfeat div{padding:9px 10px;font-size:12.5px;gap:8px;border-radius:10px}
   .hslider .sctrl{bottom:16px}
