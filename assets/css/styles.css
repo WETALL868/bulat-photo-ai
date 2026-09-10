@@ -197,12 +197,20 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .cartbtn .sum{font-family:var(--head);font-weight:800;font-size:18px}
 .navbar{border-top:1px solid var(--hdr-line);border-bottom:0;position:relative;background:var(--hdr)}
 .navbar .wrap{display:flex;align-items:center;gap:22px;height:64px}
-.catbtn{display:inline-flex;align-items:center;gap:12px;height:46px;padding:0 20px 0 18px;border-radius:12px;background:var(--yellow);color:var(--ink);font-family:var(--head);font-weight:700;font-size:16px;white-space:nowrap;flex:none}
+/* Главный вход в каталог: надпись крупнее и жирнее, но коробка кнопки та же —
+   прибавку в ширине забирают внутренние промежутки, а не padding. */
+.catbtn{display:inline-flex;align-items:center;gap:8.5px;height:46px;padding:0 20px 0 18px;border-radius:12px;background:var(--yellow);color:var(--ink);font-family:var(--head);font-weight:800;font-size:17px;letter-spacing:-.01em;white-space:nowrap;flex:none}
 .catbtn:hover{background:var(--yellow2)}
-.catbtn svg.y{color:var(--ink)}
-.catbtn svg.y{color:var(--yellow)}
-.catbtn .chev{transition:transform .2s}
+/*
+  Значок меню раньше был залит тем же жёлтым, что и фон, и «проявлялся» только
+  на hover, когда фон темнел. Он чёрный и непрозрачный во всех состояниях.
+*/
+.catbtn svg.y{color:var(--ink);opacity:1;flex:none}
+.catbtn:hover svg.y,.catbtn:focus svg.y,.catbtn:focus-visible svg.y,.catbtn:active svg.y,.catbtn.open svg.y{color:var(--ink);opacity:1}
+.catbtn .txt{flex:1;min-width:0}
+.catbtn .chev{transition:transform .2s;flex:none}
 .catbtn.open .chev{transform:rotate(180deg)}
+.catbtn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .nav{display:flex;gap:18px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .nav::-webkit-scrollbar{display:none}
 .nav a{font-weight:500;font-size:16.5px;white-space:nowrap;padding:8px 0;color:#eceae4}
