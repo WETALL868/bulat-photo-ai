@@ -560,10 +560,6 @@ const ol = (items) => `<ol>${items.map((x) => `<li>${x}</li>`).join('')}</ol>`;
 const pp = (...t) => t.map((x) => `<p>${x}</p>`).join('');
 const money = (n) => `${n.toLocaleString('ru-RU')} ₽`;
 const svg = (d) => `<svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
-/* Значки страницы контактов рисуются здесь, но значок MAX берём из того же
-   assets/js/icons.js, что и витрина: копия пути в двух файлах рано или поздно
-   разъезжается. Заменить значок на официальный вектор MAX — правка одной
-   строки в icons.js, и она подхватится и здесь, и в приложении. */
 /*
   Адрес MAX попадает в сборку только если он настоящий: подтверждён флагом и
   прошёл проверку формы. Иначе в site.json уходит url: null — заглушка не может
@@ -575,22 +571,25 @@ const maxPublic = (() => {
   const looksReal = /^https:\/\/max\.ru\/\S+$/i.test(url)
     && !/replace|placeholder|example|todo|username|<|>/i.test(url);
   const active = m.confirmed === true && looksReal;
-  return { name: m.name, label: m.label, note: m.note, pending: m.pending, active, url: active ? url : null };
+  return {
+    name: m.name, label: m.label, note: m.note, pending: m.pending,
+    /* Официальный знак MAX лежит отдельным файлом и подключается картинкой:
+       внутри у него 154 градиента, 16 фильтров и маска со своими id, и при
+       вставке прямо в разметку эти id столкнулись бы между четырьмя точками.
+       У <img> собственная область имён, знак грузится один раз и остаётся
+       байт-в-байт официальным. */
+    icon: '/assets/img/max-icon.svg',
+    active, url: active ? url : null,
+  };
 })();
 
-const SITE_ICONS = (() => {
-  const src = fs.readFileSync(path.join(ROOT, 'assets/js/icons.js'), 'utf8');
-  const m = src.match(/window\.HB_ICONS\s*=\s*(\{[\s\S]*?\});/);
-  if (!m) throw new Error('не разобрал assets/js/icons.js');
-  return JSON.parse(m[1]);
-})();
+
 
 const ICO = {
   phone: svg('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>'),
   mail: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>'),
   clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   pin: svg('<path d="M12 21s-6-5.7-6-11a6 6 0 0 1 12 0c0 5.3-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>'),
-  max: svg(SITE_ICONS.max),
 };
 pageText.contacts =
   `<p class="lead">Ответим на вопросы по наличию, совместимости и доставке, поможем подобрать расходник по модели принтера и выставим счёт организации.</p>` +
@@ -605,14 +604,17 @@ pageText.contacts =
   `<b>${contacts.officeHours}</b><span>Заказы на сайте принимаются круглосуточно</span></div>` +
   /* MAX — такой же полноценный канал, как телефон и почта. Адрес приходит из
      одной константы messengers.max и в разметке не дублируется. */
-  `<div class="ccard ccard-max"><span class="cico">${ICO.max}</span><div class="ct">Мессенджер</div>` +
+  /* Знак стоит без подложки: у официального вектора своя заливка, и чёрный
+     квадрат под ним спорил бы с градиентом. */
+  `<div class="ccard ccard-max"><img class="maxico maxico-lg" src="${maxPublic.icon}" alt="" width="42" height="42">` +
+  `<div class="ct">Мессенджер</div>` +
   (maxPublic.active
     ? `<b><a class="maxlink" href="${maxPublic.url}" target="_blank" rel="noopener noreferrer"` +
-      ` aria-label="Написать нам в мессенджере MAX, откроется в новой вкладке">Напишите нам в MAX</a></b>` +
+      ` aria-label="Написать нам в мессенджере MAX, откроется в новой вкладке">Написать в MAX</a></b>` +
       `<span>${maxPublic.note}</span>`
     /* Адреса ещё нет: блок виден для согласования дизайна, но ссылкой не
        притворяется — это span без href и без навигации. */
-    : `<b><span class="maxlink is-off" aria-disabled="true">Напишите нам в MAX</span></b>` +
+    : `<b><span class="maxlink is-off" aria-disabled="true">Написать в MAX</span></b>` +
       `<span class="maxnote">${maxPublic.pending}</span>`) +
   `</div>` +
   /* Закрываем саму сетку карточек. Без этого `</div>` браузер оставлял

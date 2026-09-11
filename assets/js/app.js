@@ -51,6 +51,15 @@
     return '<a class="' + cls + '" href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer" aria-label="' + esc(aria) + '">' + inner + '</a>';
   }
   function maxPending() { var m = maxCfg(); return esc((m && m.pending) || 'Ссылка будет добавлена'); }
+  /* Официальный знак MAX — отдельный файл, адрес приходит из той же настройки.
+     Картинкой, а не встроенным svg: внутри знака полторы сотни градиентов,
+     фильтры и маска со своими id, которые столкнулись бы между точками. */
+  function maxIcon(size, cls) {
+    var m = maxCfg();
+    if (!m || !m.icon) return '';
+    return '<img class="maxico' + (cls ? ' ' + cls : '') + '" src="' + esc(m.icon) +
+      '" alt="" width="' + size + '" height="' + size + '" loading="lazy" decoding="async">';
+  }
 
   function stars(rate, size) {
     var full = Math.round(rate), out = '<span class="stars">';
@@ -500,10 +509,10 @@
         '<div class="acts"><button type="button" class="' + (S.cmp[p.id] ? 'on' : '') + '" data-cmp="' + p.id + '" aria-pressed="' + !!S.cmp[p.id] + '" title="' + (S.cmp[p.id] ? 'Убрать из сравнения' : 'Добавить к сравнению') + '">' + ic('compare', 16) + (S.cmp[p.id] ? 'В сравнении' : 'В сравнение') + '</button><button type="button" class="' + (S.fav[p.id] ? 'on' : '') + '" data-fav="' + p.id + '">' + ic('heart', 16) + (S.fav[p.id] ? 'В избранном' : 'В избранное') + '</button></div>' +
         '<div class="dlist"><div>' + ic('truck', 18) + '<div><b>Курьер по Москве</b><span>Дату и интервал подтверждает менеджер</span></div></div><div>' + ic('pin', 18) + '<div><b>Самовывоз по предварительному согласованию</b><span>Москва, Ясеневая ул., д. 50</span></div></div><div>' + ic('card', 18) + '<div><b>Оплата картой, СБП или по счёту</b><span>Юрлицам — счёт и закрывающие документы</span></div></div><div>' + ic('shield', 18) + '<div><b>Гарантия ресурса</b><span>Срок указан в карточке и документах</span></div></div></div>' +
         (maxCfg()
-          ? maxEl('ask ask-max', 'Написать о товаре ' + p.name + ' в мессенджере MAX, откроется в новой вкладке',
-              ic('max', 22) + '<div><b>Написать в MAX</b>' +
+          ? maxEl('ask-max', 'Написать о товаре ' + p.name + ' в мессенджере MAX, откроется в новой вкладке',
+              maxIcon(26) + '<div><b>Написать в MAX</b>' +
               (maxOn()
-                ? '<span>Спросим наличие, совместимость и сроки — ответим в мессенджере</span>'
+                ? '<span>Спросим наличие, совместимость и сроки</span>'
                 : '<span class="maxnote">' + maxPending() + '</span>') +
               '</div>' + (maxOn() ? ic('external', 16, 'ic ext') : ''))
           : '<a class="ask" href="' + link.page('contacts') + '">' + ic('chat', 22) + '<div><b>Задать вопрос о товаре</b><span>Ответим в чате или по телефону</span></div></a>') + '</div></div>' +
@@ -623,7 +632,7 @@
       '<div class="cfootr"><form class="promo" id="promo-form"><div class="field"><input type="text" name="promo" placeholder="Промокод" value="' + esc(S.promo || '') + '" aria-label="Промокод"></div><button class="btn btn-o" type="submit">Применить</button>' + (promo ? '<span class="ok">' + ic('check', 16) + 'Скидка 5% применена</span>' : (S.promoErr ? '<span class="err">Промокод не найден</span>' : '<span class="muted xs">Для теста: HIBLACK5</span>')) + '</form><a class="back" href="' + link.catalog('') + '">' + ic('chev-left', 16) + 'Продолжить покупки</a></div></div>' +
       '<div class="summary"><h3>Ваш заказ</h3><div class="srow"><span>Товары, ' + n + ' шт.</span><b>' + fmt(sum) + ' ₽</b></div><div class="srow"><span>Скидка</span><b>' + (promo ? '−' + fmt(promo) + ' ₽' : '0 ₽') + '</b></div><div class="srow"><span>Доставка</span><b class="soft">рассчитаем на следующем шаге</b></div><div class="srow total"><span>Итого</span><b>' + fmt(sum - promo) + ' ₽</b></div><a class="btn btn-y btn-lg btn-full" href="' + link.plain('checkout') + '">Оформить заказ' + ic('arrow-right', 20) + '</a><div class="payrow"><span>НАЛИЧНЫМИ</span><span>КАРТОЙ КУРЬЕРУ</span><span>ПО СЧЁТУ</span></div><div class="biz">' + ic('building', 20) + '<div><b>Заказ для компании?</b>На следующем шаге выберите «Юридическое лицо» — счёт придёт на почту, документы отдадим с заказом.</div></div><div class="note">Согласия на обработку персональных данных и условия оферты подтверждаются на шаге оформления — отдельными галочками.</div>' +
       maxEl('maxhelp', 'Задать вопрос по заказу в мессенджере MAX, откроется в новой вкладке',
-        ic('max', 18) + '<span>Нужна помощь с заказом? Напишите в MAX</span>' +
+        maxIcon(26) + '<span>Написать в MAX</span>' +
         (maxOn() ? '' : '<i class="maxnote">' + maxPending() + '</i>')) +
       '</div>' +
       '<div class="sec addon-sec"><div class="sec-head"><h3>Добавить к заказу</h3><a class="more" href="' + link.catalog('') + '">Ещё ' + ic('arrow-right', 18) + '</a></div><div class="addon">' + addon.map(function (p) {
@@ -1508,7 +1517,7 @@
     for (var i = 0; i < nodes.length; i++) {
       var node = nodes[i];
       if (!m) { node.hidden = true; continue; }
-      var inner = ic('max', 18) + '<span>Написать в MAX</span>' +
+      var inner = maxIcon(26) + '<span>Написать в MAX</span>' +
         (maxOn() ? '' : '<i class="maxnote">' + maxPending() + '</i>');
       var html = maxEl('fmax', 'Написать нам в мессенджере MAX, откроется в новой вкладке', inner)
         .replace('class="fmax', 'data-max-link class="fmax');

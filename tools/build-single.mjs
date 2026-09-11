@@ -64,6 +64,25 @@ function collectData() {
   map['/data/site.json'].brandLogos = Object.fromEntries(
     Object.entries(map['/data/site.json'].brandLogos).map(([k, v]) => [k, v ? toUri(v) : v])
   );
+  /* Официальный знак MAX витрина берёт по адресу из site.json. В одном файле
+     сервера нет, поэтому путь заменяем на data-URI — знак остаётся тем же
+     файлом, просто уложенным внутрь. */
+  const mx = map['/data/site.json'].messengers && map['/data/site.json'].messengers.max;
+  if (mx && mx.icon) mx.icon = toUri(mx.icon);
+  /* Тексты страниц приходят готовой разметкой, и картинки внутри них тоже
+     ведут на /assets. Проходим по строкам и подставляем те же data-URI:
+     иначе в одном файле такие картинки остаются битыми. */
+  const inlineDataSrcs = (o) => {
+    if (typeof o === 'string') {
+      return o.replace(/(src|href)="(\/assets\/img\/[^"]+)"/g, (m, a, rel) => a + '="' + toUri(rel) + '"');
+    }
+    if (Array.isArray(o)) return o.map(inlineDataSrcs);
+    if (o && typeof o === 'object') {
+      for (const k of Object.keys(o)) o[k] = inlineDataSrcs(o[k]);
+    }
+    return o;
+  };
+  map['/data/site.json'].pageText = inlineDataSrcs(map['/data/site.json'].pageText);
   return map;
 }
 

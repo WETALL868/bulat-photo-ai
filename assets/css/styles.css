@@ -1586,71 +1586,67 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
 /* Карточка товара: заметный, но спокойный CTA на месте прежней строки
    «Задать вопрос о товаре». Жёлтая плашка — тот же приём, что у счёта
    юрлицам, поэтому блок читается как часть страницы, а не как реклама. */
-.ask-max{gap:12px;padding:14px 16px;background:var(--ytint);border:1px solid var(--yellow2);
-  color:var(--ink);align-items:center;transition:background .16s,border-color .16s}
-.ask-max svg{flex:none;color:var(--ink)}
-.ask-max b{font-family:var(--head);font-weight:800;font-size:15px;letter-spacing:-.01em}
-.ask-max span{color:var(--ink2);font-size:12.5px;line-height:1.4}
-.ask-max .ext{margin-left:auto;opacity:.5}
-.ask-max:hover{background:var(--yellow);border-color:var(--yellow)}
-.ask-max:hover .ext{opacity:.8}
-.ask-max:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+/* Знак MAX. Файл официальный (assets/img/max-icon.svg), поэтому он нигде не
+   перекрашивается и не обрезается — только масштабируется. Подложек под ним
+   нет: у знака своя градиентная заливка, и любой квадрат или круг под ним
+   спорил бы с ней. */
+.maxico{flex:none;display:block;width:26px;height:26px;object-fit:contain}
+.maxico-lg{width:42px;height:42px;margin-bottom:8px}
+
+/* Подпись — синяя, в тон знаку. Цвет взят из его же градиента: так строка
+   читается как канал MAX, а не как ещё одна кнопка магазина. */
+:root{--max:#1962ff;--max-d:#7ba3ff}
+
+/* Карточка товара: строка на месте прежнего «Задать вопрос о товаре».
+   Намеренно без заливки и рамки — рядом уже стоят жёлтая кнопка корзины и
+   плашка счёта юрлицам, третья плашка сделала бы колонку пёстрой. */
+.ask-max{display:flex;align-items:center;gap:12px;padding:14px 2px 2px;
+  border-top:1px solid var(--line);margin-top:2px}
+.ask-max b{display:block;font-family:var(--head);font-weight:800;font-size:15px;
+  letter-spacing:-.01em;color:var(--max)}
+.ask-max span{display:block;color:var(--muted);font-size:12.5px;line-height:1.4}
+.ask-max .ext{margin-left:auto;color:var(--max);opacity:.55}
+.ask-max:hover b{text-decoration:underline}
+.ask-max:hover .ext{opacity:.9}
+.ask-max:focus-visible{outline:2px solid var(--max);outline-offset:3px;border-radius:4px}
 
 /* Контакты: MAX стоит четвёртой карточкой рядом с телефоном, почтой и
    режимом работы — равноправный канал, а не приписка. */
-.ccard-max .cico{background:var(--ink);color:var(--yellow)}
-.ccard-max b a.maxlink{display:inline-flex;align-items:center;gap:8px;color:var(--ink);
-  border-bottom:2px solid var(--yellow);line-height:1.15}
-.ccard-max b a.maxlink:hover{color:var(--ink2);border-bottom-color:var(--ink)}
-.ccard-max b a.maxlink:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.ccard-max b .maxlink{color:var(--max);line-height:1.15}
+.ccard-max b a.maxlink:hover{text-decoration:underline}
+.ccard-max b a.maxlink:focus-visible{outline:2px solid var(--max);outline-offset:3px}
+.ccard-max .maxnote{font-size:13px;margin-top:2px}
 
-/* Подвал: компактная строка в столбце контактов, доступна со всех страниц. */
-.fmax{display:inline-flex;align-items:center;gap:10px;color:#d2d1cb;font-size:17px;
+/* Подвал: компактная строка в столбце контактов, доступна со всех страниц.
+   На тёмном фоне синий берём светлее — иначе подпись теряет контраст. */
+.fmax{display:inline-flex;align-items:center;gap:10px;color:var(--max-d);font-size:17px;
   width:fit-content;padding:2px 0;transition:color .16s}
-.fmax svg{flex:none;color:var(--yellow)}
-.fmax:hover{color:#fff}
-.fmax:focus-visible{outline:2px solid var(--yellow);outline-offset:3px;border-radius:4px}
+.fmax:hover{color:#a9c4ff}
+.fmax:focus-visible{outline:2px solid var(--max-d);outline-offset:3px;border-radius:4px}
 
-/* Корзина: тихая строка под итогом. Намеренно без рамки и заливки, чтобы не
-   спорить с кнопкой «Оформить заказ». */
-.maxhelp{display:flex;align-items:center;gap:9px;margin-top:14px;padding-top:14px;
-  border-top:1px solid var(--line);color:var(--muted);font-size:13px;transition:color .16s}
-.maxhelp svg{flex:none;color:var(--ink);opacity:.75}
-.maxhelp:hover{color:var(--ink)}
-.maxhelp:hover svg{opacity:1}
-.maxhelp:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:4px}
+/* Корзина: тихая строка под итогом, отделённая линией от суммы заказа. */
+.maxhelp{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:14px;
+  border-top:1px solid var(--line);color:var(--max);font-size:14px;transition:color .16s}
+.maxhelp:hover{text-decoration:underline}
+.maxhelp:focus-visible{outline:2px solid var(--max);outline-offset:2px;border-radius:4px}
 
 /* Состояние «адреса ещё нет». Пока messengers.max.confirmed !== true или URL
    не прошёл проверку, сборка выдаёт те же четыре блока, но как span с
-   aria-disabled: без href, без перехода и без внешней стрелки. Дизайн остаётся
-   на экране для согласования, однако элемент не притворяется рабочим —
-   курсор обычный, ховер выключен, пунктирная граница и подпись прямо говорят,
-   что ссылка появится позже. Когда адрес будет проставлен, те же самые классы
-   вернутся на <a target="_blank"> — отдельной вёрстки для этого не нужно. */
+   aria-disabled: без href, без перехода и без внешней стрелки. Знак и подпись
+   остаются на месте для согласования, однако элемент не притворяется рабочим —
+   курсор обычный, подчёркивания по наведению нет, а короткая подпись прямо
+   говорит, что ссылка появится позже. Когда адрес проставят, те же самые
+   классы вернутся на <a target="_blank"> — отдельной вёрстки не нужно. */
 .is-off{cursor:default}
+.is-off:hover,.is-off:hover b{text-decoration:none}
 .maxnote{font-style:normal;font-weight:400;font-family:var(--body);font-size:12px;
   line-height:1.35;letter-spacing:0;color:var(--muted)}
-
-.ask-max.is-off{border-style:dashed}
-.ask-max.is-off:hover{background:var(--ytint);border-color:var(--yellow2)}
-.ask-max .maxnote{display:block;margin-top:1px}
-
-.ccard-max b .maxlink{display:inline-flex;align-items:center;gap:8px;color:var(--ink);
-  border-bottom:2px solid var(--yellow);line-height:1.15}
-.ccard-max b .maxlink.is-off{color:var(--ink2);border-bottom-style:dashed;border-bottom-color:var(--yellow2)}
-.ccard-max .maxnote{font-size:13px;margin-top:2px}
-
-.fmax.is-off{flex-wrap:wrap;color:#b6b4ad}
-.fmax.is-off:hover{color:#b6b4ad}
-.fmax .maxnote{flex:0 0 100%;box-sizing:border-box;padding-left:28px;color:#8d8b84}
-
-.maxhelp.is-off{flex-wrap:wrap;align-items:flex-start}
-.maxhelp.is-off:hover{color:var(--muted)}
-.maxhelp.is-off:hover svg{opacity:.75}
-.maxhelp .maxnote{flex:0 0 100%;box-sizing:border-box;padding-left:27px;margin-top:2px}
+.fmax .maxnote{flex:0 0 100%;box-sizing:border-box;padding-left:36px;color:#8d8b84}
+.fmax.is-off{flex-wrap:wrap}
+.maxhelp .maxnote{flex:0 0 100%;box-sizing:border-box;padding-left:36px;margin-top:2px}
+.maxhelp.is-off{flex-wrap:wrap;align-items:flex-start;color:var(--max)}
 
 @media (max-width:640px){
-  .ask-max{padding:13px 14px}
   .ask-max .ext{display:none}
   .fmax{font-size:16px}
 }
