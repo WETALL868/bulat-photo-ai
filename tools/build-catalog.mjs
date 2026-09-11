@@ -307,7 +307,7 @@ function buildReviews(p, brandName) {
 */
 async function readVttStore(storeRoot) {
   const { VttStore } = await import('../vtt/src/store.mjs');
-  const { publish } = await import('../vtt/src/publish.mjs');
+  const { publish, modelsOf } = await import('../vtt/src/publish.mjs');
   const store = new VttStore(storeRoot);
   if (!fs.existsSync(path.join(storeRoot, 'items'))) {
     throw new Error(
@@ -325,7 +325,7 @@ async function readVttStore(storeRoot) {
     filter, editorial,
     categories: state.categories ?? [],
     shopCat: (item) => catFromText(item.category || item.categoryRoot || item.name || ''),
-    shopBrand: (item) => brandFromText([...(item.compatibility ?? []), item.name ?? ''].join(' ')),
+    shopBrand: (item) => brandFromText([...modelsOf(item), item.name ?? ""].join(" ")),
   });
 
   console.log(`  импорт VTT: в сторе ${report.total}, опубликовано ${report.published}, ` +
@@ -399,40 +399,64 @@ products.sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name, 'ru'));
       ни на AggregateRating, ни на sitemap.
 */
 function demoReviewsFor(p) {
+  const nf = (n) => Number(n).toLocaleString('ru-RU');
+  /*
+    Пул фактов. Каждый пункт — то, что реально пришло в выгрузке, и ничего
+    кроме: ни «печатает без полос», ни «пришло быстро». Демо-запись здесь
+    проверяет вёрстку раздела, а не изображает покупателя.
+  */
   const facts = [];
   if (p.code) facts.push(['Артикул в выгрузке', p.code]);
-  if (p.originalNumber) facts.push(['Оригинальный номер', p.originalNumber]);
-  if (p.res) facts.push(['Заявленный ресурс', `${Number(p.res).toLocaleString('ru-RU')} страниц`]);
-  if (p.color) facts.push(['Цвет', p.color]);
+  if (p.res) facts.push(['Заявленный ресурс', `${nf(p.res)} страниц`]);
   if (p.models?.length) facts.push(['Совместимость по выгрузке', p.models.slice(0, 4).join(', ')]);
-  if (p.weight) facts.push(['Вес', `${p.weight} кг`]);
+  if (p.originalNumber) facts.push(['Оригинальный номер', p.originalNumber]);
+  if (p.color) facts.push(['Цвет', p.color]);
   if (p.catPath?.length || p.vttCategory) facts.push(['Раздел поставщика', (p.catPath ?? []).join(' / ') || p.vttCategory]);
+  if (p.weight) facts.push(['Вес', `${nf(p.weight)} кг`]);
   if (p.stockDetail) facts.push(['Остатки на момент выгрузки',
-    `доступно ${p.stockDetail.available}, в пути ${p.stockDetail.transit}, на центральном складе ${p.stockDetail.mainOffice}`]);
+    `доступно ${nf(p.stockDetail.available)}, в пути ${nf(p.stockDetail.transit)}, на центральном складе ${nf(p.stockDetail.mainOffice)}`]);
+  if (p.price) facts.push(['Цена из выгрузки', `${nf(p.price)} ₽`]);
+  /* Запасной факт: имя товара есть всегда, поэтому хотя бы одна запись
+     наберётся у любой карточки. Требование «минимум одна» выполняется
+     без единого выдуманного слова. */
+  if (!facts.length && p.name) facts.push(['Наименование в выгрузке', p.name]);
 
-  /* Записей столько, сколько фактов хватает — не больше. Нечего сказать по
-     делу, значит записи нет: пустой блок честнее выдуманного. */
+  /* Ровно три записи, если фактов хватает; меньше — только когда фактов
+     меньше. Больше трёх не нужно: это проверка вёрстки, а не лента. */
+  const count = Math.min(3, facts.length);
+  const ANGLE = [
+    { label: 'карточка', what: 'подписи и переносы в основном блоке записи' },
+    { label: 'ответ магазина', what: 'вложенный ответ под записью' },
+    { label: 'длинный текст', what: 'перенос длинной строки и выравнивание колонок' },
+  ];
+
   const out = [];
-  for (let i = 0; i < Math.min(3, facts.length); i++) {
+  for (let i = 0; i < count; i++) {
     const [label, value] = facts[i];
-    const extra = facts[i + 3] ? ` ${facts[i + 3][0]}: ${facts[i + 3][1]}.` : '';
+    /* Второй факт подмешивается со сдвигом, поэтому у двух товаров подряд
+       записи не совпадают дословно: набор фактов у каждого свой. */
+    const extra = facts[(i + count) % facts.length];
+    const also = extra && extra[0] !== label ? ` ${extra[0]}: ${extra[1]}.` : '';
     out.push({
       demo: true,
       name: `Демонстрационная запись №${i + 1}`,
       city: 'ДЕМО / тестовые данные',
       date: '',
-      rate: 0,
+      /* Оценка 5 из 5 — это оценка самой демонстрационной записи, и она
+         не попадает ни в рейтинг товара, ни в микроразметку: p.rate и
+         p.reviews у импортированных товаров остаются нулями. */
+      rate: 5,
       printer: p.models?.[0] ?? '',
-      text: `${label}: ${value}.${extra} Запись создана для проверки вёрстки раздела отзывов ` +
-        'на импортированном товаре и не является отзывом покупателя.',
+      text: `${label}: ${value}.${also} Запись проверяет ${ANGLE[i].what} ` +
+        `(${ANGLE[i].label}) на импортированном товаре «${p.name}» и не является отзывом покупателя.`,
       plus: '',
       minus: '',
       useful: 0,
       reply: {
         demo: true,
         author: 'ДЕМО / тестовые данные',
-        text: 'Демонстрационный ответ магазина: проверка блока ответов. ' +
-          'Реальные ответы появятся вместе с реальными отзывами.',
+        text: `Демонстрационный ответ магазина к записи №${i + 1}: проверка блока ответов ` +
+          `по товару ${p.code || p.id}. Реальные ответы появятся вместе с реальными отзывами.`,
       },
     });
   }

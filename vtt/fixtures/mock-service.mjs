@@ -86,8 +86,8 @@ export function portionEnvelope(operation, element, items, totalCount) {
   return '<?xml version="1.0" encoding="utf-8"?>' +
     '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">' +
     '<s:Body>' +
-    `<${operation}Response xmlns="http://tempuri.org/">` +
-    `<${operation}Result xmlns:a="http://schemas.datacontract.org/2004/07/Vtt" ` +
+    `<${operation}Response xmlns="http://portal.vtt.ru">` +
+    `<${operation}Result xmlns:a="http://portal.vtt.ru/data" ` +
     'xmlns:b="http://schemas.microsoft.com/2003/10/Serialization/Arrays" ' +
     'xmlns:i="http://www.w3.org/2001/XMLSchema-instance">' +
     `<a:TotalCount>${totalCount}</a:TotalCount>` +
@@ -95,6 +95,19 @@ export function portionEnvelope(operation, element, items, totalCount) {
     `</${operation}Result>` +
     `</${operation}Response>` +
     '</s:Body></s:Envelope>';
+}
+
+/* Списочные операции WSDL отдают просто массив DTO, без TotalCount —
+   в отличие от порционных. */
+export function listEnvelope(operation, element, rows) {
+  return '<?xml version="1.0" encoding="utf-8"?>' +
+    '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>' +
+    `<${operation}Response xmlns="http://portal.vtt.ru">` +
+    `<${operation}Result xmlns:a="http://portal.vtt.ru/data" ` +
+    'xmlns:b="http://schemas.microsoft.com/2003/10/Serialization/Arrays" ' +
+    'xmlns:i="http://www.w3.org/2001/XMLSchema-instance">' +
+    rows.map((r) => itemToXml(r, element)).join('') +
+    `</${operation}Result></${operation}Response></s:Body></s:Envelope>`;
 }
 
 export function faultEnvelope(code, text) {
@@ -111,8 +124,8 @@ function categoriesEnvelope(cats) {
     '</a:CategoryDto>').join('');
   return '<?xml version="1.0" encoding="utf-8"?>' +
     '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>' +
-    '<GetCategoriesResponse xmlns="http://tempuri.org/">' +
-    '<GetCategoriesResult xmlns:a="http://schemas.datacontract.org/2004/07/Vtt" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">' +
+    '<GetCategoriesResponse xmlns="http://portal.vtt.ru">' +
+    '<GetCategoriesResult xmlns:a="http://portal.vtt.ru/data" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">' +
     body + '</GetCategoriesResult></GetCategoriesResponse></s:Body></s:Envelope>';
 }
 
@@ -140,7 +153,10 @@ function operationOf(xml) {
 export function createMockFetch({
   items = makeItems(1200),
   categories = SAMPLE_CATEGORIES,
-  compatibility = false,
+  compatibility = true,
+  attributes = true,
+  related = true,
+  categoryItems = true,
   failFirst = 0,
   badCredentials = false,
   onCall,
@@ -165,17 +181,51 @@ export function createMockFetch({
     }
     if (op === 'GetGoodsCompatibilityInformation') {
       if (!compatibility) return new Response(faultEnvelope('s:Client', 'Method not allowed for this account'), { status: 500 });
-      return new Response(portionEnvelope('GetGoodsCompatibilityInformation', 'CompatibilityDto', [], 0), { status: 200 });
+      const itemId = readArg(xml, 'itemId');
+      const rows = (itemId ? items.filter((i) => i.Id === itemId) : items).flatMap((i) => [
+        { ItemId: i.Id, ModelBrand: 'Kyocera', ModelCategoryName: 'Принтеры', ModelName: `ECOSYS M${2035 + Number(String(i.Id).slice(-3))}dn` },
+        { ItemId: i.Id, ModelBrand: 'Kyocera', ModelCategoryName: 'МФУ', ModelName: `ECOSYS P${2035 + Number(String(i.Id).slice(-3))}dn` },
+      ]);
+      return new Response(listEnvelope('GetGoodsCompatibilityInformation', 'CompatibilityDto', rows), { status: 200 });
+    }
+    if (op === 'GetAdditionalAttributes') {
+      if (!attributes) return new Response(faultEnvelope('s:Client', 'Method not allowed for this account'), { status: 500 });
+      const itemId = readArg(xml, 'itemId');
+      const rows = (itemId ? items.filter((i) => i.Id === itemId) : items).map((i) => ({
+        CategoryId: '7', ItemId: i.Id, IntValue: i.Resource, StringValue: i.ColorName,
+      }));
+      return new Response(listEnvelope('GetAdditionalAttributes', 'AdditionalAttributeDto', rows), { status: 200 });
+    }
+    if (op === 'GetRelatedItems') {
+      if (!related) return new Response(faultEnvelope('s:Client', 'Method not allowed for this account'), { status: 500 });
+      const itemId = readArg(xml, 'itemId');
+      const idx = items.findIndex((i) => i.Id === itemId);
+      const rows = idx >= 0 ? items.slice(idx + 1, idx + 3) : [];
+      return new Response(listEnvelope('GetRelatedItems', 'ItemDto', rows), { status: 200 });
+    }
+    if (op === 'GetCategoryItems' || op === 'GetCategoryRuntimeItems') {
+      if (!categoryItems) return new Response(faultEnvelope('s:Client', 'Method not allowed for this account'), { status: 500 });
+      const catId = readArg(xml, 'categoryId');
+      const rows = items.filter((i) => String(i.GroupId) === String(catId));
+      const el = op === 'GetCategoryItems' ? 'ItemDto' : 'ItemRuntimeDto';
+      return new Response(listEnvelope(op, el, rows), { status: 200 });
+    }
+    if (op === 'GetItem' || op === 'GetRuntimeItem') {
+      const itemId = readArg(xml, 'itemId');
+      const rows = items.filter((i) => i.Id === itemId);
+      return new Response(listEnvelope(op, op === 'GetItem' ? 'ItemDto' : 'ItemRuntimeDto', rows), { status: 200 });
     }
     /* Фактические границы VTT: 0..N отдаёт [0,N), далее N+1..M отдаёт [N,M). */
     const first = from === 0 ? 0 : from - 1;
     const slice = items.slice(first, to);
     const element = op === 'GetRuntimeItemsPortion' ? 'ItemRuntimeDto' : 'ItemDto';
     const payload = op === 'GetRuntimeItemsPortion'
+      /* ItemRuntimeDto по WSDL — ровно пять полей. PriceRetail и
+         TransitDate в оперативном DTO нет, и мок их не выдумывает. */
       ? slice.map((i) => ({
-          Id: i.Id, Price: i.Price, PriceRetail: i.PriceRetail,
+          Id: i.Id, Price: i.Price,
           AvailableQuantity: i.AvailableQuantity, TransitQuantity: i.TransitQuantity,
-          MainOfficeQuantity: i.MainOfficeQuantity, TransitDate: i.TransitDate,
+          MainOfficeQuantity: i.MainOfficeQuantity,
         }))
       : slice;
     return new Response(portionEnvelope(op, element, payload, Math.min(to, items.length)), { status: 200 });

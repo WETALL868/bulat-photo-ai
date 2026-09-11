@@ -26,7 +26,7 @@ const FIELD = {
   vendorCode: ['Vendor', 'VendorCode', 'Article', 'Code'],
   originalNumber: ['OriginalNumber', 'OriginalNumbers', 'OriginalCode'],
   brand: ['Brand', 'Producer', 'Manufacturer'],
-  categoryId: ['GroupId', 'CategoryId', 'GroupID'],
+  groupId: ['GroupId', 'CategoryId', 'GroupID'],
   group: ['Group', 'GroupName'],
   rootGroup: ['RootGroup', 'RootGroupName'],
   description: ['Description'],
@@ -140,9 +140,13 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
     vendorCode,
     originalNumber: asText(pick(raw, FIELD.originalNumber)),
     brand: asText(pick(raw, FIELD.brand)),
-    /* Идентификатор категории, если VTT его прислал: раскладка по Id
-       точнее и устойчивее, чем по названию. */
-    categoryId: asText(pick(raw, FIELD.categoryId)),
+    /* Идентификатор категории в том виде, в каком его прислал VTT.
+       Хранится отдельно от categoryId: categoryId — это уже наше решение
+       о разделе витрины (оно может прийти из GetCategoryItems или из
+       разбора названий), а groupId — факт от поставщика. Смешивать их в
+       одном поле нельзя: тогда по карточке не отличить присланное от
+       вычисленного, и изменение у поставщика теряется. */
+    groupId: asText(pick(raw, FIELD.groupId)),
     category: asText(pick(raw, FIELD.group)),
     categoryRoot: asText(pick(raw, FIELD.rootGroup)),
     barcode: asText(pick(raw, FIELD.barcode)),
@@ -195,20 +199,99 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
   return item;
 }
 
-/* Оперативные данные приходят отдельным, более частым синком. Три склада
-   остаются тремя полями — они не складываются. */
+/*
+  ItemRuntimeDto по официальному WSDL — ровно пять полей:
+  Id, Price, AvailableQuantity, TransitQuantity, MainOfficeQuantity.
+  PriceRetail и TransitDate в оперативном DTO НЕТ: раньше я их здесь ждал,
+  и это было предположение. Они приходят только в ItemDto, поэтому
+  оперативный синк их не трогает и не обнуляет.
+
+  Три склада остаются тремя полями и не суммируются.
+*/
 export function normalizeRuntime(raw, { now = new Date().toISOString() } = {}) {
   if (!raw || typeof raw !== 'object') throw new TypeError('normalizeRuntime: ожидался объект ItemRuntimeDto');
   const out = {
     id: asText(pick(raw, FIELD.id)) ?? '',
     price: asNumber(pick(raw, FIELD.price)),
-    priceRetail: asNumber(pick(raw, FIELD.priceRetail)),
     available: asCount(pick(raw, FIELD.available)),
     transit: asCount(pick(raw, FIELD.transit)),
     mainOffice: asCount(pick(raw, FIELD.mainOffice)),
-    transitDate: asText(pick(raw, FIELD.transitDate)),
     syncedAt: now,
   };
   for (const [k, v] of Object.entries(out)) if (v === undefined) delete out[k];
   return out;
+}
+
+/*
+  CompatibilityDto = ItemId, ModelBrand, ModelCategoryName, ModelName.
+
+  Это заметно лучше строки Compatibility: бренд и модель приходят
+  отдельными полями, поэтому и подбор по принтеру, и фильтры строятся на
+  данных, а не на разборе текста разделителями. Строку оставляем запасным
+  вариантом — на случай, если метод недоступен учётной записи.
+*/
+export function normalizeCompatibility(rows = []) {
+  const byItem = new Map();
+  for (const raw of rows) {
+    if (!raw || typeof raw !== 'object') continue;
+    const itemId = asText(pick(raw, ['ItemId', 'Id']));
+    if (!itemId) continue;
+    const entry = {
+      brand: asText(pick(raw, ['ModelBrand'])),
+      categoryName: asText(pick(raw, ['ModelCategoryName'])),
+      model: asText(pick(raw, ['ModelName'])),
+    };
+    if (!entry.brand && !entry.model) continue;
+    if (!byItem.has(itemId)) byItem.set(itemId, []);
+    const list = byItem.get(itemId);
+    /* Один и тот же принтер приходит по нескольку раз — например, из
+       разных категорий модели. На витрине это был бы дубликат. */
+    const key = `${entry.brand ?? ''}|${entry.model ?? ''}`;
+    if (!list.some((x) => `${x.brand ?? ''}|${x.model ?? ''}` === key)) list.push(entry);
+  }
+  return byItem;
+}
+
+/* Человекочитаемая модель: «Kyocera ECOSYS M2035dn». Бренд не дублируется,
+   если он уже входит в название модели. */
+export function compatibilityLabel(entry) {
+  const brand = entry.brand ?? '';
+  const model = entry.model ?? '';
+  if (!brand) return model;
+  if (!model) return brand;
+  return model.toLowerCase().startsWith(brand.toLowerCase()) ? model : `${brand} ${model}`;
+}
+
+/*
+  AdditionalAttributeDto = CategoryId, ItemId, IntValue, StringValue.
+
+  У атрибута нет имени — только категория, к которой он относится, и одно
+  из двух значений. Поэтому он сохраняется как есть и НЕ превращается в
+  «характеристику с подписью»: придумать подпись значило бы выдумать смысл,
+  которого в данных нет. Показывать такие значения на карточке можно будет
+  только после того, как VTT подтвердит, что означает каждый CategoryId.
+*/
+export function normalizeAttributes(rows = []) {
+  const byItem = new Map();
+  for (const raw of rows) {
+    if (!raw || typeof raw !== 'object') continue;
+    const itemId = asText(pick(raw, ['ItemId', 'Id']));
+    if (!itemId) continue;
+    const attr = {
+      categoryId: asText(pick(raw, ['CategoryId'])),
+      intValue: asNumber(pick(raw, ['IntValue'])),
+      stringValue: asText(pick(raw, ['StringValue'])),
+    };
+    for (const k of Object.keys(attr)) if (attr[k] === undefined) delete attr[k];
+    if (attr.intValue === undefined && attr.stringValue === undefined) continue;
+    if (!byItem.has(itemId)) byItem.set(itemId, []);
+    byItem.get(itemId).push(attr);
+  }
+  return byItem;
+}
+
+/* Связанные товары: только идентификаторы. Карточки для них уже есть в
+   сторе, дублировать их незачем. */
+export function normalizeRelated(rows = []) {
+  return [...new Set(rows.map((r) => asText(pick(r ?? {}, ['Id', 'ItemId']))).filter(Boolean))];
 }

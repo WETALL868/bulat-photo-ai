@@ -24,9 +24,25 @@ export const ENV_URL = 'VTT_SERVICE_URL';
 export const DEFAULT_SERVICE_URL = 'http://api.vtt.ru:8048/Portal.svc';
 export const DEFAULT_WSDL_URL = 'http://api.vtt.ru:8048/Portal.svc?singleWsdl';
 
+/*
+  Пространства имён взяты из официального WSDL (HTTP 200, 47 119 байт),
+  полученного с машины пользователя. Раньше здесь стоял tempuri.org —
+  типовое значение для WCF, и это было предположение, а не факт. Теперь
+  предположения нет: сервис объявляет свой собственный namespace, и с
+  tempuri он бы просто не ответил.
+
+  SOAPAction собирается по образцу из WSDL —
+  http://portal.vtt.ru/IPortalService/<Метод> — и вынесен отдельно от
+  namespace: в WCF это разные строки, и склеивать их было бы ошибкой.
+*/
+export const DEFAULT_NAMESPACE = 'http://portal.vtt.ru';
+export const DATA_NAMESPACE = 'http://portal.vtt.ru/data';
+export const DEFAULT_SOAP_ACTION_BASE = 'http://portal.vtt.ru/IPortalService';
+
 export const DEFAULTS = {
   serviceUrl: DEFAULT_SERVICE_URL,
-  namespace: 'http://tempuri.org/',
+  namespace: DEFAULT_NAMESPACE,
+  soapActionBase: DEFAULT_SOAP_ACTION_BASE,
   portionSize: 500,
   timeoutMs: 60000,
   retryAttempts: 4,

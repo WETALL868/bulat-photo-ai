@@ -42,6 +42,40 @@ export function stableStringify(value) {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
 }
 
+/*
+  Что участвует в хэше карточки.
+
+  Хэш отвечает ровно на один вопрос: изменились ли данные, пришедшие от
+  поставщика. Поэтому из него исключено всё, что мы вычислили сами.
+
+  Служебные поля — отметки времени и флаги: иначе каждый запуск выглядел бы
+  как изменение.
+
+  Производные поля — категория, совместимость из отдельной операции,
+  атрибуты, связанные товары. Их пишет этап обогащения, уже после того как
+  карточка легла в стор. Если бы они попадали в хэш, следующая полная
+  выгрузка считала бы хэш по «голой» карточке, не совпала бы с сохранённым
+  и объявила бы изменившимся весь каталог целиком — притом что у
+  поставщика не поменялось ничего. Именно это и происходило.
+*/
+const SERVICE_FIELDS = [
+  'syncedAt', 'hash', 'active', 'firstSeenAt', 'updatedAt', 'lastSeenAt',
+  'lastSyncId', 'hiddenAt', 'hiddenBySyncId', 'runtime', 'enrichedAt',
+];
+export const DERIVED_FIELDS = [
+  'categoryId', 'categorySource', 'compatibilityLabels', 'compatibilityDetailed',
+  'attributes', 'related',
+];
+
+export function contentHash(record) {
+  const meaningful = {};
+  for (const [k, v] of Object.entries(record)) {
+    if (SERVICE_FIELDS.includes(k) || DERIVED_FIELDS.includes(k)) continue;
+    meaningful[k] = v;
+  }
+  return sha256(stableStringify(meaningful));
+}
+
 export function writeAtomic(file, text) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
@@ -125,10 +159,7 @@ export class VttStore {
       const bucket = byShard.get(shard);
       const prev = bucket[id];
 
-      /* Хэш считается без отметок времени и служебных полей: иначе каждый
-         запуск выглядел бы как изменение. */
-      const { syncedAt, ...meaningful } = item;
-      const hash = sha256(stableStringify(meaningful));
+      const hash = contentHash(item);
 
       if (!prev) {
         bucket[id] = { ...item, active: true, hash, firstSeenAt: now, updatedAt: now, lastSyncId: syncId ?? null };
@@ -152,6 +183,37 @@ export class VttStore {
       writeAtomic(this.#shardFile(shard), JSON.stringify(bucket, null, 0));
     }
     return report;
+  }
+
+  /*
+    Точечное дополнение карточки данными смежных операций: совместимость,
+    атрибуты, связанные товары, уточнённая категория.
+
+    Эти данные приходят не в ItemDto, а из отдельных операций, поэтому в
+    хэш карточки они не входят: хэш отвечает за «изменилось ли у
+    поставщика», и обогащение не должно превращать идемпотентный повтор
+    выгрузки в «изменился весь каталог». Возвращает false, если товара нет
+    в сторе, — так видно расхождение между операциями, а не создаётся
+    пустая карточка.
+  */
+  patchItem(id, patch, { now = new Date().toISOString() } = {}) {
+    const key = String(id ?? '').trim();
+    if (!key) return false;
+    const shard = this.shardOf(key);
+    const file = this.#shardFile(shard);
+    const bucket = this.loadShard(shard);
+    if (!bucket[key]) return false;
+    const next = { ...bucket[key], ...patch };
+    /* Хэш пересчитывается по тем же правилам, что и при upsert, и по тем
+       же причинам не включает то, что дописало обогащение: иначе патч
+       менял бы хэш, а следующая выгрузка объявляла бы товар изменившимся
+       без единого изменения у поставщика. Факт обогащения виден по полям
+       categorySource и enrichedAt, а не по хэшу. */
+    next.hash = contentHash(next);
+    next.enrichedAt = now;
+    bucket[key] = next;
+    writeAtomic(file, JSON.stringify(bucket, null, 0));
+    return true;
   }
 
   /* Оперативные данные меняются часто и не должны трогать хэш карточки:

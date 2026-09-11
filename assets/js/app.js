@@ -481,6 +481,13 @@
       var isDemoRevs = revs.length > 0 && revs.every(function (r) { return r.demo; });
       var sum5 = revs.filter(function (r) { return r.rate === 5; }).length;
       var sum4 = revs.filter(function (r) { return r.rate === 4; }).length;
+      /* У демо-набора в шапке показывается средняя по самим демо-записям,
+         а не p.rate: p.rate у импортированного товара равен нулю и таким
+         обязан остаться — он уходит в микроразметку и в счётчики. Цифру
+         из шапки от настоящей отличает пометка ДЕМО рядом с ней и плашка
+         над всем блоком. */
+      var revAvg = revs.length ? Math.round(revs.reduce(function (a, r) { return a + (r.rate || 0); }, 0) / revs.length * 10) / 10 : 0;
+      var headRate = isDemoRevs ? revAvg : p.rate;
       var src = p.img;
       var views = [{ t: 'img' }, { t: 'zoom', pos: '18% 50%' }, { t: 'zoom', pos: '82% 50%' }];
       if (d.models.length) views.push({ t: 'compat' });
@@ -571,17 +578,20 @@
             'они собраны из фактических полей выгрузки поставщика и не являются отзывами покупателей. ' +
             'В рейтинг товара, в микроразметку и в карту сайта они не попадают.</div></div>'
           : '') +
-        '<div class="rev-grid"><div class="rev-sum"><div class="big"><b>' + ratef(p.rate) + '</b><span>из 5</span></div>' + stars(p.rate, 20) + '<div class="cnt">' + (isDemoRevs
+        '<div class="rev-grid"><div class="rev-sum' + (isDemoRevs ? ' rev-sum-demo' : '') + '"><div class="big"><b>' + ratef(headRate) + '</b><span>из 5' + (isDemoRevs ? ' · ДЕМО' : '') + '</span></div>' + stars(headRate, 20) + '<div class="cnt">' + (isDemoRevs
           /* Демо-записи не отзывы, поэтому и счётчик, и доля рекомендаций
              показывают ровно то, что есть: отзывов нет. */
           ? '0 отзывов · ' + revs.length + ' демонстрационных ' + plural(revs.length, 'запись', 'записи', 'записей')
-          : revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + ' · ' + Math.round(80 + p.rate * 3) + '% рекомендуют') + '</div><div class="bars"><div><span>5</span><i style="--w:' + Math.round(sum5 / revs.length * 100) + '%"></i><span>' + sum5 + '</span></div><div><span>4</span><i style="--w:' + Math.round(sum4 / revs.length * 100) + '%"></i><span>' + sum4 + '</span></div><div><span>3</span><i style="--w:0%"></i><span>0</span></div><div><span>2</span><i style="--w:0%"></i><span>0</span></div><div><span>1</span><i style="--w:0%"></i><span>0</span></div></div><button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button><div class="note">Отзывы в прототипе — примеры: они собраны при сборке каталога и одинаковы при каждом заходе.</div></div>' +
+          : revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + ' · ' + Math.round(80 + p.rate * 3) + '% рекомендуют') + '</div><div class="bars"><div><span>5</span><i style="--w:' + Math.round(sum5 / revs.length * 100) + '%"></i><span>' + sum5 + '</span></div><div><span>4</span><i style="--w:' + Math.round(sum4 / revs.length * 100) + '%"></i><span>' + sum4 + '</span></div><div><span>3</span><i style="--w:0%"></i><span>0</span></div><div><span>2</span><i style="--w:0%"></i><span>0</span></div><div><span>1</span><i style="--w:0%"></i><span>0</span></div></div><button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button><div class="note">' + (isDemoRevs ? 'Оценка 5 из 5 стоит у самих демонстрационных записей. Рейтинг товара — 0,0: настоящих отзывов на импортированном товаре ещё нет.' : 'Отзывы в прототипе — примеры: они собраны при сборке каталога и одинаковы при каждом заходе.') + '</div></div>' +
         '<div class="rev-list">' + revs.map(function (rv) {
           /* Демонстрационная запись не имеет права выглядеть как отзыв
-             покупателя: у неё нет «покупка подтверждена», нет звёзд и нет
-             блока «полезен ли отзыв», зато есть явная плашка ДЕМО. */
+             покупателя: у неё нет «покупка подтверждена» и нет блока
+             «полезен ли отзыв», зато есть явная плашка ДЕМО. Оценка у
+             неё показывается — с той же пометкой, — потому что вёрстку
+             строки со звёздами тоже надо согласовать. */
           if (rv.demo) {
-            return '<article class="rev rev-demo"><div class="rh"><div class="who"><span class="ava ava-demo">Д</span><div><b>' + esc(rv.name) + '</b><span class="demo-tag">ДЕМО / тестовые данные</span></div></div></div>' +
+            return '<article class="rev rev-demo"><div class="rh"><div class="who"><span class="ava ava-demo">Д</span><div><b>' + esc(rv.name) + '</b><span class="demo-tag">ДЕМО / тестовые данные</span></div></div>' +
+              (rv.rate ? '<div class="rt rt-demo">' + stars(rv.rate) + '<span>' + ratef(rv.rate) + ' из 5 · демо-оценка, в рейтинг товара не идёт</span></div>' : '') + '</div>' +
               '<p>' + esc(rv.text) + '</p>' +
               (rv.reply ? '<div class="rreply"><b>' + esc(rv.reply.author) + '</b><p>' + esc(rv.reply.text) + '</p></div>' : '') +
               '</article>';

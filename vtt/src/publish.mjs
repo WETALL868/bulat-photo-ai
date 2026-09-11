@@ -42,6 +42,21 @@ export function typeOf(item) {
 const fmt = (n) => Number(n).toLocaleString('ru-RU');
 
 /*
+  Список совместимых моделей. Источников два, и порядок между ними не
+  случаен: GetGoodsCompatibilityInformation отдаёт бренд и модель
+  отдельными полями, а строка Compatibility в ItemDto — это свободный
+  текст, который приходится резать разделителями. Поэтому официальные
+  данные предпочтительнее, а строка остаётся запасным вариантом там, где
+  операция недоступна учётной записи. Оба поля хранятся в сторе рядом и не
+  затирают друг друга.
+*/
+export function modelsOf(item) {
+  const official = item.compatibilityLabels ?? [];
+  if (official.length) return official;
+  return item.compatibility ?? [];
+}
+
+/*
   Детерминированное описание. При тех же данных получается тот же текст —
   это важно и для повторной сборки, и для того, чтобы diff показывал
   реальные изменения, а не перестановку слов.
@@ -59,9 +74,10 @@ export function buildDescription(item) {
   if (item.resource) facts.push(`Заявленный ресурс — ${fmt(item.resource)} страниц.`);
   if (item.color) facts.push(`Цвет: ${item.color.toLowerCase()}.`);
 
-  if (item.compatibility?.length) {
-    const list = item.compatibility.slice(0, 12).join(', ');
-    const more = item.compatibility.length > 12 ? ` и ещё ${item.compatibility.length - 12} моделей` : '';
+  const models = modelsOf(item);
+  if (models.length) {
+    const list = models.slice(0, 12).join(', ');
+    const more = models.length > 12 ? ` и ещё ${models.length - 12} моделей` : '';
     facts.push(`Совместимость по данным поставщика: ${list}${more}.`);
   }
 
@@ -82,7 +98,7 @@ export function buildDescription(item) {
       ...(type ? { type: 1 } : {}), ...(item.vendorCode ? { vendorCode: 1 } : {}),
       ...(item.brand ? { brand: 1 } : {}), ...(item.originalNumber ? { originalNumber: 1 } : {}),
       ...(item.resource ? { resource: 1 } : {}), ...(item.color ? { color: 1 } : {}),
-      ...(item.compatibility?.length ? { compatibility: 1 } : {}),
+      ...(models.length ? { compatibility: 1 } : {}),
       ...(d && (d.width || d.height || d.depth) ? { dimensions: 1 } : {}),
       ...(item.weight ? { weight: 1 } : {}), ...(item.inPackage > 1 ? { inPackage: 1 } : {}),
       ...(item.barcode ? { barcode: 1 } : {}),
@@ -178,8 +194,8 @@ export function toShopProduct(item, { editorial = {}, categoryPath = [], shopCat
     res: item.resource ?? null,
     color: item.color ?? '',
     chip: null,
-    compat: (item.compatibility ?? []).join(', '),
-    models: item.compatibility ?? [],
+    compat: modelsOf(item).join(', '),
+    models: modelsOf(item),
     equip: '', tech: '', print: '',
     weight: item.weight ?? '',
     img: usablePhoto(item.photos?.[0]) ? item.photos[0] : PHOTO_PLACEHOLDER,

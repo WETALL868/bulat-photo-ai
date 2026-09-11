@@ -46,7 +46,7 @@ const parser = new XMLParser({
   htmlEntities: false,
   /* Список из одного элемента должен остаться списком: иначе каталог из
      одного товара разобрался бы как объект и тихо потерял бы строку. */
-  isArray: (name, jpath) => /\.(ItemDto|ItemRuntimeDto|string|CategoryDto)$/.test(jpath),
+  isArray: (name, jpath) => /\.(ItemDto|ItemRuntimeDto|CategoryDto|CompatibilityDto|AdditionalAttributeDto|string)$/.test(jpath),
 });
 
 export class SoapFault extends Error {
@@ -84,7 +84,7 @@ export class TimeoutError extends TransportError {
   constructor(message) { super(message); this.name = 'TimeoutError'; }
 }
 
-export async function callSoap({ url, operation, namespace, soapAction, args, timeoutMs = 60000, fetchImpl = fetch }) {
+export async function callSoap({ url, operation, namespace, soapAction, soapActionBase, args, timeoutMs = 60000, fetchImpl = fetch }) {
   const envelope = buildEnvelope(operation, namespace, args);
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
@@ -94,7 +94,11 @@ export async function callSoap({ url, operation, namespace, soapAction, args, ti
       method: 'POST',
       headers: {
         'Content-Type': 'text/xml; charset=utf-8',
-        SOAPAction: soapAction ?? `${namespace}IPortalService/${operation}`,
+        /* SOAPAction в WCF — отдельная строка, а не namespace с
+           дописанным хвостом. Склейка namespace + 'IPortalService/'
+           давала «http://portal.vtt.ruIPortalService/...» без слеша, и
+           сервис такой заголовок не принял бы. */
+        SOAPAction: soapAction ?? `${(soapActionBase ?? namespace).replace(/\/$/, '')}/${operation}`,
       },
       body: envelope,
       signal: ac.signal,

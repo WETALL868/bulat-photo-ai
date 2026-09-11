@@ -14,8 +14,9 @@
   бесполезно — это сразу к человеку.
 */
 import { callSoap, SoapFault, TransportError, TimeoutError } from './soap.mjs';
+import { DEFAULT_NAMESPACE, DEFAULT_SOAP_ACTION_BASE } from './config.mjs';
 
-export const DEFAULT_NAMESPACE = 'http://tempuri.org/';
+export { DEFAULT_NAMESPACE };
 
 export class VttAuthError extends Error {
   constructor(message, detail) { super(message); this.name = 'VttAuthError'; this.detail = detail || ''; }
@@ -76,10 +77,11 @@ function classify(err) {
 }
 
 export class VttClient {
-  constructor({ url, namespace = DEFAULT_NAMESPACE, timeoutMs = 60000, fetchImpl } = {}) {
+  constructor({ url, namespace = DEFAULT_NAMESPACE, soapActionBase = DEFAULT_SOAP_ACTION_BASE, timeoutMs = 60000, fetchImpl } = {}) {
     if (!url) throw new Error('Не задан адрес сервиса VTT');
     this.url = url;
     this.namespace = namespace;
+    this.soapActionBase = soapActionBase;
     this.timeoutMs = timeoutMs;
     this.fetchImpl = fetchImpl;
   }
@@ -98,6 +100,7 @@ export class VttClient {
         url: this.url,
         operation,
         namespace: this.namespace,
+        soapActionBase: this.soapActionBase,
         args: { login: credentials.login, password: credentials.password, from, to },
         timeoutMs: this.timeoutMs,
         fetchImpl: this.fetchImpl,
@@ -117,13 +120,12 @@ export class VttClient {
   }
 
   /*
-    Операции ниже не подтверждены рабочим клиентом-референсом: в нём их нет,
-    а WSDL из этой сети недоступен. Поэтому они вызываются «мягко»: если
-    сервис их не знает, это не ошибка выгрузки, а факт, который уходит в
-    отчёт. Каталог собирается и без них — категории тогда берутся из полей
-    Group/RootGroup самого товара.
+    Списочные операции WSDL. Все двенадцать методов подтверждены официальным
+    WSDL, поэтому «недоступно» здесь означает отказ по правам конкретной
+    учётной записи, а не отсутствие метода. Такой отказ не роняет выгрузку:
+    он уходит в отчёт, а каталог собирается из того, что доступно.
   */
-  async #optional(operation, resultKey, itemElement, credentials, extraArgs = {}) {
+  async #list(operation, resultKey, itemElement, credentials, extraArgs = {}) {
     if (!credentials?.login || !credentials?.password) {
       throw new VttAuthError('Не заданы учётные данные VTT');
     }
@@ -132,6 +134,7 @@ export class VttClient {
         url: this.url,
         operation,
         namespace: this.namespace,
+        soapActionBase: this.soapActionBase,
         args: { login: credentials.login, password: credentials.password, ...extraArgs },
         timeoutMs: this.timeoutMs,
         fetchImpl: this.fetchImpl,
@@ -146,24 +149,66 @@ export class VttClient {
     } catch (e) {
       const err = classify(e);
       if (err instanceof VttAuthError) throw err;
-      /* Неизвестная операция или отказ по правам — это «метод недоступен
-         учётной записи», а не сбой синхронизации. */
       return { supported: false, items: [], reason: err.detail || err.message };
     }
   }
 
+  /* CategoryDto = Id, Name, ParentId — плоский список с родителями. */
   getCategories(credentials) {
-    return this.#optional('GetCategories', 'GetCategoriesResult', 'CategoryDto', credentials);
+    return this.#list('GetCategories', 'GetCategoriesResult', 'CategoryDto', credentials);
   }
 
+  /*
+    Членство товаров в официальной категории. Это надёжнее, чем текстовые
+    Group/RootGroup: здесь связь задана идентификаторами, а не совпадением
+    названий, которое ломается от любой правки у поставщика.
+  */
+  getCategoryItems(credentials, categoryId) {
+    return this.#list('GetCategoryItems', 'GetCategoryItemsResult', 'ItemDto', credentials, { categoryId });
+  }
+
+  getCategoryRuntimeItems(credentials, categoryId) {
+    return this.#list('GetCategoryRuntimeItems', 'GetCategoryRuntimeItemsResult', 'ItemRuntimeDto', credentials, { categoryId });
+  }
+
+  /* CompatibilityDto = ItemId, ModelBrand, ModelCategoryName, ModelName.
+     Структурированная совместимость — бренд и модель приходят полями, а не
+     одной строкой, которую пришлось бы резать разделителями. */
   getGoodsCompatibilityInformation(credentials, itemId) {
-    return this.#optional(
-      'GetGoodsCompatibilityInformation',
-      'GetGoodsCompatibilityInformationResult',
-      'CompatibilityDto',
-      credentials,
-      itemId === undefined ? {} : { itemId },
+    return this.#list(
+      'GetGoodsCompatibilityInformation', 'GetGoodsCompatibilityInformationResult', 'CompatibilityDto',
+      credentials, itemId === undefined ? {} : { itemId },
     );
+  }
+
+  /* AdditionalAttributeDto = CategoryId, ItemId, IntValue, StringValue. */
+  getAdditionalAttributes(credentials, itemId) {
+    return this.#list(
+      'GetAdditionalAttributes', 'GetAdditionalAttributesResult', 'AdditionalAttributeDto',
+      credentials, itemId === undefined ? {} : { itemId },
+    );
+  }
+
+  getRelatedItems(credentials, itemId) {
+    return this.#list('GetRelatedItems', 'GetRelatedItemsResult', 'ItemDto', credentials, { itemId });
+  }
+
+  getItem(credentials, itemId) {
+    return this.#list('GetItem', 'GetItemResult', 'ItemDto', credentials, { itemId });
+  }
+
+  getRuntimeItem(credentials, itemId) {
+    return this.#list('GetRuntimeItem', 'GetRuntimeItemResult', 'ItemRuntimeDto', credentials, { itemId });
+  }
+
+  /* Непорционные варианты: на большом каталоге они тяжелее порционных,
+     поэтому в полной выгрузке не используются, но контракт есть. */
+  getItems(credentials) {
+    return this.#list('GetItems', 'GetItemsResult', 'ItemDto', credentials);
+  }
+
+  getRuntimeItems(credentials) {
+    return this.#list('GetRuntimeItems', 'GetRuntimeItemsResult', 'ItemRuntimeDto', credentials);
   }
 }
 

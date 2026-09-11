@@ -22,7 +22,7 @@ import { diagnose, fullSync, runtimeSync } from '../src/sync.mjs';
 import { createMockFetch, makeItems, portionEnvelope, faultEnvelope, SAMPLE_CATEGORIES } from '../fixtures/mock-service.mjs';
 
 const CRED = { login: 'user', password: 'secret-pass' };
-const CONFIG = { portionSize: 500, retryAttempts: 3, retryBaseDelayMs: 1, timeoutMs: 5000, namespace: 'http://tempuri.org/' };
+const CONFIG = { portionSize: 500, retryAttempts: 3, retryBaseDelayMs: 1, timeoutMs: 5000, namespace: 'http://portal.vtt.ru', soapActionBase: 'http://portal.vtt.ru/IPortalService' };
 
 function tmpStore() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vtt-store-'));
@@ -32,8 +32,9 @@ function tmpStore() {
 /* ------------------------------------------------------------------ SOAP */
 
 test('конверт содержит операцию и экранированные аргументы', () => {
-  const xml = buildEnvelope('GetItemPortion', 'http://tempuri.org/', { login: 'a&b', password: 'p<w>', from: 0, to: 500 });
+  const xml = buildEnvelope('GetItemPortion', 'http://portal.vtt.ru', { login: 'a&b', password: 'p<w>', from: 0, to: 500 });
   assert.match(xml, /<tem:GetItemPortion>/);
+  assert.match(xml, /xmlns:tem="http:\/\/portal\.vtt\.ru"/);
   assert.match(xml, /<tem:login>a&amp;b<\/tem:login>/);
   assert.match(xml, /<tem:password>p&lt;w&gt;<\/tem:password>/);
   assert.match(xml, /<tem:from>0<\/tem:from><tem:to>500<\/tem:to>/);
@@ -397,7 +398,7 @@ test('диагностика подтверждает контракт и дос
   assert.ok(res.itemDtoFields.includes('Compatibility'));
   assert.ok(res.itemDtoFields.includes('PhotoUrls'));
   assert.equal(res.getCategories.supported, true);
-  assert.equal(res.getGoodsCompatibilityInformation.supported, false, 'метод недоступен — это факт, а не сбой');
+  assert.equal(res.getGoodsCompatibilityInformation.supported, true, 'метод подтверждён WSDL и доступен в моке');
 });
 
 test('полная синхронизация на фикстурах: раскладка, отчёт, повторный запуск', async (t) => {
@@ -604,4 +605,243 @@ test('артефакты двоичной дроби не доезжают до 
   const { asNumber } = await import('../src/normalize.mjs');
   assert.equal(asNumber(0.7 + 0.1), 0.8);
   assert.equal(asNumber('1 234,56'), 1234.56);
+});
+
+/* ------------------------------------------------- контракт из WSDL */
+
+test('namespace и SOAPAction соответствуют официальному WSDL', async () => {
+  const { DEFAULT_NAMESPACE, DATA_NAMESPACE, DEFAULT_SOAP_ACTION_BASE, DEFAULTS } = await import('../src/config.mjs');
+  assert.equal(DEFAULT_NAMESPACE, 'http://portal.vtt.ru');
+  assert.equal(DATA_NAMESPACE, 'http://portal.vtt.ru/data');
+  assert.equal(DEFAULT_SOAP_ACTION_BASE, 'http://portal.vtt.ru/IPortalService');
+  assert.equal(DEFAULTS.namespace, 'http://portal.vtt.ru', 'tempuri был предположением и снят');
+
+  /* Заголовок собирается без потери слеша: раньше склейка namespace с
+     хвостом давала «http://portal.vtt.ruIPortalService/...». */
+  let sentAction;
+  const fetchImpl = async (url, init) => {
+    sentAction = init.headers.SOAPAction;
+    return new Response(portionEnvelope('GetItemPortion', 'ItemDto', [], 0), { status: 200 });
+  };
+  const client = new VttClient({ url: 'http://mock/', fetchImpl });
+  await client.getItemPortion(CRED, 0, 5);
+  assert.equal(sentAction, 'http://portal.vtt.ru/IPortalService/GetItemPortion');
+});
+
+test('все двенадцать операций WSDL реализованы', async () => {
+  const client = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({ items: makeItems(5) }) });
+  for (const m of ['getItems', 'getRuntimeItems', 'getCategories', 'getCategoryItems', 'getCategoryRuntimeItems',
+    'getItemPortion', 'getRuntimeItemsPortion', 'getItem', 'getRuntimeItem',
+    'getGoodsCompatibilityInformation', 'getRelatedItems', 'getAdditionalAttributes']) {
+    assert.equal(typeof client[m], 'function', `нет метода ${m}`);
+  }
+});
+
+test('ItemRuntimeDto — ровно пять полей WSDL, без PriceRetail и TransitDate', () => {
+  const rt = normalizeRuntime({
+    Id: 'X', Price: 100, AvailableQuantity: 3, TransitQuantity: 4, MainOfficeQuantity: 5,
+    /* Даже если сервер пришлёт лишнее, в оперативные данные оно не попадёт. */
+    PriceRetail: 999, TransitDate: '2026-01-01',
+  });
+  assert.deepEqual(Object.keys(rt).sort(), ['available', 'id', 'mainOffice', 'price', 'syncedAt', 'transit']);
+  assert.equal(rt.priceRetail, undefined);
+  assert.equal(rt.transitDate, undefined);
+});
+
+test('CompatibilityDto разбирается по полям, а не разбором строки', async () => {
+  const { normalizeCompatibility, compatibilityLabel } = await import('../src/normalize.mjs');
+  const byItem = normalizeCompatibility([
+    { ItemId: 'A', ModelBrand: 'Kyocera', ModelCategoryName: 'Принтеры', ModelName: 'ECOSYS M2035dn' },
+    { ItemId: 'A', ModelBrand: 'Kyocera', ModelCategoryName: 'МФУ', ModelName: 'ECOSYS M2035dn' },
+    { ItemId: 'A', ModelBrand: 'Kyocera', ModelCategoryName: 'Принтеры', ModelName: 'FS-1040' },
+    { ItemId: 'B', ModelBrand: 'HP', ModelName: 'LaserJet 1020' },
+  ]);
+  assert.equal(byItem.get('A').length, 2, 'одна и та же модель из разных категорий не дублируется');
+  assert.equal(byItem.get('B')[0].brand, 'HP');
+  assert.equal(compatibilityLabel({ brand: 'HP', model: 'LaserJet 1020' }), 'HP LaserJet 1020');
+  assert.equal(compatibilityLabel({ brand: 'Kyocera', model: 'Kyocera FS-1040' }), 'Kyocera FS-1040',
+    'бренд не дублируется, если уже входит в название модели');
+});
+
+test('AdditionalAttributeDto сохраняется как есть и не превращается в выдуманную характеристику', async () => {
+  const { normalizeAttributes } = await import('../src/normalize.mjs');
+  const byItem = normalizeAttributes([
+    { CategoryId: '7', ItemId: 'A', IntValue: 3000 },
+    { CategoryId: '9', ItemId: 'A', StringValue: 'Чёрный' },
+    { CategoryId: '9', ItemId: 'B' },
+  ]);
+  assert.deepEqual(byItem.get('A'), [
+    { categoryId: '7', intValue: 3000 },
+    { categoryId: '9', stringValue: 'Чёрный' },
+  ]);
+  assert.equal(byItem.has('B'), false, 'атрибут без значения не сохраняется');
+  /* У атрибута нет имени — значит и подписи для витрины у нас нет. */
+  assert.ok(!JSON.stringify([...byItem.values()]).includes('Ресурс'));
+});
+
+test('связанные товары сводятся к идентификаторам без дублей', async () => {
+  const { normalizeRelated } = await import('../src/normalize.mjs');
+  assert.deepEqual(normalizeRelated([{ Id: 'A' }, { Id: 'B' }, { Id: 'A' }, {}]), ['A', 'B']);
+});
+
+test('полная синхронизация обогащает каталог смежными операциями', async () => {
+  const { store } = tmpStore();
+  const client = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({ items: makeItems(8) }) });
+  const rep = await fullSync({ client, credentials: CRED, store, logger: null, config: CONFIG });
+
+  assert.equal(rep.enrich.compatibility.supported, true);
+  assert.equal(rep.enrich.attributes.supported, true);
+  assert.equal(rep.enrich.categoryMembership.supported, true);
+
+  const rec = store.loadAll().get('VTT-00000');
+  assert.ok(rec.compatibilityDetailed?.length, 'структурированная совместимость сохранена');
+  assert.equal(rec.compatibilityDetailed[0].brand, 'Kyocera');
+  assert.ok(rec.attributes?.length, 'дополнительные атрибуты сохранены');
+  assert.equal(rec.categorySource, 'GetCategoryItems', 'членство уточнено официальной операцией');
+});
+
+test('недоступность смежных операций не роняет выгрузку', async () => {
+  const { store } = tmpStore();
+  const client = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({
+    items: makeItems(6), compatibility: false, attributes: false, related: false, categoryItems: false,
+  }) });
+  const rep = await fullSync({ client, credentials: CRED, store, logger: null, config: CONFIG });
+  assert.equal(rep.complete, true);
+  assert.equal(store.loadAll().size, 6, 'каталог выгружен целиком');
+  assert.equal(rep.enrich.compatibility.supported, false);
+  assert.ok(rep.enrich.compatibility.reason, 'причина недоступности попала в отчёт');
+});
+
+test('сырой стор не фильтруется: фильтр только для публикации', async () => {
+  const { publish } = await import('../src/publish.mjs');
+  const { store } = tmpStore();
+  const client = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({ items: makeItems(40) }) });
+  await fullSync({ client, credentials: CRED, store, logger: null, config: CONFIG });
+  assert.equal(store.loadAll().size, 40, 'в стор попал весь ассортимент');
+  const res = publish(store, { filter: { categories: ['110'] } });
+  assert.ok(res.report.filtered > 0, 'фильтр сузил витрину');
+  assert.equal(store.loadAll().size, 40, 'но стор остался полным');
+});
+
+test('диагностика перечисляет доступность каждой операции', async () => {
+  const { store } = tmpStore();
+  const client = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({ items: makeItems(10) }) });
+  const res = await diagnose({ client, credentials: CRED, store, logger: null, sampleSize: 5 });
+  for (const op of ['GetCategories', 'GetGoodsCompatibilityInformation', 'GetAdditionalAttributes',
+    'GetRelatedItems', 'GetCategoryItems', 'GetItem', 'GetRuntimeItem']) {
+    assert.ok(op in res.operations, `в отчёте нет ${op}`);
+  }
+  assert.equal(res.operations.GetGoodsCompatibilityInformation.supported, true);
+});
+
+/* ------------------------------------------------------------------ *
+   Обогащение и идемпотентность
+
+   Эти проверки закрывают дефект, найденный при переходе на официальный
+   WSDL: обогащение дописывало в карточку поля из смежных операций и
+   пересчитывало по ним хэш. Следующая полная выгрузка считала хэш по
+   «голой» карточке, не совпадала с сохранённым — и объявляла изменившимся
+   весь каталог, хотя у поставщика не поменялось ничего.
+ * ------------------------------------------------------------------ */
+
+test('обогащение не делает повторную выгрузку «изменением всего каталога»', async () => {
+  const { store } = tmpStore();
+  const client = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({ items: makeItems(30) }) });
+  const first = await fullSync({ client, credentials: CRED, store, logger: null, config: CONFIG });
+  assert.equal(first.added, 30);
+
+  const enrichedBefore = store.loadAll().get('VTT-00000');
+  assert.ok(enrichedBefore.compatibilityLabels?.length, 'обогащение отработало');
+  const hashBefore = enrichedBefore.hash;
+
+  const second = await fullSync({ client, credentials: CRED, store, logger: null, config: CONFIG });
+  assert.equal(second.added, 0);
+  assert.equal(second.updated, 0, 'обогащённые поля не считаются изменением товара');
+  assert.equal(second.unchanged, 30);
+
+  const after = store.loadAll().get('VTT-00000');
+  assert.equal(after.hash, hashBefore, 'хэш карточки не зависит от обогащения');
+  assert.ok(after.compatibilityLabels?.length, 'обогащение переживает повторный синк');
+});
+
+test('хэш карточки считается только по данным поставщика', async () => {
+  const { store } = tmpStore();
+  const base = { id: 'X-1', name: 'Картридж', vendorCode: 'HB-1', price: 100 };
+  store.upsertItems([base], { now: '2026-01-01T00:00:00.000Z' });
+  const hash = store.loadAll().get('X-1').hash;
+
+  /* Всё, что дописывают смежные операции, в хэш не входит. */
+  store.patchItem('X-1', {
+    categoryId: '42', categorySource: 'GetCategoryItems',
+    compatibilityLabels: ['Kyocera M2035dn'], compatibilityDetailed: [{ brand: 'Kyocera' }],
+    attributes: [{ categoryId: '7', intValue: 1200 }], related: ['X-2'],
+  });
+  assert.equal(store.loadAll().get('X-1').hash, hash, 'обогащение хэш не меняет');
+  assert.ok(store.loadAll().get('X-1').enrichedAt, 'но факт обогащения зафиксирован');
+
+  /* А изменение поля самого товара — входит. */
+  store.patchItem('X-1', { price: 150 });
+  assert.notEqual(store.loadAll().get('X-1').hash, hash, 'изменение данных поставщика видно');
+});
+
+test('строка Compatibility поставщика не затирается официальной операцией', async () => {
+  const { store } = tmpStore();
+  const client = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({ items: makeItems(4) }) });
+  await fullSync({ client, credentials: CRED, store, logger: null, config: CONFIG });
+  const rec = store.loadAll().get('VTT-00001');
+  assert.ok(rec.compatibility?.length, 'разобранная строка ItemDto на месте');
+  assert.ok(rec.compatibilityLabels?.length, 'официальные модели лежат рядом');
+  assert.notDeepEqual(rec.compatibility, rec.compatibilityLabels, 'это два разных источника');
+
+  const { modelsOf } = await import('../src/publish.mjs');
+  assert.deepEqual(modelsOf(rec), rec.compatibilityLabels, 'витрина предпочитает официальные данные');
+  assert.deepEqual(modelsOf({ compatibility: ['HP LJ 1010'] }), ['HP LJ 1010'], 'без них — строка поставщика');
+});
+
+test('GetRelatedItems попадает в полную выгрузку и уважает предел', async () => {
+  const { store } = tmpStore();
+  const client = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({ items: makeItems(10) }) });
+  const rep = await fullSync({ client, credentials: CRED, store, logger: null, config: CONFIG });
+  assert.equal(rep.enrich.related.supported, true);
+  assert.equal(rep.enrich.related.requested, 10);
+  assert.ok(rep.enrich.related.items > 0, 'связи сохранены');
+  const rec = store.loadAll().get('VTT-00000');
+  assert.ok(Array.isArray(rec.related) && rec.related.length, 'идентификаторы связанных товаров в карточке');
+  assert.ok(!rec.related.includes('VTT-00000'), 'товар не связан сам с собой');
+
+  /* Поштучная операция на большом каталоге ограничивается конфигурацией,
+     и отчёт честно говорит, что обошли не всех. */
+  const { store: store2 } = tmpStore();
+  const client2 = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({ items: makeItems(10) }) });
+  const rep2 = await fullSync({
+    client: client2, credentials: CRED, store: store2, logger: null,
+    config: { ...CONFIG, relatedItems: { enabled: true, limit: 3, concurrency: 2 } },
+  });
+  assert.equal(rep2.enrich.related.requested, 3);
+  assert.equal(rep2.enrich.related.ofTotal, 10);
+  assert.equal(rep2.enrich.related.limited, true);
+});
+
+test('недоступный GetRelatedItems не обходит весь каталог впустую', async () => {
+  const { store } = tmpStore();
+  const calls = [];
+  const client = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({
+    items: makeItems(50), related: false, onCall: ({ op }) => calls.push(op),
+  }) });
+  const rep = await fullSync({ client, credentials: CRED, store, logger: null, config: CONFIG });
+  assert.equal(rep.enrich.related.supported, false);
+  assert.ok(rep.enrich.related.reason, 'причина отказа в отчёте');
+  const related = calls.filter((op) => op === 'GetRelatedItems').length;
+  assert.equal(related, 1, `отказ по правам выясняется одной пробой, было вызовов: ${related}`);
+  assert.equal(store.loadAll().size, 50, 'каталог выгружен целиком');
+});
+
+test('groupId поставщика хранится отдельно от выбранной категории', async () => {
+  const { store } = tmpStore();
+  const client = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({ items: makeItems(6) }) });
+  await fullSync({ client, credentials: CRED, store, logger: null, config: CONFIG });
+  const rec = store.loadAll().get('VTT-00002');
+  assert.ok(rec.groupId, 'присланный поставщиком Id раздела сохранён');
+  assert.ok(rec.categoryId, 'категория витрины проставлена');
+  assert.equal(rec.categorySource, 'GetCategoryItems', 'и видно, откуда она взялась');
 });

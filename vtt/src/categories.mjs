@@ -164,7 +164,10 @@ export function createCategoryMapper(tree) {
       return id ? { id, status: 'derived' } : { id: UNMAPPED_ID, status: 'unmapped' };
     }
     let ambiguous = null;
-    for (const raw of [item.categoryId, item.category, item.categoryRoot]) {
+    /* Порядок попыток: присланный поставщиком Id раздела, затем уже
+       проставленная категория, затем названия. Id надёжнее названия, а
+       название — единственное, что есть, когда Id не прислали. */
+    for (const raw of [item.groupId, item.categoryId, item.category, item.categoryRoot]) {
       const value = asText(raw);
       if (!value) continue;
       if (byId.has(value)) return { id: value, status: 'byId' };
