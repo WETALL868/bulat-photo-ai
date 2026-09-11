@@ -1574,7 +1574,59 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   }
 }
 
-/* 18. Кнопка звонка: нажатие принадлежит ссылке
+/* 18. Канал связи в мессенджере MAX
+   --------------------------------------------------------------------------
+   Четыре точки: карточка товара, страница контактов, подвал и корзина. Адрес
+   во всех четырёх приходит из одной константы messengers.max, в разметке не
+   дублируется. Контейнеры намеренно собраны из уже существующих в системе
+   приёмов: карточка товара повторяет жёлтую плашку .biz-note, контакты —
+   обычную .ccard, подвал — строку .fcontact, корзина — тихую строку под
+   итогом. Никаких плавающих виджетов и попапов. */
+
+/* Карточка товара: заметный, но спокойный CTA на месте прежней строки
+   «Задать вопрос о товаре». Жёлтая плашка — тот же приём, что у счёта
+   юрлицам, поэтому блок читается как часть страницы, а не как реклама. */
+.ask-max{gap:12px;padding:14px 16px;background:var(--ytint);border:1px solid var(--yellow2);
+  color:var(--ink);align-items:center;transition:background .16s,border-color .16s}
+.ask-max svg{flex:none;color:var(--ink)}
+.ask-max b{font-family:var(--head);font-weight:800;font-size:15px;letter-spacing:-.01em}
+.ask-max span{color:var(--ink2);font-size:12.5px;line-height:1.4}
+.ask-max .ext{margin-left:auto;opacity:.5}
+.ask-max:hover{background:var(--yellow);border-color:var(--yellow)}
+.ask-max:hover .ext{opacity:.8}
+.ask-max:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+/* Контакты: MAX стоит четвёртой карточкой рядом с телефоном, почтой и
+   режимом работы — равноправный канал, а не приписка. */
+.ccard-max .cico{background:var(--ink);color:var(--yellow)}
+.ccard-max b a.maxlink{display:inline-flex;align-items:center;gap:8px;color:var(--ink);
+  border-bottom:2px solid var(--yellow);line-height:1.15}
+.ccard-max b a.maxlink:hover{color:var(--ink2);border-bottom-color:var(--ink)}
+.ccard-max b a.maxlink:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+
+/* Подвал: компактная строка в столбце контактов, доступна со всех страниц. */
+.fmax{display:inline-flex;align-items:center;gap:10px;color:#d2d1cb;font-size:17px;
+  width:fit-content;padding:2px 0;transition:color .16s}
+.fmax svg{flex:none;color:var(--yellow)}
+.fmax:hover{color:#fff}
+.fmax:focus-visible{outline:2px solid var(--yellow);outline-offset:3px;border-radius:4px}
+
+/* Корзина: тихая строка под итогом. Намеренно без рамки и заливки, чтобы не
+   спорить с кнопкой «Оформить заказ». */
+.maxhelp{display:flex;align-items:center;gap:9px;margin-top:14px;padding-top:14px;
+  border-top:1px solid var(--line);color:var(--muted);font-size:13px;transition:color .16s}
+.maxhelp svg{flex:none;color:var(--ink);opacity:.75}
+.maxhelp:hover{color:var(--ink)}
+.maxhelp:hover svg{opacity:1}
+.maxhelp:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:4px}
+
+@media (max-width:640px){
+  .ask-max{padding:13px 14px}
+  .ask-max .ext{display:none}
+  .fmax{font-size:16px}
+}
+
+/* 19. Кнопка звонка: нажатие принадлежит ссылке
    --------------------------------------------------------------------------
    Правило намеренно стоит последним в файле и не заключено в медиазапрос:
    раньше оно жило внутри @media (max-width:700px), и на любой другой ширине

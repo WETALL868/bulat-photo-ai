@@ -25,7 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { contacts, legal, shop } from '../catalog-source/site.config.mjs';
+import { contacts, legal, shop, messengers} from '../catalog-source/site.config.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_CATALOG = path.join(ROOT, 'data/catalog');
@@ -560,11 +560,23 @@ const ol = (items) => `<ol>${items.map((x) => `<li>${x}</li>`).join('')}</ol>`;
 const pp = (...t) => t.map((x) => `<p>${x}</p>`).join('');
 const money = (n) => `${n.toLocaleString('ru-RU')} ₽`;
 const svg = (d) => `<svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+/* Значки страницы контактов рисуются здесь, но значок MAX берём из того же
+   assets/js/icons.js, что и витрина: копия пути в двух файлах рано или поздно
+   разъезжается. Заменить значок на официальный вектор MAX — правка одной
+   строки в icons.js, и она подхватится и здесь, и в приложении. */
+const SITE_ICONS = (() => {
+  const src = fs.readFileSync(path.join(ROOT, 'assets/js/icons.js'), 'utf8');
+  const m = src.match(/window\.HB_ICONS\s*=\s*(\{[\s\S]*?\});/);
+  if (!m) throw new Error('не разобрал assets/js/icons.js');
+  return JSON.parse(m[1]);
+})();
+
 const ICO = {
   phone: svg('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>'),
   mail: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>'),
   clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   pin: svg('<path d="M12 21s-6-5.7-6-11a6 6 0 0 1 12 0c0 5.3-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>'),
+  max: svg(SITE_ICONS.max),
 };
 pageText.contacts =
   `<p class="lead">Ответим на вопросы по наличию, совместимости и доставке, поможем подобрать расходник по модели принтера и выставим счёт организации.</p>` +
@@ -577,6 +589,12 @@ pageText.contacts =
   `<span>Отвечаем в рабочее время</span></div>` +
   `<div class="ccard"><span class="cico">${ICO.clock}</span><div class="ct">Режим работы</div>` +
   `<b>${contacts.officeHours}</b><span>Заказы на сайте принимаются круглосуточно</span></div>` +
+  /* MAX — такой же полноценный канал, как телефон и почта. Адрес приходит из
+     одной константы messengers.max и в разметке не дублируется. */
+  `<div class="ccard ccard-max"><span class="cico">${ICO.max}</span><div class="ct">Мессенджер</div>` +
+  `<b><a class="maxlink" href="${messengers.max.url}" target="_blank" rel="noopener noreferrer"` +
+  ` aria-label="Написать нам в мессенджере MAX, откроется в новой вкладке">Напишите нам в MAX</a></b>` +
+  `<span>${messengers.max.note}</span></div>` +
   `</div>` +
   h3('Фирменный магазин и склад') +
   `<div class="cshop"><div>` +
@@ -791,6 +809,7 @@ write('data/site.json', {
   contacts,
   legal,
   shop,
+  messengers,
   laserBrands,
   lines: fallback.lines,
   pages: fallback.pages,
@@ -803,6 +822,14 @@ write('data/site.json', {
 });
 
 const kb = (n) => (n / 1024).toFixed(1) + ' КБ';
+if (!messengers.max.confirmed) {
+  console.warn('');
+  console.warn('  ВНИМАНИЕ: ссылка на MAX не подтверждена.');
+  console.warn(`  Сейчас в сборке заглушка: ${messengers.max.url}`);
+  console.warn('  Перед публикацией укажите реальный адрес в catalog-source/site.config.mjs');
+  console.warn('  (messengers.max.url) и переключите confirmed в true.');
+  console.warn('');
+}
 console.log(`Каталог собран из источника «${SOURCE}»`);
 console.log(`  товаров ${products.length}, категорий ${categories.length}, брендов ${brands.length}, моделей принтеров ${meta.compatibilityModels}`);
 console.log(`  index.json ${kb(sizes.index)}, детали ${chunks.length} чанков ${kb(sizes.chunks)}, поиск ${kb(sizes.search)}`);
