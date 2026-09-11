@@ -26,24 +26,31 @@
     return '<svg class="' + (cls || 'ic') + '" width="' + (size || 20) + '" height="' + (size || 20) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + ICONS[name] + '</svg>';
   }
   /*
-    Канал MAX. Адрес приходит из data/site.json (catalog-source/site.config.mjs,
-    константа messengers.max) и нигде в разметке не дублируется. Если адрес не
-    задан, все точки MAX просто не отрисовываются — на месте остаётся то, что
-    было раньше, и битых ссылок не появляется.
+    Канал MAX. Настройка приходит из data/site.json (catalog-source/site.config.mjs,
+    константа messengers.max) и нигде в разметке не дублируется.
+
+    Пока адрес не подтверждён, сборщик кладёт в site.json url: null и
+    active: false. В этом состоянии блоки MAX остаются видимыми — дизайн можно
+    согласовывать, — но ссылкой не притворяются: это span без href, без
+    навигации, с aria-disabled и подписью «Ссылка будет добавлена». Заглушка
+    физически не может стать кликабельной.
+
+    Как только в конфиге появится настоящий адрес и confirmed:true, те же
+    элементы собираются как обычные <a target="_blank" rel="noopener noreferrer">.
 
     Предзаполненный текст обращения не подставляем: документации на deep link с
-    текстом у MAX в проекте нет, а выдумывать параметры и получать неработающую
-    ссылку хуже, чем просто открыть чат. Контекст товара остаётся у покупателя
-    на экране, откуда он пишет.
+    текстом у MAX нет, а выдумывать параметры и получить неработающую ссылку
+    хуже, чем просто открыть чат.
   */
-  function maxCfg() {
-    var m = C.site && C.site.messengers && C.site.messengers.max;
-    return m && m.url ? m : null;
-  }
-  function maxAttrs(aria) {
+  function maxCfg() { return (C.site && C.site.messengers && C.site.messengers.max) || null; }
+  function maxOn() { var m = maxCfg(); return !!(m && m.active && m.url); }
+  function maxEl(cls, aria, inner) {
     var m = maxCfg();
-    return 'href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer" aria-label="' + esc(aria) + '"';
+    if (!m) return '';
+    if (!maxOn()) return '<span class="' + cls + ' is-off" aria-disabled="true">' + inner + '</span>';
+    return '<a class="' + cls + '" href="' + esc(m.url) + '" target="_blank" rel="noopener noreferrer" aria-label="' + esc(aria) + '">' + inner + '</a>';
   }
+  function maxPending() { var m = maxCfg(); return esc((m && m.pending) || 'Ссылка будет добавлена'); }
 
   function stars(rate, size) {
     var full = Math.round(rate), out = '<span class="stars">';
@@ -493,9 +500,12 @@
         '<div class="acts"><button type="button" class="' + (S.cmp[p.id] ? 'on' : '') + '" data-cmp="' + p.id + '" aria-pressed="' + !!S.cmp[p.id] + '" title="' + (S.cmp[p.id] ? 'Убрать из сравнения' : 'Добавить к сравнению') + '">' + ic('compare', 16) + (S.cmp[p.id] ? 'В сравнении' : 'В сравнение') + '</button><button type="button" class="' + (S.fav[p.id] ? 'on' : '') + '" data-fav="' + p.id + '">' + ic('heart', 16) + (S.fav[p.id] ? 'В избранном' : 'В избранное') + '</button></div>' +
         '<div class="dlist"><div>' + ic('truck', 18) + '<div><b>Курьер по Москве</b><span>Дату и интервал подтверждает менеджер</span></div></div><div>' + ic('pin', 18) + '<div><b>Самовывоз по предварительному согласованию</b><span>Москва, Ясеневая ул., д. 50</span></div></div><div>' + ic('card', 18) + '<div><b>Оплата картой, СБП или по счёту</b><span>Юрлицам — счёт и закрывающие документы</span></div></div><div>' + ic('shield', 18) + '<div><b>Гарантия ресурса</b><span>Срок указан в карточке и документах</span></div></div></div>' +
         (maxCfg()
-          ? '<a class="ask ask-max" ' + maxAttrs('Написать о товаре ' + p.name + ' в мессенджере MAX, откроется в новой вкладке') + '>' +
-            ic('max', 22) + '<div><b>Написать в MAX</b><span>Спросим наличие, совместимость и сроки — ответим в мессенджере</span></div>' +
-            ic('external', 16, 'ic ext') + '</a>'
+          ? maxEl('ask ask-max', 'Написать о товаре ' + p.name + ' в мессенджере MAX, откроется в новой вкладке',
+              ic('max', 22) + '<div><b>Написать в MAX</b>' +
+              (maxOn()
+                ? '<span>Спросим наличие, совместимость и сроки — ответим в мессенджере</span>'
+                : '<span class="maxnote">' + maxPending() + '</span>') +
+              '</div>' + (maxOn() ? ic('external', 16, 'ic ext') : ''))
           : '<a class="ask" href="' + link.page('contacts') + '">' + ic('chat', 22) + '<div><b>Задать вопрос о товаре</b><span>Ответим в чате или по телефону</span></div></a>') + '</div></div>' +
         kitBlock(fam, p) +
         '<div class="tabs" id="ptabs">' + tabs.map(function (t) { return '<button type="button" class="' + (tab === t[0] ? 'on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
@@ -612,7 +622,9 @@
       '<div class="cgrid"><div class="clist"><div class="chead"><span>' + n + ' ' + plural(n, 'товар', 'товара', 'товаров') + '</span><div class="r"><a href="#" data-fav-all>' + ic('heart', 16) + 'Всё в избранное</a><a href="#" data-clear-cart>' + ic('trash', 16) + 'Очистить корзину</a></div></div>' + rows +
       '<div class="cfootr"><form class="promo" id="promo-form"><div class="field"><input type="text" name="promo" placeholder="Промокод" value="' + esc(S.promo || '') + '" aria-label="Промокод"></div><button class="btn btn-o" type="submit">Применить</button>' + (promo ? '<span class="ok">' + ic('check', 16) + 'Скидка 5% применена</span>' : (S.promoErr ? '<span class="err">Промокод не найден</span>' : '<span class="muted xs">Для теста: HIBLACK5</span>')) + '</form><a class="back" href="' + link.catalog('') + '">' + ic('chev-left', 16) + 'Продолжить покупки</a></div></div>' +
       '<div class="summary"><h3>Ваш заказ</h3><div class="srow"><span>Товары, ' + n + ' шт.</span><b>' + fmt(sum) + ' ₽</b></div><div class="srow"><span>Скидка</span><b>' + (promo ? '−' + fmt(promo) + ' ₽' : '0 ₽') + '</b></div><div class="srow"><span>Доставка</span><b class="soft">рассчитаем на следующем шаге</b></div><div class="srow total"><span>Итого</span><b>' + fmt(sum - promo) + ' ₽</b></div><a class="btn btn-y btn-lg btn-full" href="' + link.plain('checkout') + '">Оформить заказ' + ic('arrow-right', 20) + '</a><div class="payrow"><span>НАЛИЧНЫМИ</span><span>КАРТОЙ КУРЬЕРУ</span><span>ПО СЧЁТУ</span></div><div class="biz">' + ic('building', 20) + '<div><b>Заказ для компании?</b>На следующем шаге выберите «Юридическое лицо» — счёт придёт на почту, документы отдадим с заказом.</div></div><div class="note">Согласия на обработку персональных данных и условия оферты подтверждаются на шаге оформления — отдельными галочками.</div>' +
-      (maxCfg() ? '<a class="maxhelp" ' + maxAttrs('Задать вопрос по заказу в мессенджере MAX, откроется в новой вкладке') + '>' + ic('max', 18) + '<span>Нужна помощь с заказом? Напишите в MAX</span></a>' : '') +
+      maxEl('maxhelp', 'Задать вопрос по заказу в мессенджере MAX, откроется в новой вкладке',
+        ic('max', 18) + '<span>Нужна помощь с заказом? Напишите в MAX</span>' +
+        (maxOn() ? '' : '<i class="maxnote">' + maxPending() + '</i>')) +
       '</div>' +
       '<div class="sec addon-sec"><div class="sec-head"><h3>Добавить к заказу</h3><a class="more" href="' + link.catalog('') + '">Ещё ' + ic('arrow-right', 18) + '</a></div><div class="addon">' + addon.map(function (p) {
         return '<div class="mini"><a class="img" href="' + link.product(p) + '"><img src="' + p.img + '" alt="" loading="lazy"></a><div class="mb"><a class="t" href="' + link.product(p) + '">' + esc(p.name) + '</a><div class="p"><div class="price">' + fmt(p.price) + ' ₽</div><button class="add" type="button" data-add="' + p.id + '" aria-label="В корзину">' + ic('plus', 18) + '</button></div></div></div>';
@@ -1487,21 +1499,20 @@
   window.HBRender = render;
 
   /* Старт: пока каталог грузится, на экране остаётся предрендер страницы. */
-  /* Статичные ссылки на MAX в подвале: адрес проставляем из той же константы,
-     что и остальные точки. Пока адрес не задан, пункт остаётся скрытым. */
+  /* Подвал статичен, поэтому элемент MAX собирается здесь — из той же
+     настройки, что и остальные точки. Пока адреса нет, в разметке остаётся
+     span без href; когда адрес появится, узел заменяется на настоящую ссылку. */
   function fillMaxLinks() {
     var m = maxCfg();
     var nodes = document.querySelectorAll('[data-max-link]');
     for (var i = 0; i < nodes.length; i++) {
-      var a = nodes[i];
-      if (!m) { a.hidden = true; a.removeAttribute('href'); continue; }
-      a.href = m.url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.setAttribute('aria-label', 'Написать нам в мессенджере MAX, откроется в новой вкладке');
-      var slot = a.querySelector('[data-max-icon]');
-      if (slot && !slot.firstChild) slot.innerHTML = ic('max', 18);
-      a.hidden = false;
+      var node = nodes[i];
+      if (!m) { node.hidden = true; continue; }
+      var inner = ic('max', 18) + '<span>Написать в MAX</span>' +
+        (maxOn() ? '' : '<i class="maxnote">' + maxPending() + '</i>');
+      var html = maxEl('fmax', 'Написать нам в мессенджере MAX, откроется в новой вкладке', inner)
+        .replace('class="fmax', 'data-max-link class="fmax');
+      node.outerHTML = html;
     }
   }
 

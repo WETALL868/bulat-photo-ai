@@ -564,6 +564,20 @@ const svg = (d) => `<svg class="ic" width="22" height="22" viewBox="0 0 24 24" f
    assets/js/icons.js, что и витрина: копия пути в двух файлах рано или поздно
    разъезжается. Заменить значок на официальный вектор MAX — правка одной
    строки в icons.js, и она подхватится и здесь, и в приложении. */
+/*
+  Адрес MAX попадает в сборку только если он настоящий: подтверждён флагом и
+  прошёл проверку формы. Иначе в site.json уходит url: null — заглушка не может
+  оказаться ни в данных, ни в DOM, ни стать кликабельной ссылкой.
+*/
+const maxPublic = (() => {
+  const m = messengers.max;
+  const url = typeof m.url === 'string' ? m.url.trim() : '';
+  const looksReal = /^https:\/\/max\.ru\/\S+$/i.test(url)
+    && !/replace|placeholder|example|todo|username|<|>/i.test(url);
+  const active = m.confirmed === true && looksReal;
+  return { name: m.name, label: m.label, note: m.note, pending: m.pending, active, url: active ? url : null };
+})();
+
 const SITE_ICONS = (() => {
   const src = fs.readFileSync(path.join(ROOT, 'assets/js/icons.js'), 'utf8');
   const m = src.match(/window\.HB_ICONS\s*=\s*(\{[\s\S]*?\});/);
@@ -592,9 +606,19 @@ pageText.contacts =
   /* MAX — такой же полноценный канал, как телефон и почта. Адрес приходит из
      одной константы messengers.max и в разметке не дублируется. */
   `<div class="ccard ccard-max"><span class="cico">${ICO.max}</span><div class="ct">Мессенджер</div>` +
-  `<b><a class="maxlink" href="${messengers.max.url}" target="_blank" rel="noopener noreferrer"` +
-  ` aria-label="Написать нам в мессенджере MAX, откроется в новой вкладке">Напишите нам в MAX</a></b>` +
-  `<span>${messengers.max.note}</span></div>` +
+  (maxPublic.active
+    ? `<b><a class="maxlink" href="${maxPublic.url}" target="_blank" rel="noopener noreferrer"` +
+      ` aria-label="Написать нам в мессенджере MAX, откроется в новой вкладке">Напишите нам в MAX</a></b>` +
+      `<span>${maxPublic.note}</span>`
+    /* Адреса ещё нет: блок виден для согласования дизайна, но ссылкой не
+       притворяется — это span без href и без навигации. */
+    : `<b><span class="maxlink is-off" aria-disabled="true">Напишите нам в MAX</span></b>` +
+      `<span class="maxnote">${maxPublic.pending}</span>`) +
+  `</div>` +
+  /* Закрываем саму сетку карточек. Без этого `</div>` браузер оставлял
+     .ccards открытой до конца страницы, и заголовок «Фирменный магазин»,
+     блок склада, форма и подсказки становились ячейками той же сетки —
+     на десктопе страница контактов разъезжалась по трём колонкам. */
   `</div>` +
   h3('Фирменный магазин и склад') +
   `<div class="cshop"><div>` +
@@ -809,7 +833,7 @@ write('data/site.json', {
   contacts,
   legal,
   shop,
-  messengers,
+  messengers: { max: maxPublic },
   laserBrands,
   lines: fallback.lines,
   pages: fallback.pages,
@@ -822,12 +846,12 @@ write('data/site.json', {
 });
 
 const kb = (n) => (n / 1024).toFixed(1) + ' КБ';
-if (!messengers.max.confirmed) {
+if (!maxPublic.active) {
   console.warn('');
-  console.warn('  ВНИМАНИЕ: ссылка на MAX не подтверждена.');
-  console.warn(`  Сейчас в сборке заглушка: ${messengers.max.url}`);
-  console.warn('  Перед публикацией укажите реальный адрес в catalog-source/site.config.mjs');
-  console.warn('  (messengers.max.url) и переключите confirmed в true.');
+  console.warn('  MAX: адрес не задан — блоки собраны в неактивном виде.');
+  console.warn('  В site.json уходит url: null, ссылок с заглушкой в сборке нет.');
+  console.warn('  Чтобы включить канал: catalog-source/site.config.mjs, messengers.max —');
+  console.warn('  url: \'https://max.ru/<аккаунт>\' и confirmed: true.');
   console.warn('');
 }
 console.log(`Каталог собран из источника «${SOURCE}»`);

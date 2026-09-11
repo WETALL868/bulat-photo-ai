@@ -153,10 +153,10 @@
       <span><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Пн–Пт 09:00–18:00, заказы на сайте — круглосуточно</span>
       <span><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.7-6-11a6 6 0 0 1 12 0c0 5.3-6 11-6 11z"/><circle cx="12" cy="10" r="2"/></svg>Москва, Ясеневая ул., д. 50 · метро Зябликово</span>
       <span><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>info@nvprint-msk.ru</span>
-      <!-- Ссылка на MAX. Адрес намеренно не прописан в разметке: его
-           подставляет app.js из одной константы messengers.max, а без
-           настроенного адреса пункт скрыт целиком. -->
-      <a class="fmax" data-max-link hidden><span data-max-icon></span>Написать в MAX</a>
+      <!-- Канал MAX. Адрес в разметке намеренно отсутствует: элемент
+           собирает app.js из одной константы messengers.max. Пока адреса нет,
+           это span без href — кликабельной заглушки в DOM не появляется. -->
+      <span class="fmax is-off" data-max-link aria-disabled="true"><span>Написать в MAX</span></span>
     </div>
   </div>
   <div class="fbottom">

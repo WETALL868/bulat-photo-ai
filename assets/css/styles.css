@@ -1620,6 +1620,35 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
 .maxhelp:hover svg{opacity:1}
 .maxhelp:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:4px}
 
+/* Состояние «адреса ещё нет». Пока messengers.max.confirmed !== true или URL
+   не прошёл проверку, сборка выдаёт те же четыре блока, но как span с
+   aria-disabled: без href, без перехода и без внешней стрелки. Дизайн остаётся
+   на экране для согласования, однако элемент не притворяется рабочим —
+   курсор обычный, ховер выключен, пунктирная граница и подпись прямо говорят,
+   что ссылка появится позже. Когда адрес будет проставлен, те же самые классы
+   вернутся на <a target="_blank"> — отдельной вёрстки для этого не нужно. */
+.is-off{cursor:default}
+.maxnote{font-style:normal;font-weight:400;font-family:var(--body);font-size:12px;
+  line-height:1.35;letter-spacing:0;color:var(--muted)}
+
+.ask-max.is-off{border-style:dashed}
+.ask-max.is-off:hover{background:var(--ytint);border-color:var(--yellow2)}
+.ask-max .maxnote{display:block;margin-top:1px}
+
+.ccard-max b .maxlink{display:inline-flex;align-items:center;gap:8px;color:var(--ink);
+  border-bottom:2px solid var(--yellow);line-height:1.15}
+.ccard-max b .maxlink.is-off{color:var(--ink2);border-bottom-style:dashed;border-bottom-color:var(--yellow2)}
+.ccard-max .maxnote{font-size:13px;margin-top:2px}
+
+.fmax.is-off{flex-wrap:wrap;color:#b6b4ad}
+.fmax.is-off:hover{color:#b6b4ad}
+.fmax .maxnote{flex:0 0 100%;box-sizing:border-box;padding-left:28px;color:#8d8b84}
+
+.maxhelp.is-off{flex-wrap:wrap;align-items:flex-start}
+.maxhelp.is-off:hover{color:var(--muted)}
+.maxhelp.is-off:hover svg{opacity:.75}
+.maxhelp .maxnote{flex:0 0 100%;box-sizing:border-box;padding-left:27px;margin-top:2px}
+
 @media (max-width:640px){
   .ask-max{padding:13px 14px}
   .ask-max .ext{display:none}
