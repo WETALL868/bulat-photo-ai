@@ -235,6 +235,30 @@
       box.querySelector('[data-qs-q]').textContent = q;
       box.querySelector('[data-qs-t]').textContent = fmt(unit * q) + ' ₽';
     }
+    syncBuybar();
+  }
+  /*
+    Закреплённая панель показывает то же, что и карточка покупки: сколько штук
+    уйдёт по нажатию и сколько этого товара уже лежит в корзине. Иначе человек,
+    поставивший «3 шт.» наверху, нажимал бы внизу кнопку, не понимая, что
+    добавит три, и не видел бы результата — панель закрывает сам счётчик шапки.
+  */
+  function syncBuybar() {
+    var bar = document.getElementById('buybar');
+    if (!bar) return;
+    var qEl = bar.querySelector('[data-bb-q]');
+    if (qEl) {
+      var q = pickedQty();
+      qEl.hidden = q <= 1;
+      qEl.textContent = q > 1 ? q + ' шт.' : '';
+    }
+    var inEl = bar.querySelector('[data-bb-in]');
+    var btn = bar.querySelector('[data-add]');
+    if (inEl && btn) {
+      var n = S.cart[btn.dataset.add] || 0;
+      inEl.hidden = !n;
+      inEl.innerHTML = n ? '<i>в корзине</i><b>' + n + '</b>' : '';
+    }
   }
   function card(p) {
     var fav = S.fav[p.id] ? ' on' : '', cmp = S.cmp[p.id] ? ' on' : '';
@@ -539,7 +563,25 @@
         '<p class="b2b-note">' + ic('mail', 18) + '<span>На шаге оформления выберите «Юридическое лицо» и заполните реквизиты компании. ' +
         'Если удобнее, отправьте карточку организации и запрос на <a href="mailto:info@nvprint-msk.ru">info@nvprint-msk.ru</a>.</span></p></section>' +
         '<div class="sec"><div class="sec-head"><h2>Похожие товары</h2><a class="more" href="' + link.catalog(p.cat, p.brand) + '">Все для ' + esc(C.brandName(p.brand)) + ' ' + ic('arrow-right', 18) + '</a></div><div class="grid4">' + related.map(card).join('') + '</div></div>' +
-        '<div class="buybar" id="buybar"><div class="bp">' + priceBlock(p) + '' + (p.stock ? '<div class="avail"><i></i>В наличии на складе</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') + '</div><button class="btn btn-y" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 18) + 'В корзину</button></div></div>';
+        /* Закреплённая панель покупки. Кнопка несёт те же data-add и data-useq,
+           что и штатная, поэтому добавляет тот же товар в том же количестве —
+           одна и та же ветка обработчика, без параллельной логики. */
+        '<div class="buybar" id="buybar" role="region" aria-hidden="true"' +
+          ' aria-label="Быстрая покупка: ' + esc(p.name) + '">' +
+          '<div class="bp">' + priceBlock(p) +
+            /* Метки стоят рядом с ценой, а не внутри кнопки: обработчик
+               нажатия на 1,4 с подменяет содержимое кнопки на «Добавлено»,
+               и всё, что лежало бы внутри, на это время исчезало бы. */
+            '<div class="bmeta">' +
+              '<span class="bq" data-bb-q hidden></span>' +
+              '<span class="bin" data-bb-in hidden></span>' +
+              (p.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Под заказ, 3–5 дней</span>') +
+            '</div>' +
+          '</div>' +
+          '<button class="btn btn-y" type="button" data-add="' + p.id + '" data-useq="1"' +
+            ' aria-label="Добавить в корзину: ' + esc(p.name) + '">' +
+            ic('cart', 18) + '<span class="bt">В корзину</span></button>' +
+        '</div></div>';
     });
   }
 
@@ -971,7 +1013,7 @@
   function showToast(html) { toast.innerHTML = html; toast.classList.add('show'); clearTimeout(tt); tt = setTimeout(function () { toast.classList.remove('show'); }, 2600); }
   function addToCart(id, q) {
     S.cart[id] = (S.cart[id] || 0) + (q || 1);
-    save(); updateHeader();
+    save(); updateHeader(); syncBuybar();
     var p = C.byId(id);
     showToast(ic('check', 18) + '<span>' + esc(p.name.slice(0, 48)) + '… — в корзине</span> <a href="' + link.plain('cart') + '">Перейти в корзину</a>');
   }
@@ -1455,19 +1497,40 @@
     });
   }
 
+  /*
+    Закреплённая панель покупки на странице товара.
+
+    Наблюдаем не за карточкой покупки целиком, а именно за кнопкой «В корзину».
+    Карточка высокая и на десктопе липкая: она подолгу остаётся на экране,
+    когда самой кнопки уже не видно, — а дубль нужен ровно тогда, когда из
+    видимой области ушла кнопка.
+
+    Направление прокрутки роли не играет. isIntersecting=false означает, что
+    кнопки на экране нет совсем — неважно, ушла она вверх или ещё не доехала
+    снизу. На телефоне блок покупки лежит под галереей, и при открытии
+    страницы кнопки не видно: панель нужна и там, иначе покупать нечем.
+
+    Панель показывается только если покупка вообще возможна: нет кнопки или
+    она заблокирована — панель убирается из разметки, дублировать нечего.
+  */
   var bbObs = null;
   function initBuybar() {
     if (bbObs) { bbObs.disconnect(); bbObs = null; }
-    var bar = document.getElementById('buybar'), buy = app.querySelector('.buy');
-    if (!bar || !buy || !('IntersectionObserver' in window)) return;
+    var bar = document.getElementById('buybar');
+    if (!bar) return;
+    var btn = app.querySelector('.buy [data-add]');
+    if (!btn || btn.disabled || btn.hasAttribute('aria-disabled')) { bar.remove(); return; }
+    syncBuybar();
+    if (!('IntersectionObserver' in window)) { bar.remove(); return; }
     bbObs = new IntersectionObserver(function (en) {
-      var x = en[0];
-      var on = !x.isIntersecting && x.boundingClientRect.top < 0;
+      var on = !en[0].isIntersecting;
       bar.classList.toggle('show', on);
-      /* Пока панель не выехала, плашке cookie незачем висеть выше нижнего края. */
+      /* Скринридер не должен находить панель, пока она уехала за край. */
+      bar.setAttribute('aria-hidden', on ? 'false' : 'true');
+      /* Плашке cookie и всплывающему уведомлению есть куда подняться. */
       document.body.classList.toggle('bar-on', on);
     }, { threshold: 0 });
-    bbObs.observe(buy);
+    bbObs.observe(btn);
   }
 
   /*

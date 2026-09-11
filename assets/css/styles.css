@@ -692,18 +692,54 @@ a.line-c:hover{border-color:var(--ink)}
   сверху просто сливалась. Светлая подложка отделяет её от тёмных блоков,
   рамка и тень по периметру — от светлых.
 */
-.buybar{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:60;
+.buybar{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:60;
+  width:min(560px,calc(100vw - 32px));
   background:#fff;border:1px solid var(--line2);border-radius:15px;
-  padding:10px 14px;display:none;align-items:center;gap:12px;overflow:hidden;
+  padding:10px 12px 10px 16px;display:flex;align-items:center;gap:14px;overflow:hidden;
   box-shadow:0 10px 30px rgba(20,20,20,.16),0 2px 8px rgba(20,20,20,.08);
-  transform:translateY(calc(100% + 24px));visibility:hidden;transition:transform .25s,visibility 0s .25s}
+  transform:translate(-50%,calc(100% + 40px));visibility:hidden;
+  transition:transform .24s ease,visibility 0s .24s}
+/* Панель закреплена, поэтому появление и уход не двигают содержимое страницы:
+   уезжает только она сама, за нижнюю кромку окна. */
+.buybar.show{transform:translate(-50%,0);visibility:visible;
+  transition:transform .24s ease,visibility 0s}
+@media (prefers-reduced-motion:reduce){.buybar{transition:none}.buybar.show{transition:none}}
 /* Тонкий жёлтый акцент по верхней кромке — держит фирменный тон, но не кричит. */
 .buybar::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;
   background:linear-gradient(90deg,rgba(255,210,0,0) 0%,var(--yellow) 22%,var(--yellow) 78%,rgba(255,210,0,0) 100%)}
-.buybar .bp{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.buybar .bp{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .buybar .price{font-size:20px}
-.buybar .avail{font-size:12px}
+.buybar .bmeta{display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden}
+.buybar .avail{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Сколько уйдёт по нажатию — если наверху выбрали больше одной штуки. */
+.buybar .bq{flex:none;font-size:12px;font-weight:700;color:var(--ink);
+  background:var(--ytint);border:1px solid var(--yellow2);border-radius:999px;padding:1px 8px}
 .buybar .btn{height:46px;padding:0 18px;flex:none}
+/* Сколько этого товара уже в корзине: счётчик шапки панель закрывает собой. */
+.buybar .bin{flex:none;display:inline-flex;align-items:center;gap:4px;
+  font-size:11.5px;font-weight:700;white-space:nowrap;font-style:normal;
+  background:var(--ink);color:var(--yellow);border-radius:999px;padding:2px 8px}
+.buybar .bin i{font-style:normal;font-weight:500}
+
+/*
+  Узкий экран. В панели остаётся только то, ради чего она существует: цена,
+  сколько уйдёт по нажатию и крупная кнопка. Старая цена, скидка и наличие
+  уже показаны в карточке товара выше — здесь они лишь отнимают ширину у
+  кнопки, а на 320px из-за них панель переставала помещаться.
+*/
+@media (max-width:430px){
+  .buybar{padding:10px 10px 10px 12px;gap:10px}
+  .buybar .price{font-size:18px}
+  .buybar .price small,.buybar .price .save{display:none}
+  .buybar .avail{display:none}
+  .buybar .bin i{display:none}
+  .buybar .btn{padding:0 14px}
+}
+
+/* Плашка cookie и всплывающее уведомление встают над панелью, а не под ней:
+   иначе нажатие «В корзину» прячет собственный ответ. */
+body.pg-product.bar-on .cookie{bottom:calc(100px + env(safe-area-inset-bottom,0px))}
+body.pg-product.bar-on .toast{bottom:calc(104px + env(safe-area-inset-bottom,0px))}
 
 /* 10. Корзина и оформление
    -------------------------------------------------------------------------- */
@@ -1099,10 +1135,74 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .logo img{height:30px}
   .logo-plate{padding:6px 13px 6px 10px}
   .logo-plate img{height:24px}
-  .search{order:5;flex-basis:100%;height:48px;border-width:1.5px;border-radius:12px}
+  /*
+    Планшетная строка шапки собирается по тому же правилу, что и телефонная:
+    меню, логотип и корзина обязаны стоять на одном уровне, корзина — справа.
+
+    Раньше здесь в первую строку не помещался блок телефона с «Заказать
+    звонок», и вниз сваливались действия вместе с корзиной: на 768px корзина
+    оказывалась на второй строке слева, да ещё и прыгала туда при появлении
+    товаров. Теперь телефон намеренно уходит вниз, к поиску, где место есть,
+    а в первой строке остаются меню, логотип и действия с корзиной.
+
+    Гарантия та же, что и на телефоне: у логотипа нулевой flex-basis, поэтому
+    в раскладку строки он входит с нулевой шириной и вытеснить корзину нечем.
+    Растёт он только до max-content, а остаток места забирает margin-left:auto
+    у группы действий и прижимает корзину к правому краю.
+  */
+  .head .wrap > .hblogo{flex:1 1 0;min-width:0;max-width:max-content}
+  /* Обрезается вся текстовая колонка, а не только wordmark: подпись под ним
+     шире его самого, и без этого она вылезала из своей коробки и наезжала на
+     блок телефона, когда логотипу не хватало места. */
+  .hblogo-txt{min-width:0;overflow:hidden}
+  /* Свободное место забирает отступ перед телефоном — он уносит вправо и
+     себя, и группу действий, так что корзина оказывается у самого края. */
+  .phone{margin-left:auto;flex:none}
+  .hacts{margin-left:0;flex:none}
+  /* Поиск занимает отдельную строку целиком: с basis 100% он не может
+     встать рядом с корзиной и оттеснить её от правого края. */
+  .search{order:5;flex:0 0 100%;min-width:0;height:48px;border-width:1.5px;border-radius:12px}
+  /*
+    Сумма заказа в кнопке корзины — единственное, что здесь зависит от
+    содержимого и может расти без предела. На узком планшете её приходится
+    убирать: с ней фиксированная часть строки (меню, телефон, действия)
+    доходит до 628px при 585px доступных на 641px — не помещается даже при
+    нулевой ширине логотипа. Количество товаров остаётся, сумма видна в
+    корзине.
+
+    Порог 960px посчитан, а не выбран на глаз: со включённой суммой строке
+    нужно 44 + 203 + 346 + 36 зазоров + 206 логотипа = 835px, и запас
+    появляется только к 960px. Три значка
+    (сравнение, избранное, вход) полезнее суммы: это навигация, а итог
+    всё равно виден в самой корзине.
+  */
+  @media (max-width:960px){.cartbtn .sum{display:none}}
+}
+
+/*
+  Узкий планшет и телефон: вместо блока с номером и «Заказать звонок» —
+  компактная кнопка вызова. Блок телефона занимает 203px, и именно он
+  отбирал ширину у логотипа: на 768px знаку оставалось 119px при нужных
+  164px, и подпись вылезала на соседей, на 641px от «HI-BLACK» оставались
+  две буквы. Порог 900px — с запасом: полному блоку телефона рядом с целым
+  логотипом нужно 44 + 203 + 310 + 36 зазоров + 206 = 799px, и надёжный
+  запас появляется только за 900px. Номер никуда не делся: кнопка звонит по тому же номеру
+  в одно нажатие, а полный номер есть в меню и в подвале.
+*/
+@media (max-width:900px){
+  .head .phone{display:none}
+  .mphone{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:1px solid var(--hdr-line);color:#fff;margin-left:auto;flex:none;-webkit-tap-highlight-color:transparent}
+  /*
+    Глобальное a:hover{color:#000} на тач-экране «залипает» после касания, и
+    белая трубка на тёмной шапке оставалась чёрной. Цвет закреплён во всех
+    состояниях, от нажатия остаётся только короткая подсветка фона.
+  */
+  .mphone,.mphone:hover,.mphone:focus,.mphone:visited{color:#fff}
+  .mphone{position:relative;z-index:2;touch-action:manipulation}
+  .mphone:active{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.45)}
+  .mphone:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
   .search input{padding:0 14px;font-size:14px}
   .search .sbtn{width:100px}
-  .phone{margin-left:auto}
   /* Подписи «Сравнение» и «Избранное» шире отведённых 52px и наезжали друг на
      друга — на планшете оставляем только иконки, названия видны в меню. */
   .hact{width:44px;font-size:0;gap:0}
@@ -1159,10 +1259,11 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .gmain{height:480px;padding:14px}
   .buy{position:static}
   .tabs{margin-top:40px}
-  .buybar{display:flex}
-  .buybar.show{transform:none;visibility:visible;transition:transform .25s,visibility 0s}
-  /* Плашка cookie встаёт над карточкой покупки, а не поверх неё. */
-  body.pg-product.bar-on .cookie{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+  /* На узком экране панель во всю ширину: кнопка должна быть крупной. */
+  .buybar{left:12px;right:12px;width:auto;bottom:calc(12px + env(safe-area-inset-bottom,0px));
+    transform:translateY(calc(100% + 28px))}
+  .buybar.show{transform:none}
+  .buybar .btn{height:50px}
 
   /* Хвост страницы не должен уходить под карточку: её высота плюс отступ. */
   body.pg-product{padding-bottom:calc(92px + env(safe-area-inset-bottom,0px))}
@@ -1226,7 +1327,7 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .sec-head{margin-bottom:16px;gap:6px 16px}
   .sec-head a.more{font-size:14px}
   /* шапка */
-  .head .wrap{gap:8px 8px;padding-top:10px;padding-bottom:10px}
+  .head .wrap{gap:8px 7px;padding-top:10px;padding-bottom:10px}
   /*
     Верхняя строка на телефоне: меню слева, логотип рядом с ним, телефон и
     корзина прижаты вправо. Корзина не должна уезжать под логотип ни при
@@ -1254,26 +1355,19 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
      нажатия была бы вдвое ниже соседних кнопок. Строка и так не ниже 40px
      из-за меню и корзины, поэтому на вид ничего не меняется. */
   .head .wrap > .hblogo{flex:1 1 0;min-width:0;max-width:max-content;min-height:40px}
-  .hblogo-txt{min-width:0}
-  .hblogo-word{overflow:hidden}
+  .hblogo-txt{min-width:0;overflow:hidden}
   .logo img{height:28px}
   .logo-plate{padding:5px 11px 5px 9px}
   .logo-plate img{height:21px}
   .logo-sub{display:none}
-  .phone,.hact{display:none}
-  .mphone{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:1px solid var(--hdr-line);color:#fff;margin-left:auto;flex:none;-webkit-tap-highlight-color:transparent}
-  /*
-    Глобальное a:hover{color:#000} на тач-экране «залипает» после касания, и
-    белая трубка на тёмной шапке оставалась чёрной. Цвет закреплён во всех
-    состояниях, от нажатия остаётся только короткая подсветка фона.
-  */
-  .mphone,.mphone:hover,.mphone:focus,.mphone:visited{color:#fff}
-  .mphone{position:relative;z-index:2;touch-action:manipulation}
-  .mphone:active{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.45)}
-  .mphone:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
-  /* Корзина прижата к правому краю строки и остаётся последней. */
+  .hact{display:none}
+  /* Корзина прижата к правому краю строки и остаётся последней.
+     Отступы ужаты до предела осознанно: трёхзначный счётчик добавляет
+     кнопке 12px, и ровно этих 12px не хватало логотипу на 320–390px —
+     знак начинал обрезаться. Кнопка от этого не стала мельче: её высота
+     и площадь нажатия прежние. */
   .hacts{gap:0;flex:none;margin-left:0}
-  .cartbtn{margin-left:0;gap:6px;padding:0 10px;flex:none}
+  .cartbtn{margin-left:0;gap:5px;padding:0 8px;flex:none}
   .cartbtn .sum{display:none}
   /* Счётчик фиксированной ширины: одно- и двузначное число занимают
      одинаково, поэтому строка не «дышит» при добавлении товаров. */
@@ -1595,9 +1689,14 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
    корзина срывалась вниз. Лучше показать крупные и разборчивые «HB» и
    «HI-BLACK», чем втиснуть подпись кеглем, который всё равно не прочесть. */
 @media (max-width:640px){.hblogo-sub{display:none}}
-@media (max-width:380px){.hblogo{--u:32px}}
-@media (max-width:355px){.hblogo{--u:28px}}
-@media (max-width:330px){.hblogo{--u:22px}}
+/* Размеры на узких экранах подобраны под худшее состояние корзины, а не под
+   пустую: трёхзначный счётчик добавляет кнопке 12px, и на 320–360px ровно
+   этих пикселей логотипу не хватало — знак обрезался по «K». Разница с
+   прежними значениями около 6%, на глаз незаметна, зато знак цел в любом
+   состоянии корзины. */
+@media (max-width:380px){.hblogo{--u:30px}}
+@media (max-width:355px){.hblogo{--u:27px}}
+@media (max-width:330px){.hblogo{--u:21px}}
 
 /* 17. Лёгкий тематический фон светлой зоны
    --------------------------------------------------------------------------
