@@ -1519,20 +1519,23 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
 
 /* 16. Знак Black Chrome в шапке
    --------------------------------------------------------------------------
-   Тёмная металлическая подложка нарисована внутри самого SVG, поэтому жёлтая
-   плашка .logo-plate знаку больше не нужна. Селектор из двух классов, а не
-   `.logo img`: базовое правило `.logo img{height:38px}` специфичнее одного
-   класса и иначе перебило бы размер на всех breakpoint'ах. object-fit:contain
-   не даёт знаку растянуться, если строка шапки когда-нибудь получит жёсткую
-   высоту. Логотип в подвале (.fbrand .logo img) не затронут — он остался
-   прежним. Высоты подобраны так, чтобы знак был не шире старой плашки:
-   52px → 141px против 152px у прежнего логотипа, и так на каждой ширине. */
-.logo .logo-bc{height:52px;width:auto;display:block;object-fit:contain}
-.mm-head .logo .logo-bc{height:34px}
-@media (max-width:1240px){.logo .logo-bc{height:48px}}
-@media (max-width:980px){.logo .logo-bc{height:36px}}   /* 44px растили шапку на 8px */
-@media (max-width:640px){.logo .logo-bc{height:36px}}
-@media (max-width:380px){.logo .logo-bc{height:31px}}
+   Знак лежит прямо на тёмном фоне шапки: подложки у него нет, фон SVG
+   прозрачный. Селектор из двух классов, а не `.logo img`: базовое правило
+   `.logo img{height:38px}` специфичнее одного класса и иначе перебило бы
+   размер на всех breakpoint'ах. Логотип в подвале (.fbrand .logo img) не
+   затронут.
+   Ширина задана числом, а не auto. У знака другая пропорция, и при auto
+   коробка изображения стала бы шире — на телефоне, где подпись «Фирменный
+   магазин» скрыта, именно она задаёт ширину колонки, и поиск с корзиной
+   уехали бы. Числа равны размерам коробки предыдущей версии, снятым
+   измерением: 141x52, 130.16x48, 97.61x36 и 84.05x31. object-fit:contain
+   вписывает знак в эту коробку без искажения пропорций. */
+.logo .logo-bc{height:52px;width:141px;display:block;object-fit:contain}
+.mm-head .logo .logo-bc{height:34px;width:92.2px}
+@media (max-width:1240px){.logo .logo-bc{height:48px;width:130.16px}}
+@media (max-width:980px){.logo .logo-bc{height:36px;width:97.61px}}   /* 44px растили шапку на 8px */
+@media (max-width:640px){.logo .logo-bc{height:36px;width:97.61px}}
+@media (max-width:380px){.logo .logo-bc{height:31px;width:84.05px}}
 
 /* 17. Лёгкий тематический фон светлой зоны
    --------------------------------------------------------------------------

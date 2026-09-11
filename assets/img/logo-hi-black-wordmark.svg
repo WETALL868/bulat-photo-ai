@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="200" viewBox="0 0 720 200">
+  <defs>
+    <linearGradient id="chrome" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d5d8dd"/>
+      <stop offset="0.13" stop-color="#777d86"/>
+      <stop offset="0.34" stop-color="#25282d"/>
+      <stop offset="0.58" stop-color="#07080a"/>
+      <stop offset="0.79" stop-color="#4d525a"/>
+      <stop offset="1" stop-color="#101216"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff5a8"/>
+      <stop offset="0.24" stop-color="#ffdf36"/>
+      <stop offset="0.58" stop-color="#ffc400"/>
+      <stop offset="1" stop-color="#aa6c00"/>
+    </linearGradient>
+    <linearGradient id="underline" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8b5800" stop-opacity="0"/>
+      <stop offset="0.18" stop-color="#ffd11f"/>
+      <stop offset="0.82" stop-color="#ffd11f"/>
+      <stop offset="1" stop-color="#8b5800" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-30%" width="155%" height="190%">
+      <feDropShadow dx="7" dy="9" stdDeviation="3.5" flood-color="#000" flood-opacity="0.92"/>
+    </filter>
+    <filter id="goldGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#ffc400" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <!-- No badge or plate: the wordmark sits directly in the site header. -->
+  <g transform="translate(-350 -98) skewX(-10)" filter="url(#shadow)">
+    <!-- restrained gold-black extrusion -->
+    <text x="438" y="283" fill="#030405" stroke="#7d5100" stroke-width="9"
+          font-family="Impact, Haettenschweiler, Arial Black, sans-serif"
+          font-size="156" letter-spacing="-6">HIBL</text>
+    <text x="874" y="283" fill="#030405" stroke="#7d5100" stroke-width="9"
+          font-family="Impact, Haettenschweiler, Arial Black, sans-serif"
+          font-size="156" letter-spacing="-6">CK</text>
+
+    <!-- graphite-metal faces with a clean gold keyline -->
+    <text x="428" y="268" fill="url(#chrome)" stroke="#ffd128" stroke-width="4"
+          font-family="Impact, Haettenschweiler, Arial Black, sans-serif"
+          font-size="156" letter-spacing="-6">HIBL</text>
+    <text x="864" y="268" fill="url(#chrome)" stroke="#ffd128" stroke-width="4"
+          font-family="Impact, Haettenschweiler, Arial Black, sans-serif"
+          font-size="156" letter-spacing="-6">CK</text>
+
+    <!-- compact dotted A, optically joined to HIBL and CK -->
+    <g fill="#714900" stroke="#050506" stroke-width="4" transform="translate(8 12)">
+      <circle cx="790" cy="137" r="20"/>
+      <circle cx="763" cy="181" r="20"/><circle cx="807" cy="181" r="20"/>
+      <circle cx="736" cy="225" r="20"/><circle cx="780" cy="225" r="20"/><circle cx="824" cy="225" r="20"/>
+    </g>
+    <g fill="url(#gold)" stroke="#fff0a0" stroke-width="1.5" filter="url(#goldGlow)">
+      <circle cx="790" cy="137" r="20"/>
+      <circle cx="763" cy="181" r="20"/><circle cx="807" cy="181" r="20"/>
+      <circle cx="736" cy="225" r="20"/><circle cx="780" cy="225" r="20"/><circle cx="824" cy="225" r="20"/>
+    </g>
+
+    <!-- subtle metal highlights -->
+    <path d="M442 158 L671 154" fill="none"
+          stroke="#fff" stroke-opacity="0.27" stroke-width="3" stroke-linecap="round"/>
+    <path d="M774 124 Q790 112 807 124" fill="none"
+          stroke="#fff" stroke-opacity="0.5" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <!-- A single accent line ties the wordmark into the yellow interface accents. -->
+  <rect x="34" y="181" width="652" height="4" rx="2" fill="url(#underline)"/>
+</svg>
