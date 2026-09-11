@@ -199,9 +199,12 @@
 
   /* --------------------------------------------------------- блоки вёрстки */
   function badge(p) {
-    if (p.badge === 'hit') return '<span class="badge badge-hit">Хит</span>';
-    if (p.badge === 'res') return '<span class="badge badge-new">Увеличенный ресурс</span>';
-    return '';
+    /* Пометка демо идёт первой и не прячется: товар из проверочной
+       выгрузки должен быть виден как проверочный в любом списке. */
+    var demo = p.demo ? '<span class="badge badge-demo">ДЕМО</span>' : '';
+    if (p.badge === 'hit') return demo + '<span class="badge badge-hit">Хит</span>';
+    if (p.badge === 'res') return demo + '<span class="badge badge-new">Увеличенный ресурс</span>';
+    return demo;
   }
   /* Процент скидки показывается только рядом с ценой: там, где есть
      зачёркнутая цена, он и объясняет разницу. */
@@ -473,6 +476,9 @@
       var related = C.all().filter(function (x) { return x.id !== p.id && x.brand === p.brand && x.cat === p.cat; }).slice(0, 4);
       if (related.length < 4) related = related.concat(C.all().filter(function (x) { return x.id !== p.id && x.cat === p.cat && related.indexOf(x) < 0; }).slice(0, 4 - related.length));
       var revs = d.reviews || [];
+      /* Демо-набор определяется по самим записям, а не по флагу товара:
+         так пометка не разъедется, если демо-записи появятся где-то ещё. */
+      var isDemoRevs = revs.length > 0 && revs.every(function (r) { return r.demo; });
       var sum5 = revs.filter(function (r) { return r.rate === 5; }).length;
       var sum4 = revs.filter(function (r) { return r.rate === 4; }).length;
       var src = p.img;
@@ -489,9 +495,18 @@
       if (p.res) key.push(['Ресурс', fmt(p.res) + ' страниц']);
       if (p.color) key.push(['Цвет', p.color]);
       if (p.chip !== null) key.push(['Чип', p.chip ? 'Есть' : 'Нет']);
-      key.push(['Тип', p.type]);
-      if (p.code && p.type !== 'Тонер') key.push(['Оригинальный аналог', C.brandName(p.brand) + ' ' + p.code.replace(/^HB-/i, '')]);
-      key.push(['Гарантия', '12 месяцев']);
+      if (p.type) key.push(['Тип', p.type]);
+      /* «Оригинальный аналог» у импортированного товара берётся из
+         OriginalNumber поставщика, а не собирается из бренда и артикула:
+         собранная строка была бы догадкой. */
+      if (d.originalNumber) key.push(['Оригинальный аналог', d.originalNumber]);
+      else if (p.src !== 'vtt' && p.code && p.type !== 'Тонер') {
+        key.push(['Оригинальный аналог', C.brandName(p.brand) + ' ' + p.code.replace(/^HB-/i, '')]);
+      }
+      /* Срок гарантии — обязательство магазина, а не поле выгрузки. Для
+         импортированных позиций его здесь нет: подставлять чужому товару
+         срок, которого никто не подтверждал, нельзя. */
+      if (p.src !== 'vtt') key.push(['Гарантия', '12 месяцев']);
       var compatChips = d.models.map(function (m) {
         return '<a class="chip" href="' + link.printer(printerKey(p.brand, m)) + '">' + esc(C.brandName(p.brand) + ' ' + m) + '</a>';
       }).join('');
@@ -545,8 +560,32 @@
         '<div class="tabbody">' +
         '<div data-panel="desc"' + (tab !== 'desc' ? ' hidden' : '') + ' class="desc-grid"><div class="desc">' + d.desc + '</div><div class="spec-t"><div class="sh">Основные характеристики</div>' + specShort + specMore + '</div></div>' +
         '<div data-panel="specs"' + (tab !== 'specs' ? ' hidden' : '') + '><div class="spec-t spec-full"><div class="sh">Характеристики</div>' + specRows + '</div></div>' +
-        '<div data-panel="reviews"' + (tab !== 'reviews' ? ' hidden' : '') + ' id="reviews"><div class="rev-grid"><div class="rev-sum"><div class="big"><b>' + ratef(p.rate) + '</b><span>из 5</span></div>' + stars(p.rate, 20) + '<div class="cnt">' + revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + ' · ' + Math.round(80 + p.rate * 3) + '% рекомендуют</div><div class="bars"><div><span>5</span><i style="--w:' + Math.round(sum5 / revs.length * 100) + '%"></i><span>' + sum5 + '</span></div><div><span>4</span><i style="--w:' + Math.round(sum4 / revs.length * 100) + '%"></i><span>' + sum4 + '</span></div><div><span>3</span><i style="--w:0%"></i><span>0</span></div><div><span>2</span><i style="--w:0%"></i><span>0</span></div><div><span>1</span><i style="--w:0%"></i><span>0</span></div></div><button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button><div class="note">Отзывы в прототипе — примеры: они собраны при сборке каталога и одинаковы при каждом заходе.</div></div>' +
+        '<div data-panel="reviews"' + (tab !== 'reviews' ? ' hidden' : '') + ' id="reviews">' +
+        /* У импортированного товара настоящих отзывов ещё нет. Блок
+           показывается целиком — вёрстку надо согласовать, — но над ним
+           стоит плашка, которая снимает любые сомнения в происхождении
+           записей. */
+        (isDemoRevs
+          ? '<div class="demo-note">' + ic('info', 18) +
+            '<div><b>ДЕМО / тестовые данные.</b> Это проверочные записи для согласования вёрстки: ' +
+            'они собраны из фактических полей выгрузки поставщика и не являются отзывами покупателей. ' +
+            'В рейтинг товара, в микроразметку и в карту сайта они не попадают.</div></div>'
+          : '') +
+        '<div class="rev-grid"><div class="rev-sum"><div class="big"><b>' + ratef(p.rate) + '</b><span>из 5</span></div>' + stars(p.rate, 20) + '<div class="cnt">' + (isDemoRevs
+          /* Демо-записи не отзывы, поэтому и счётчик, и доля рекомендаций
+             показывают ровно то, что есть: отзывов нет. */
+          ? '0 отзывов · ' + revs.length + ' демонстрационных ' + plural(revs.length, 'запись', 'записи', 'записей')
+          : revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + ' · ' + Math.round(80 + p.rate * 3) + '% рекомендуют') + '</div><div class="bars"><div><span>5</span><i style="--w:' + Math.round(sum5 / revs.length * 100) + '%"></i><span>' + sum5 + '</span></div><div><span>4</span><i style="--w:' + Math.round(sum4 / revs.length * 100) + '%"></i><span>' + sum4 + '</span></div><div><span>3</span><i style="--w:0%"></i><span>0</span></div><div><span>2</span><i style="--w:0%"></i><span>0</span></div><div><span>1</span><i style="--w:0%"></i><span>0</span></div></div><button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button><div class="note">Отзывы в прототипе — примеры: они собраны при сборке каталога и одинаковы при каждом заходе.</div></div>' +
         '<div class="rev-list">' + revs.map(function (rv) {
+          /* Демонстрационная запись не имеет права выглядеть как отзыв
+             покупателя: у неё нет «покупка подтверждена», нет звёзд и нет
+             блока «полезен ли отзыв», зато есть явная плашка ДЕМО. */
+          if (rv.demo) {
+            return '<article class="rev rev-demo"><div class="rh"><div class="who"><span class="ava ava-demo">Д</span><div><b>' + esc(rv.name) + '</b><span class="demo-tag">ДЕМО / тестовые данные</span></div></div></div>' +
+              '<p>' + esc(rv.text) + '</p>' +
+              (rv.reply ? '<div class="rreply"><b>' + esc(rv.reply.author) + '</b><p>' + esc(rv.reply.text) + '</p></div>' : '') +
+              '</article>';
+          }
           return '<article class="rev"><div class="rh"><div class="who"><span class="ava">' + esc(rv.name[0]) + '</span><div><b>' + esc(rv.name) + '</b><span>' + esc(rv.city) + ' · <span class="ver">' + ic('check', 12) + 'Покупка подтверждена</span></span></div></div><span class="date">' + rv.date + '</span></div><div class="rt">' + stars(rv.rate) + '<span>Принтер: ' + esc(rv.printer) + '</span></div><p>' + esc(rv.text) + '</p><div class="pm"><div><b>Достоинства</b>' + esc(rv.plus) + '</div><div><b>Недостатки</b>' + esc(rv.minus) + '</div></div><div class="useful">Отзыв полезен?<button type="button" data-useful>' + ic('check', 14) + 'Да · ' + (rv.useful || 3) + '</button><button type="button">Нет · 0</button></div></article>';
         }).join('') +
         '<form class="rev-form" id="rev-form"><h3>Оставить отзыв</h3><p>Расскажите, как расходник работает на вашем принтере — это поможет другим покупателям.</p><div class="frate">Оценка ' + stars(5, 24) + '</div><div class="row"><div class="field"><input type="text" placeholder="Ваше имя" required></div><div class="field"><input type="text" placeholder="Модель принтера"></div></div><textarea placeholder="Достоинства, недостатки, впечатления от печати" required></textarea><div class="fbtn"><button class="btn btn-y" type="submit">Отправить отзыв</button><span>Отзыв появится после проверки модератором. Ваш email не публикуется.</span></div></form></div></div></div>' +

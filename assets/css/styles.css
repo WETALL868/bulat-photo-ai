@@ -1806,6 +1806,29 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .fmax{font-size:16px}
 }
 
+/* 18б. Пометки демонстрационных данных
+   --------------------------------------------------------------------------
+   Всё, что пришло из проверочной выгрузки, обязано выглядеть проверочным.
+   Цвет намеренно не фирменный: жёлтый на витрине значит «акция», и путать
+   эти два смысла нельзя. Полоса заметная, но не кричащая — она служебная.
+*/
+.badge-demo{background:#5b21b6;color:#fff;letter-spacing:.04em}
+.demo-note{display:flex;align-items:flex-start;gap:10px;margin:0 0 16px;padding:12px 14px;
+  border:1px dashed #a78bfa;border-radius:12px;background:#f5f3ff;color:#4c1d95;
+  font-size:13px;line-height:1.45}
+.demo-note b{font-weight:700}
+/* Демо-запись в списке отзывов: без звёзд, без «покупка подтверждена»,
+   с явной плашкой — принять её за отзыв покупателя невозможно. */
+.rev-demo{border-color:#ddd6fe;background:#faf9ff}
+.rev-demo .ava-demo{background:#5b21b6;color:#fff}
+.rev-demo .demo-tag{display:inline-block;margin-top:2px;padding:1px 7px;border-radius:999px;
+  background:#ede9fe;color:#5b21b6;font-size:11px;font-weight:700;letter-spacing:.03em}
+.rreply{margin-top:12px;padding:10px 12px;border-left:3px solid #ddd6fe;background:#fff;border-radius:0 10px 10px 0}
+.rreply b{display:block;font-size:12.5px;color:#5b21b6;margin-bottom:3px}
+.rreply p{margin:0;font-size:13.5px;color:var(--ink2)}
+/* Описание поставщика отделено от собственного текста магазина. */
+.supplier-desc{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink2);font-size:14px}
+
 /* 19. Кнопка звонка: нажатие принадлежит ссылке
    --------------------------------------------------------------------------
    Правило намеренно стоит последним в файле и не заключено в медиазапрос:

@@ -10,3 +10,7 @@ var/
 api/config-path.php
 .DS_Store
 Thumbs.db
+
+# Стор синхронизации VTT: данные поставщика, а не исходники.
+# Наполняется командой vtt/bin/vtt-sync.mjs и пересоздаётся синком.
+vtt-data/

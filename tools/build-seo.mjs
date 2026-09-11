@@ -139,7 +139,8 @@ for (const r of routes) {
     .replace(/<meta name="description"[^>]*>/, '<meta name="description" content="' + esc(r.meta.desc) + '">');
 
   const canonical = SITE + r.url;
-  let head = `<link rel="canonical" href="${canonical}">` +
+  let head = (r.meta?.product?.demo ? '<meta name="robots" content="noindex,nofollow">' : '') +
+    `<link rel="canonical" href="${canonical}">` +
     `<meta property="og:type" content="${r.meta.product ? 'product' : 'website'}">` +
     `<meta property="og:title" content="${esc(r.meta.title)}">` +
     `<meta property="og:description" content="${esc(r.meta.desc)}">` +
@@ -153,7 +154,13 @@ for (const r of routes) {
       '@context': 'https://schema.org', '@type': 'Product',
       name: p.name, sku: p.code, brand: { '@type': 'Brand', name: 'Hi-Black' },
       image: SITE + p.img,
-      aggregateRating: p.reviews ? { '@type': 'AggregateRating', ratingValue: p.rate, reviewCount: p.reviews } : undefined,
+      /* AggregateRating выводится только там, где есть настоящие
+         опубликованные отзывы. Демо-записи в счётчики не попадают, поэтому
+         reviews у таких товаров ноль — и разметки не будет. Цифра в
+         разметке обязана совпадать с видимой на странице. */
+      aggregateRating: (!p.demo && p.reviews > 0 && p.rate > 0)
+        ? { '@type': 'AggregateRating', ratingValue: p.rate, reviewCount: p.reviews }
+        : undefined,
       offers: { '@type': 'Offer', price: l.price, priceCurrency: 'RUB', availability: l.available ? 'https://schema.org/InStock' : 'https://schema.org/PreOrder', url: canonical },
     }) + '</script>';
   }
@@ -177,11 +184,21 @@ fs.writeFileSync(path.join(OUT, '404.html'), (await page.content())
 await browser.close();
 stop();
 
-/* Карта сайта и robots.txt. */
+/*
+  Карта сайта и robots.txt.
+
+  Демонстрационные товары в карту не попадают и помечены noindex: это
+  проверочные данные для preview, им нечего делать в поиске. Правило
+  одно и то же и для страницы товара, и для его будущей страницы отзывов —
+  иначе «не индексируется» превращалось бы в «не индексируется наполовину».
+*/
 const now = new Date().toISOString().slice(0, 10);
+const indexable = routes.filter((r) => !r.meta?.product?.demo);
+const demoCount = routes.length - indexable.length;
 const sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
-  routes.map((r) => `<url><loc>${SITE}${r.url}</loc><lastmod>${now}</lastmod><changefreq>${r.url === '/' ? 'daily' : 'weekly'}</changefreq></url>`).join('\n') +
+  indexable.map((r) => `<url><loc>${SITE}${r.url}</loc><lastmod>${now}</lastmod><changefreq>${r.url === '/' ? 'daily' : 'weekly'}</changefreq></url>`).join('\n') +
   '\n</urlset>\n';
+if (demoCount) console.log(`  из карты сайта исключено демонстрационных страниц: ${demoCount}`);
 fs.writeFileSync(path.join(ROOT, 'sitemap.xml'), sitemap);
 fs.writeFileSync(path.join(ROOT, 'robots.txt'), `User-agent: *\nDisallow: /cart\nDisallow: /checkout\nDisallow: /order\nDisallow: /favorites\nDisallow: /compare\nDisallow: /login\nDisallow: /search\nSitemap: ${SITE}/sitemap.xml\n`);
 

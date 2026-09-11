@@ -33,7 +33,14 @@ const OUT_LIVE = path.join(ROOT, 'live');
 const CHUNK_SIZE = 32; // товаров в одном файле деталей
 
 const args = process.argv.slice(2);
-const argOf = (name, def) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : def; };
+/* Принимаем оба написания: «--source vtt» и «--source=vtt». Второе
+   привычнее и раньше молча игнорировалось, собирая не тот источник. */
+const argOf = (name, def) => {
+  const eq = args.find((a) => a.startsWith(`--${name}=`));
+  if (eq) return eq.slice(name.length + 3);
+  const i = args.indexOf('--' + name);
+  return i >= 0 ? args[i + 1] : def;
+};
 const SOURCE = argOf('source', 'data-js');
 const IN_FILE = argOf('in', null);
 
@@ -287,8 +294,84 @@ function buildReviews(p, brandName) {
 
 /* --------------------------------------------------------------- сборка */
 
-const src = SOURCE === 'vtt-csv' ? readVttCsv(IN_FILE || path.join(ROOT, 'out/hiblack_catalog.csv')) : readDataJs();
-const fallback = SOURCE === 'vtt-csv' ? readDataJs() : src; // словари и тексты страниц берём из прототипа
+/*
+  Источник «vtt»: каталог берётся из стора синхронизации (vtt-data), который
+  наполняет vtt/bin/vtt-sync.mjs. Витрина и импорт разделены намеренно —
+  сборка сайта не ходит в сеть и работает из готовых данных, поэтому её
+  можно повторить в любой момент и получить тот же результат.
+
+  Раздел витрины и бренд принтера считаются теми же функциями, что и для
+  остальных источников: таксономия магазина одна, независимо от того,
+  откуда пришёл товар. Дерево категорий поставщика при этом сохраняется
+  рядом и не подменяется.
+*/
+async function readVttStore(storeRoot) {
+  const { VttStore } = await import('../vtt/src/store.mjs');
+  const { publish } = await import('../vtt/src/publish.mjs');
+  const store = new VttStore(storeRoot);
+  if (!fs.existsSync(path.join(storeRoot, 'items'))) {
+    throw new Error(
+      `Стор VTT пуст: ${storeRoot}. Сначала выполните синхронизацию — ` +
+      'node vtt/bin/vtt-sync.mjs full (или --mock для фикстур).',
+    );
+  }
+  const state = store.loadState();
+  const editorialFile = path.join(ROOT, 'catalog-source/vtt-editorial.json');
+  const editorial = fs.existsSync(editorialFile) ? JSON.parse(fs.readFileSync(editorialFile, 'utf8')) : {};
+  const cfgFile = path.join(ROOT, 'vtt/config.json');
+  const filter = fs.existsSync(cfgFile) ? (JSON.parse(fs.readFileSync(cfgFile, 'utf8')).publishFilter ?? {}) : {};
+
+  const { products, report } = publish(store, {
+    filter, editorial,
+    categories: state.categories ?? [],
+    shopCat: (item) => catFromText(item.category || item.categoryRoot || item.name || ''),
+    shopBrand: (item) => brandFromText([...(item.compatibility ?? []), item.name ?? ''].join(' ')),
+  });
+
+  console.log(`  импорт VTT: в сторе ${report.total}, опубликовано ${report.published}, ` +
+    `скрыто ${report.inactive}, отсеяно фильтром ${report.filtered}`);
+  if (report.incomplete.length) console.log(`  неполные данные: ${report.incomplete.length} товаров (отчёт в vtt-data/reports)`);
+  store.saveReport('last-publish', report);
+
+  return {
+    products, vttCategories: state.categories ?? [], vttReport: report,
+    cats: null, brands: null, laserBrands: null, lines: null, pages: null, pageText: null,
+  };
+}
+
+const src = SOURCE === 'vtt'
+  ? await readVttStore(argOf('store', path.join(ROOT, 'vtt-data')))
+  : SOURCE === 'vtt-csv' ? readVttCsv(IN_FILE || path.join(ROOT, 'out/hiblack_catalog.csv')) : readDataJs();
+const fallback = SOURCE === 'data-js' ? src : readDataJs();
+
+/*
+  Подмешивание импорта в существующий каталог: --with-vtt=<сколько>.
+
+  Нужно для preview. Заменять витрину целиком выгрузкой нельзя, пока в
+  сторе лежат фикстуры: владелец должен видеть свой настоящий магазин, а
+  не синтетику вместо него. Поэтому товары импорта добавляются рядом и
+  помечаются demo — метка идёт и в карточку, и в каталог, и в исключение
+  из sitemap, чтобы их нельзя было принять за реальные позиции.
+
+  На боевых данных флаг не нужен: там источником становится сам стор
+  (--source=vtt), и никакой пометки demo у товаров не появляется.
+*/
+const WITH_VTT = Number(argOf('with-vtt', 0)) || 0;
+if (WITH_VTT > 0 && SOURCE !== 'vtt') {
+  const imported = await readVttStore(argOf('store', path.join(ROOT, 'vtt-data')));
+  const demoFlag = argOf('vtt-demo', '1') !== '0';
+  const existing = new Set(src.products.map((p) => p.id));
+  let taken = 0;
+  for (const p of imported.products) {
+    if (taken >= WITH_VTT) break;
+    if (existing.has(p.id)) continue;
+    src.products.push({ ...p, demo: demoFlag, source: 'vtt' });
+    existing.add(p.id);
+    taken += 1;
+  }
+  src.vttCategories = imported.vttCategories;
+  console.log(`  подмешано товаров импорта: ${taken}${demoFlag ? ' (помечены demo)' : ''}`);
+} // словари и тексты страниц берём из прототипа
 const products = src.products;
 const cats = src.cats || fallback.cats;
 const brandDict = src.brands || fallback.brands;
@@ -297,8 +380,73 @@ const brandName = (id) => (brandDict[id] ? brandDict[id].name : id);
 
 products.sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name, 'ru'));
 
-/* Отзывы есть у каждого товара; число и оценка выводятся из самого списка. */
+/*
+  Отзывы.
+
+  У товаров прототипа всё остаётся как было — ни текст, ни оценки не
+  трогаем.
+
+  У импортированных товаров настоящих отзывов нет и взяться им неоткуда:
+  VTT отзывы не отдаёт. Поэтому в preview для них собираются ДЕМО-записи,
+  и правила у них жёсткие:
+    • текст строится только из фактических полей этого товара (артикул,
+      ресурс, цвет, совместимость, габариты, упаковка) — никаких
+      впечатлений, свойств и обещаний, которых нет в данных;
+    • автор не человек, а «Демонстрационная запись №N»: принять такую
+      запись за отзыв покупателя невозможно;
+    • каждая запись и весь блок помечены demo;
+    • в rate и reviews они не попадают, поэтому не влияют ни на счётчики,
+      ни на AggregateRating, ни на sitemap.
+*/
+function demoReviewsFor(p) {
+  const facts = [];
+  if (p.code) facts.push(['Артикул в выгрузке', p.code]);
+  if (p.originalNumber) facts.push(['Оригинальный номер', p.originalNumber]);
+  if (p.res) facts.push(['Заявленный ресурс', `${Number(p.res).toLocaleString('ru-RU')} страниц`]);
+  if (p.color) facts.push(['Цвет', p.color]);
+  if (p.models?.length) facts.push(['Совместимость по выгрузке', p.models.slice(0, 4).join(', ')]);
+  if (p.weight) facts.push(['Вес', `${p.weight} кг`]);
+  if (p.catPath?.length || p.vttCategory) facts.push(['Раздел поставщика', (p.catPath ?? []).join(' / ') || p.vttCategory]);
+  if (p.stockDetail) facts.push(['Остатки на момент выгрузки',
+    `доступно ${p.stockDetail.available}, в пути ${p.stockDetail.transit}, на центральном складе ${p.stockDetail.mainOffice}`]);
+
+  /* Записей столько, сколько фактов хватает — не больше. Нечего сказать по
+     делу, значит записи нет: пустой блок честнее выдуманного. */
+  const out = [];
+  for (let i = 0; i < Math.min(3, facts.length); i++) {
+    const [label, value] = facts[i];
+    const extra = facts[i + 3] ? ` ${facts[i + 3][0]}: ${facts[i + 3][1]}.` : '';
+    out.push({
+      demo: true,
+      name: `Демонстрационная запись №${i + 1}`,
+      city: 'ДЕМО / тестовые данные',
+      date: '',
+      rate: 0,
+      printer: p.models?.[0] ?? '',
+      text: `${label}: ${value}.${extra} Запись создана для проверки вёрстки раздела отзывов ` +
+        'на импортированном товаре и не является отзывом покупателя.',
+      plus: '',
+      minus: '',
+      useful: 0,
+      reply: {
+        demo: true,
+        author: 'ДЕМО / тестовые данные',
+        text: 'Демонстрационный ответ магазина: проверка блока ответов. ' +
+          'Реальные ответы появятся вместе с реальными отзывами.',
+      },
+    });
+  }
+  return out;
+}
+
 for (const p of products) {
+  if (p.source === 'vtt') {
+    p.reviewList = p.demo ? demoReviewsFor(p) : [];
+    /* Счётчики остаются нулевыми: демо-записи — не отзывы. */
+    p.reviews = 0;
+    p.rate = 0;
+    continue;
+  }
   p.reviewList = buildReviews(p, brandName(p.brand));
   p.reviews = p.reviewList.length;
   p.rate = Math.round((p.reviewList.reduce((a, r) => a + r.rate, 0) / p.reviewList.length) * 10) / 10;
@@ -320,7 +468,10 @@ function uniqueSlug(p) {
 }
 
 /* Компактный индекс: порядок полей задан один раз. */
-const FIELDS = ['id', 'slug', 'name', 'code', 'cat', 'brand', 'img', 'type', 'res', 'color', 'chip', 'badge', 'rate', 'reviews', 'fam'];
+/* `demo` и `src` едут в индексе, а не только в деталях: по ним витрина
+   рисует пометку в списке, а сборщик страниц решает, что не индексировать
+   и не класть в sitemap. Читать ради этого чанк деталей было бы дороже. */
+const FIELDS = ['id', 'slug', 'name', 'code', 'cat', 'brand', 'img', 'type', 'res', 'color', 'chip', 'badge', 'rate', 'reviews', 'fam', 'demo', 'src'];
 const rows = products.map((p) => [
   p.id,
   uniqueSlug(p),
@@ -337,8 +488,50 @@ const rows = products.map((p) => [
   p.rate,
   p.reviews,
   null, // семейство по цвету, проставляется ниже
+  p.demo ? 1 : 0,
+  p.source || '',
 ]);
 const rowOf = new Map(products.map((p, i) => [p.id, i]));
+
+/*
+  Карточка импортированного товара. Текст и характеристики берутся ровно из
+  того, что прислал VTT: ни одного поля «по умолчанию», ни одной
+  подставленной гарантии или сертификата. Пусто — значит пусто, и это видно
+  в отчёте о неполных данных.
+*/
+function vttDescriptionHtml(p) {
+  const parts = [];
+  if (p.editorialDescription) parts.push(`<p>${esc(p.editorialDescription)}</p>`);
+  if (p.description) parts.push(`<p>${esc(p.description)}</p>`);
+  if (p.supplierDescription && p.supplierDescription !== p.description) {
+    parts.push(`<p class="supplier-desc"><b>Описание поставщика.</b> ${esc(p.supplierDescription)}</p>`);
+  }
+  if (!parts.length) {
+    parts.push('<p class="muted">Поставщик не передал описание для этой позиции. ' +
+      'Характеристики ниже — всё, что есть по данным выгрузки.</p>');
+  }
+  return parts.join('');
+}
+
+function vttSpecs(p) {
+  const rows = [];
+  const add = (k, v) => { if (v !== undefined && v !== null && v !== '' && v !== 0) rows.push([k, String(v)]); };
+  add('Артикул', p.code);
+  add('Оригинальный номер', p.originalNumber);
+  add('Тип', p.type);
+  add('Ресурс, страниц', p.res ? Number(p.res).toLocaleString('ru-RU') : '');
+  add('Цвет', p.color);
+  add('Вес, кг', p.weight);
+  add('Раздел поставщика', (p.catPath ?? []).join(' / ') || p.vttCategory);
+  if (p.stockDetail) {
+    /* Три склада показываются по отдельности и никогда не суммируются:
+       это разные сроки поставки, а не одно число. */
+    add('Доступно на складе, шт.', p.stockDetail.available);
+    add('В пути, шт.', p.stockDetail.transit);
+    add('На центральном складе, шт.', p.stockDetail.mainOffice);
+  }
+  return rows;
+}
 
 /* Детали: только то, что нужно на карточке товара. Грузится чанком по 32. */
 const chunks = [];
@@ -350,9 +543,18 @@ for (let i = 0; i < products.length; i += CHUNK_SIZE) {
       models: p.models,
       equip: p.equip,
       weight: p.weight,
-      desc: buildDescription(p, brandName(p.brand)),
-      specs: buildSpecs(p, brandName(p.brand)),
+      /* У импортированного товара описание уже собрано из фактов VTT на
+         этапе публикации — здесь его не переписываем, иначе потеряли бы
+         единственный источник правды и начали бы додумывать. */
+      desc: p.source === 'vtt' ? vttDescriptionHtml(p) : buildDescription(p, brandName(p.brand)),
+      specs: p.source === 'vtt' ? vttSpecs(p) : buildSpecs(p, brandName(p.brand)),
       reviews: p.reviewList,
+      ...(p.source ? { source: p.source } : {}),
+      ...(p.demo ? { demo: true } : {}),
+      ...(p.vttCategoryId ? { vttCat: p.vttCategoryId, vttCatPath: p.catPath ?? [] } : {}),
+      ...(p.supplierDescription ? { supplierDesc: p.supplierDescription } : {}),
+      ...(p.originalNumber ? { originalNumber: p.originalNumber } : {}),
+      ...(p.stockDetail ? { stockDetail: p.stockDetail } : {}),
     };
   }
   chunks.push(part);

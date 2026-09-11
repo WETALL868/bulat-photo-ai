@@ -1,0 +1,9 @@
+{
+  "serviceUrl": "http://api.vtt.ru:8048/Portal.svc",
+  "namespace": "http://tempuri.org/",
+  "portionSize": 500,
+  "timeoutMs": 60000,
+  "retryAttempts": 4,
+  "retryBaseDelayMs": 1000,
+  "publishFilter": { "brands": [], "categories": [], "excludeBrands": [] }
+}
