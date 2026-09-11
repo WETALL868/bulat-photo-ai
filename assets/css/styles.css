@@ -1226,7 +1226,36 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .sec-head{margin-bottom:16px;gap:6px 16px}
   .sec-head a.more{font-size:14px}
   /* шапка */
-  .head .wrap{gap:8px 10px;padding-top:10px;padding-bottom:10px}
+  .head .wrap{gap:8px 8px;padding-top:10px;padding-bottom:10px}
+  /*
+    Верхняя строка на телефоне: меню слева, логотип рядом с ним, телефон и
+    корзина прижаты вправо. Корзина не должна уезжать под логотип ни при
+    каком содержимом — а раньше уезжала: строка держалась только на том,
+    что сумма ширин случайно укладывалась в экран, и запас был 6–7px. Стоило
+    счётчику стать двузначным, и корзина сваливалась на второй ряд (на 320px
+    не помещалась даже с пустой корзиной).
+
+    Теперь это не совпадение, а структура. Ключевой момент: флексбокс решает,
+    что перенести, по ГИПОТЕТИЧЕСКОЙ ширине элементов — то есть по flex-basis,
+    ещё до всякого сжатия. Поэтому одного min-width:0 мало, он бы сработал
+    слишком поздно. У логотипа basis нулевой (flex:1 1 0), и в раскладку
+    строки он входит с нулевой шириной: строка — это три кнопки, они
+    помещаются на любом телефоне, и корзине просто нечем быть вытесненной.
+
+    Дальше логотип растёт в свободное место, но упирается в max-content —
+    свою же естественную ширину. Так он не превращается в огромную
+    невидимую ссылку поверх пустоты, а остаток свободного места достаётся
+    margin-left:auto у телефона, который и прижимает телефон с корзиной
+    вправо. Если места мало, логотип получает сколько есть, и лишнее у
+    wordmark обрезается — но корзина остаётся на месте. На 320–640 wordmark
+    помещается целиком, обрезка нужна только как аварийный запас.
+  */
+  /* min-height — только под палец: на 320px сам знак 22px высотой, и область
+     нажатия была бы вдвое ниже соседних кнопок. Строка и так не ниже 40px
+     из-за меню и корзины, поэтому на вид ничего не меняется. */
+  .head .wrap > .hblogo{flex:1 1 0;min-width:0;max-width:max-content;min-height:40px}
+  .hblogo-txt{min-width:0}
+  .hblogo-word{overflow:hidden}
   .logo img{height:28px}
   .logo-plate{padding:5px 11px 5px 9px}
   .logo-plate img{height:21px}
@@ -1242,9 +1271,13 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .mphone{position:relative;z-index:2;touch-action:manipulation}
   .mphone:active{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.45)}
   .mphone:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
-  .hacts{gap:0}
-  .cartbtn{margin-left:0;gap:8px;padding:0 12px}
+  /* Корзина прижата к правому краю строки и остаётся последней. */
+  .hacts{gap:0;flex:none;margin-left:0}
+  .cartbtn{margin-left:0;gap:6px;padding:0 10px;flex:none}
   .cartbtn .sum{display:none}
+  /* Счётчик фиксированной ширины: одно- и двузначное число занимают
+     одинаково, поэтому строка не «дышит» при добавлении товаров. */
+  .cartbtn .n{min-width:1.1em;text-align:center}
   .search{height:46px}
   .search .sbtn{width:54px;gap:0}
   .search .sbtn .txt{display:none}
