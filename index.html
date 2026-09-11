@@ -35,9 +35,16 @@
     <button class="mobbtn" id="mobbtn" type="button" aria-label="Открыть меню" aria-controls="mobmenu" aria-expanded="false">
       <svg class="ic" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
     </button>
-    <a class="logo" href="/" aria-label="Hi-Black — на главную">
-      <img class="logo-bc" src="/assets/img/hi-black-logo-approved-v2.png" alt="Hi-Black" width="265" height="46">
-      <span class="logo-sub">Фирменный магазин</span>
+    <!-- Логотип собран разметкой, а не картинкой: знак состоит из плашки и
+         текста, поэтому в любом размере остаётся резким и не деформируется.
+         Ссылка одна на весь знак, внутренности скрыты от скринридера —
+         его озвучивает aria-label ссылки. -->
+    <a class="logo hblogo" href="/" aria-label="Hi-Black — на главную">
+      <span class="hblogo-mark" aria-hidden="true">HB</span>
+      <span class="hblogo-txt">
+        <span class="hblogo-word" aria-hidden="true">HI-BLACK</span>
+        <span class="hblogo-sub" aria-hidden="true">Официальный партнер</span>
+      </span>
     </a>
     <form class="search" id="search-form" role="search" action="/search">
       <input type="search" name="q" placeholder="Модель или артикул" aria-label="Поиск по каталогу" autocomplete="off">
@@ -171,7 +178,10 @@
   <div class="mm-bd" data-mm-close></div>
   <nav class="mm-panel" aria-label="Меню сайта">
     <div class="mm-head">
-      <a class="logo" href="/"><img class="logo-bc" src="/assets/img/hi-black-logo-approved-v2.png" alt="Hi-Black" width="150" height="26"></a>
+      <a class="logo hblogo" href="/" aria-label="Hi-Black — на главную">
+        <span class="hblogo-mark" aria-hidden="true">HB</span>
+        <span class="hblogo-txt"><span class="hblogo-word" aria-hidden="true">HI-BLACK</span></span>
+      </a>
       <button class="x" type="button" data-mm-close aria-label="Закрыть меню"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div class="mm-sec">
