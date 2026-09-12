@@ -38,7 +38,17 @@ function makeItem(i) {
   return {
     Id: `VTT-${String(i).padStart(5, '0')}`,
     Name: `Картридж Hi-Black HB-TK-${1100 + i} для Kyocera ECOSYS M${2035 + i}dn`,
-    Vendor: `HB-TK-${1100 + i}`,
+    /*
+      Поля названы так же, как в официальном WSDL и в реальной выгрузке, и
+      значат то же самое. Это существенно: раньше фикстура клала артикул в
+      Vendor, тесты проходили, а на настоящих данных в артикуле оказалась
+      марка принтера. Фикстура, которая врёт о контракте, хуже, чем её
+      отсутствие.
+
+      Vendor — марка техники. Артикул — NameAlias.
+    */
+    Vendor: 'Kyocera-Mita',
+    NameAlias: `HB-TK-${1100 + i}`,
     OriginalNumber: `TK-${1100 + i}`,
     Brand: brands[i % brands.length],
     Group: g.name,
@@ -48,8 +58,14 @@ function makeItem(i) {
     Compatibility: `Kyocera ECOSYS M${2035 + i}dn; Kyocera ECOSYS P${2035 + i}dn; Kyocera FS-${1040 + i}`,
     PhotoUrl: `https://example.invalid/vtt/photo/${i}.jpg`,
     PhotoUrls: [`https://example.invalid/vtt/photo/${i}.jpg`, `https://example.invalid/vtt/photo/${i}-b.jpg`],
-    Price: 1200 + i * 7,
-    PriceRetail: 1500 + i * 9,
+    /* Price и PriceRetail у VTT — в валюте поставщика, рублёвая цена
+       только в PriceLocal. Курс взят настоящий: отношение по всей
+       реальной выгрузке лежит в диапазоне 84,273–84,333. */
+    Price: Math.round((1200 + i * 7) / 84.3 * 100) / 100,
+    PriceRetail: Math.round((1500 + i * 9) / 84.3 * 100) / 100,
+    PriceLocal: 1200 + i * 7,
+    RestQuantity: i % 4,
+    Reserved: 0,
     AvailableQuantity: i % 13,
     TransitQuantity: i % 5,
     MainOfficeQuantity: i % 3,

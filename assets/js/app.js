@@ -77,7 +77,10 @@
      На сайте адреса настоящие: /catalog/laser/kyocera. В сборке одним файлом
      сервера нет, переписывать путь нельзя — там те же маршруты живут после
      решётки. Разница спрятана в OFFLINE, весь остальной код её не замечает. */
-  var OFFLINE = !!window.HB_INLINE;
+  /* Маршруты после решётки нужны не только файлу «всё в одном»: у превью
+     из набора файлов тоже нет сервера, который перепишет путь, и обычная
+     ссылка /catalog там открыла бы чужую страницу. */
+  var OFFLINE = !!window.HB_INLINE || !!window.HB_HASH_ROUTING;
   function url(p) { return OFFLINE ? '#' + p : p; }
   function qs(params) {
     var keys = Object.keys(params || {}).filter(function (k) { var v = params[k]; return v !== undefined && v !== null && v !== '' && v !== false; });
@@ -212,7 +215,17 @@
     if (!p.old || p.old <= p.price) return '';
     return '<span class="save">−' + Math.round(100 - p.price / p.old * 100) + '%</span>';
   }
+  /*
+    Цены может не быть. У поставщика это выражено значением −1, и таких
+    позиций 972 из 9 483. Ноль в ценнике хуже отсутствия цены: «0 ₽»
+    читается как «бесплатно», а «−1 ₽» — как ошибка в магазине. Поэтому
+    такой товар честно говорит «Цена по запросу» и не продаётся кнопкой.
+  */
+  function noPrice(p) { return !(p.price > 0); }
   function priceBlock(p, cls) {
+    if (noPrice(p)) {
+      return '<div class="price price-ask' + (cls ? ' ' + cls : '') + '">Цена по запросу</div>';
+    }
     return '<div class="price' + (cls ? ' ' + cls : '') + '">' + fmt(p.price) + ' ₽' +
       (p.old ? '<small>' + fmt(p.old) + ' ₽</small>' : '') + saleOff(p) + '</div>';
   }
@@ -274,10 +287,13 @@
       (p.stock ? '<div class="avail"><i></i>В наличии</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') + '</div>' +
       /* Цена и кнопки — отдельный блок, а не хвост описания: в виде списком он
          становится третьей колонкой карточки, в плитке просто идёт следом. */
-      '<div class="cside"><div class="cfoot">' + priceBlock(p) + '<button class="btn btn-y" type="button" data-add="' + p.id + '">' + ic('cart', 18) + 'В корзину</button></div>' +
+      '<div class="cside"><div class="cfoot">' + priceBlock(p) +
+      (noPrice(p)
+        ? '<a class="btn btn-o" href="' + link.page('contacts') + '">' + ic('phone', 18) + 'Запросить</a>'
+        : '<button class="btn btn-y" type="button" data-add="' + p.id + '">' + ic('cart', 18) + 'В корзину</button>') + '</div>' +
       /* Иконка в углу карточки читалась как декорация — сравнение получило
          подпись и место в нижнем ряду, рядом с покупкой в один клик. */
-      '<div class="cbot"><button class="oneclick" type="button" data-quick="' + p.id + '" data-qty="1">Купить в 1 клик</button>' +
+      '<div class="cbot">' + (noPrice(p) ? '<span class="oneclick oneclick-off">Цену уточняет менеджер</span>' : '<button class="oneclick" type="button" data-quick="' + p.id + '" data-qty="1">Купить в 1 клик</button>') +
       '<button class="cmp-b' + cmp + '" type="button" data-cmp="' + p.id + '" aria-pressed="' + !!S.cmp[p.id] + '" title="' + cmpLabel(p.id) + '" aria-label="' + cmpLabel(p.id) + ' — ' + esc(p.name) + '">' +
       ic('compare', 16) + '<span>' + cmpLabel(p.id) + '</span></button></div></div></div>';
   }
@@ -547,11 +563,16 @@
         '<div class="buy"><div class="prow">' + priceBlock(p) + '<span class="per">за 1 шт.</span></div>' +
         (p.old && p.old > p.price ? '<div class="saveline">' + ic('percent', 16) + 'Скидка ' + fmt(p.old - p.price) + ' ₽ от прежней цены</div>' : '') +
         (p.stock ? '<div class="avail"><i></i>В наличии на складе в Москве</div><div class="stock">Дату отгрузки подтверждает менеджер</div>' : '<div class="avail out"><i></i>Под заказ</div><div class="stock">Привезём со склада поставщика за 3–5 дней</div>') +
-        '<div class="brow"><div class="qty"><button type="button" data-q="-1" aria-label="Меньше" disabled>' + ic('minus', 18) + '</button><span id="pq" data-price="' + p.price + '">1</span><button type="button" data-q="1" aria-label="Больше">' + ic('plus', 18) + '</button></div><button class="btn btn-y btn-lg" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 22) + 'В корзину</button></div>' +
+        (noPrice(p)
+          ? '<div class="brow"><a class="btn btn-y btn-lg" href="' + link.page('contacts') + '">' + ic('phone', 22) + 'Запросить цену</a></div>' +
+            '<div class="stock">Поставщик не передал цену на эту позицию — её подтверждает менеджер.</div>'
+          : '<div class="brow"><div class="qty"><button type="button" data-q="-1" aria-label="Меньше" disabled>' + ic('minus', 18) + '</button><span id="pq" data-price="' + p.price + '">1</span><button type="button" data-q="1" aria-label="Больше">' + ic('plus', 18) + '</button></div><button class="btn btn-y btn-lg" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 22) + 'В корзину</button></div>') +
         /* Сумма считается от действующей цены и обновляется на месте: покупателю
            не приходится умножать в уме и гадать, что попадёт в корзину. */
-        '<div class="qsum" id="qsum" aria-live="polite">Итого за <b data-qs-q>1</b> шт.: <b data-qs-t>' + fmt(p.price) + ' ₽</b></div>' +
-        '<button class="btn btn-o btn-full" type="button" data-quick="' + p.id + '">Купить в 1 клик</button>' +
+        (noPrice(p) ? '' : '<div class="qsum" id="qsum" aria-live="polite">Итого за <b data-qs-q>1</b> шт.: <b data-qs-t>' + fmt(p.price) + ' ₽</b></div>') +
+        /* «Купить в 1 клик» у товара без цены означало бы заказ на сумму,
+           которой нет. Кнопки нет — есть запрос цены выше. */
+        (noPrice(p) ? '' : '<button class="btn btn-o btn-full" type="button" data-quick="' + p.id + '">Купить в 1 клик</button>') +
         '<div class="acts"><button type="button" class="' + (S.cmp[p.id] ? 'on' : '') + '" data-cmp="' + p.id + '" aria-pressed="' + !!S.cmp[p.id] + '" title="' + (S.cmp[p.id] ? 'Убрать из сравнения' : 'Добавить к сравнению') + '">' + ic('compare', 16) + (S.cmp[p.id] ? 'В сравнении' : 'В сравнение') + '</button><button type="button" class="' + (S.fav[p.id] ? 'on' : '') + '" data-fav="' + p.id + '">' + ic('heart', 16) + (S.fav[p.id] ? 'В избранном' : 'В избранное') + '</button></div>' +
         '<div class="dlist"><div>' + ic('truck', 18) + '<div><b>Курьер по Москве</b><span>Дату и интервал подтверждает менеджер</span></div></div><div>' + ic('pin', 18) + '<div><b>Самовывоз по предварительному согласованию</b><span>Москва, Ясеневая ул., д. 50</span></div></div><div>' + ic('card', 18) + '<div><b>Оплата картой, СБП или по счёту</b><span>Юрлицам — счёт и закрывающие документы</span></div></div><div>' + ic('shield', 18) + '<div><b>Гарантия ресурса</b><span>Срок указан в карточке и документах</span></div></div></div>' +
         (maxCfg()
@@ -590,10 +611,15 @@
              неё показывается — с той же пометкой, — потому что вёрстку
              строки со звёздами тоже надо согласовать. */
           if (rv.demo) {
-            return '<article class="rev rev-demo"><div class="rh"><div class="who"><span class="ava ava-demo">Д</span><div><b>' + esc(rv.name) + '</b><span class="demo-tag">ДЕМО / тестовые данные</span></div></div>' +
+            /* Постоянные части записи в каталоге не хранятся: они
+               одинаковы у всех демо-записей всех товаров и подставляются
+               здесь. В данных лежит только номер, оценка, текст и ответ. */
+            var dname = rv.name || ('Демонстрационная запись №' + (rv.n || 1));
+            var dreply = typeof rv.reply === 'string' ? rv.reply : (rv.reply && rv.reply.text);
+            return '<article class="rev rev-demo"><div class="rh"><div class="who"><span class="ava ava-demo">Д</span><div><b>' + esc(dname) + '</b><span class="demo-tag">ДЕМО / тестовые данные</span></div></div>' +
               (rv.rate ? '<div class="rt rt-demo">' + stars(rv.rate) + '<span>' + ratef(rv.rate) + ' из 5 · демо-оценка, в рейтинг товара не идёт</span></div>' : '') + '</div>' +
               '<p>' + esc(rv.text) + '</p>' +
-              (rv.reply ? '<div class="rreply"><b>' + esc(rv.reply.author) + '</b><p>' + esc(rv.reply.text) + '</p></div>' : '') +
+              (dreply ? '<div class="rreply"><b>ДЕМО / тестовые данные</b><p>' + esc(dreply) + '</p></div>' : '') +
               '</article>';
           }
           return '<article class="rev"><div class="rh"><div class="who"><span class="ava">' + esc(rv.name[0]) + '</span><div><b>' + esc(rv.name) + '</b><span>' + esc(rv.city) + ' · <span class="ver">' + ic('check', 12) + 'Покупка подтверждена</span></span></div></div><span class="date">' + rv.date + '</span></div><div class="rt">' + stars(rv.rate) + '<span>Принтер: ' + esc(rv.printer) + '</span></div><p>' + esc(rv.text) + '</p><div class="pm"><div><b>Достоинства</b>' + esc(rv.plus) + '</div><div><b>Недостатки</b>' + esc(rv.minus) + '</div></div><div class="useful">Отзыв полезен?<button type="button" data-useful>' + ic('check', 14) + 'Да · ' + (rv.useful || 3) + '</button><button type="button">Нет · 0</button></div></article>';
@@ -627,9 +653,12 @@
               (p.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Под заказ, 3–5 дней</span>') +
             '</div>' +
           '</div>' +
-          '<button class="btn btn-y" type="button" data-add="' + p.id + '" data-useq="1"' +
-            ' aria-label="Добавить в корзину: ' + esc(p.name) + '">' +
-            ic('cart', 18) + '<span class="bt">В корзину</span></button>' +
+          (noPrice(p)
+            ? '<a class="btn btn-o" href="' + link.page('contacts') + '" aria-label="Запросить цену: ' + esc(p.name) + '">' +
+              ic('phone', 18) + '<span class="bt">Запросить цену</span></a>'
+            : '<button class="btn btn-y" type="button" data-add="' + p.id + '" data-useq="1"' +
+              ' aria-label="Добавить в корзину: ' + esc(p.name) + '">' +
+              ic('cart', 18) + '<span class="bt">В корзину</span></button>') +
         '</div></div>';
     });
   }

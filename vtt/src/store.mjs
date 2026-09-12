@@ -168,8 +168,19 @@ export class VttStore {
         bucket[id] = { ...prev, lastSeenAt: now, lastSyncId: syncId ?? null };
         report.unchanged.push(id);
       } else {
+        /*
+          Поля поставщика берутся только из новой карточки, а не
+          подмешиваются к старой. Иначе исчезнувшее поле остаётся
+          навсегда: у VTT 972 позиции потеряли цену (в выгрузке там −1,
+          то есть «цены нет»), а в сторе после слияния продолжала
+          лежать прежняя сумма — карточка показывала цену, которой уже
+          не существует. Из старой записи переносится только служебное и
+          то, что дописали смежные операции.
+        */
+        const kept = {};
+        for (const k of [...SERVICE_FIELDS, ...DERIVED_FIELDS]) if (k in prev) kept[k] = prev[k];
         bucket[id] = {
-          ...prev, ...item,
+          ...kept, ...item,
           /* Возврат товара в выгрузку снимает скрытие: он снова продаётся. */
           active: true, hash, updatedAt: now, lastSeenAt: now, lastSyncId: syncId ?? null,
           firstSeenAt: prev.firstSeenAt ?? now,
@@ -229,6 +240,9 @@ export class VttStore {
       const bucket = byShard.get(shard);
       if (!bucket[id]) { report.unknown.push(id); continue; }
       const { id: _skip, syncedAt, ...values } = row;
+      /* Оперативные поля кладутся целиком: их состав задан WSDL, и
+         подмешивать к ним что-то из полной выгрузки нельзя — иначе
+         непонятно, какая цифра когда получена. */
       bucket[id].runtime = { ...values, syncedAt: now };
       report.updated.push(id);
     }

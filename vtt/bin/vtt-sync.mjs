@@ -35,8 +35,14 @@ if (!MODES.has(mode)) {
 }
 
 const configFile = valueOf('config', path.join(ROOT, 'vtt/config.json'));
-const storeRoot = valueOf('store', path.join(ROOT, 'vtt-data'));
 const mock = has('mock');
+/*
+  Стор фикстур и стор реальных данных — разные каталоги, и это не удобство,
+  а страховка. `--mock` по умолчанию писал в vtt-data/ и одним запуском
+  затирал бы реальную выгрузку синтетикой. Смешать их теперь нельзя:
+  нужен явный --store.
+*/
+const storeRoot = valueOf('store', path.join(ROOT, mock ? 'vtt-data-mock' : 'vtt-data'));
 
 let config;
 try {

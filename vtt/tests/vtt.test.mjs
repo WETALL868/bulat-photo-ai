@@ -148,14 +148,16 @@ test('сетевой сбой повторяется с нарастающей �
 
 test('нормализация сохраняет факты и не придумывает отсутствующие', () => {
   const item = normalizeItem({
-    Id: 'X1', Name: ' Картридж  HB-TK-1150 ', Vendor: 'HB-TK-1150', Brand: 'Hi-Black',
+    Id: 'X1', Name: ' Картридж  HB-TK-1150 ', NameAlias: 'HB-TK-1150', Vendor: 'Kyocera-Mita', Brand: 'Hi-Black',
     Group: 'Картриджи лазерные', RootGroup: 'Расходные материалы',
     Compatibility: 'Kyocera M2135dn; Kyocera P2235dn', AvailableQuantity: '5',
-    TransitQuantity: '2', MainOfficeQuantity: '1', Price: '1 234,50', Width: '30',
+    TransitQuantity: '2', MainOfficeQuantity: '1', PriceLocal: '1 234,50', Width: '30',
   });
   assert.equal(item.name, 'Картридж HB-TK-1150');
+  assert.equal(item.vendorCode, 'HB-TK-1150');
   assert.equal(item.price, 1234.5);
-  assert.deepEqual(item.compatibility, ['Kyocera M2135dn', 'Kyocera P2235dn']);
+  assert.equal(item.compatibilityText, 'Kyocera M2135dn; Kyocera P2235dn',
+    'текст поставщика сохраняется как есть, без разбора на модели');
   assert.equal(item.stock.available, 5);
   assert.equal(item.stock.transit, 2);
   assert.equal(item.stock.mainOffice, 1);
@@ -169,13 +171,23 @@ test('остатки не суммируются ни на одном шаге',
   assert.deepEqual(item.stock, { available: 3, transit: 4, mainOffice: 5 });
   const rt = normalizeRuntime({ Id: 'X', AvailableQuantity: 3, TransitQuantity: 4, MainOfficeQuantity: 5 });
   assert.equal(rt.available, 3);
+  assert.equal(rt.price, undefined, 'у оперативной записи нет поля рублёвой цены');
   assert.equal(rt.transit, 4);
   assert.equal(rt.mainOffice, 5);
 });
 
 test('PhotoUrl и PhotoUrls объединяются без дублей', () => {
-  const item = normalizeItem({ Id: 'X', PhotoUrl: 'a.jpg', PhotoUrls: ['a.jpg', 'b.jpg'] });
-  assert.deepEqual(item.photos, ['a.jpg', 'b.jpg']);
+  const item = normalizeItem({
+    Id: 'X',
+    PhotoUrl: 'http://b2b.vtt.ru/images/a.jpg',
+    PhotoUrls: ['http://b2b.vtt.ru/images/a.jpg', 'http://b2b.vtt.ru/images/b.jpg'],
+  });
+  assert.deepEqual(item.photos, ['http://b2b.vtt.ru/images/a.jpg', 'http://b2b.vtt.ru/images/b.jpg']);
+
+  /* Относительное имя файла адресом не является: у VTT так выражено
+     отсутствие картинки, и до карточки оно доходить не должно. */
+  const stub = normalizeItem({ Id: 'Y', PhotoUrl: 'dummy.jpg', PhotoUrls: '{"string":[]}' });
+  assert.deepEqual(stub.photos, []);
 });
 
 test('мусорные количества не превращаются в нули', () => {
@@ -471,8 +483,11 @@ test('оперативный синк обновляет цену и три ос
   assert.equal(rep.updated, 30);
   assert.equal(rep.unknown, 0);
   const rec = store.loadAll().get('VTT-00000');
-  assert.equal(typeof rec.runtime.price, 'number');
+  assert.equal(typeof rec.runtime.priceForeign, 'number', 'оперативная цена хранится как валютная');
+  assert.equal(rec.runtime.price, undefined, 'и не выдаёт себя за рублёвую');
   assert.ok('available' in rec.runtime && 'transit' in rec.runtime && 'mainOffice' in rec.runtime);
+  /* Рублёвая цена полной выгрузки на месте: оперативный синк её не трогал. */
+  assert.ok(rec.price > rec.runtime.priceForeign * 10, 'рублёвая цена не подменена валютной');
 });
 
 test('логи и отчёты не содержат пароля', async () => {
@@ -491,11 +506,14 @@ test('логи и отчёты не содержат пароля', async () => 
 test('описание собирается только из фактов и детерминировано', async () => {
   const { buildDescription, toShopProduct } = await import('../src/publish.mjs');
   const item = normalizeItem({
-    Id: 'X', Name: 'Картридж HB-TK-1150', Vendor: 'HB-TK-1150', Brand: 'Hi-Black',
+    Id: 'X', Name: 'Картридж HB-TK-1150', NameAlias: 'HB-TK-1150', Vendor: 'Kyocera-Mita', Brand: 'Hi-Black',
     OriginalNumber: 'TK-1150', Resource: 3000, ColorName: 'Чёрный',
     Compatibility: 'Kyocera M2135dn; Kyocera P2235dn', Weight: 0.9, Barcode: '4600000000001',
     Group: 'Картриджи лазерные',
   });
+  /* Модели совместимости приходят отдельной операцией, а не разбором
+     свободного текста, поэтому здесь они подставлены явно. */
+  item.compatibilityLabels = ['Kyocera M2135dn', 'Kyocera P2235dn'];
   const a = buildDescription(item);
   const b = buildDescription(item);
   assert.equal(a.text, b.text, 'один и тот же вход даёт один и тот же текст');
@@ -525,9 +543,22 @@ test('остатки на витрине остаются тремя числа�
   assert.equal(av.mainOffice, 7);
 });
 
-test('оперативная цена перекрывает базовую, не затирая её в сторе', async () => {
+test('оперативная цена переводится в рубли по курсу самой позиции', async () => {
   const { priceOf } = await import('../src/publish.mjs');
-  assert.equal(priceOf({ price: 100, runtime: { price: 90 } }).price, 90);
+  /* Полная выгрузка дала 1 686 ₽ при валютной цене 20 — курс позиции
+     84,3. Оперативная выгрузка прислала 21: на витрине должно стать
+     1 770,3 ₽, а не 21 ₽. */
+  const item = { price: 1686, priceForeign: 20, runtime: { priceForeign: 21 } };
+  const res = priceOf(item);
+  assert.equal(res.price, 1770.3);
+  assert.equal(res.from, 'runtime');
+
+  /* Без валютной цены в полной выгрузке курс снять не с чего: показываем
+     вчерашнюю рублёвую, а не сегодняшнюю в чужой валюте. */
+  const noRate = priceOf({ price: 1686, runtime: { priceForeign: 21 } });
+  assert.equal(noRate.price, 1686);
+  assert.equal(noRate.from, 'full');
+
   assert.equal(priceOf({ price: 100 }).price, 100);
 });
 
@@ -563,7 +594,7 @@ test('редакционная правка не затирается синко
   const editorial = { [item.id]: { description: 'Ручной текст редактора' } };
   const before = publish(store, { editorial }).products[0];
   assert.equal(before.editorialDescription, 'Ручной текст редактора');
-  store.upsertItems([normalizeItem({ ...raw, Price: 9999 })], {});
+  store.upsertItems([normalizeItem({ ...raw, PriceLocal: 9999 })], {});
   const after = publish(store, { editorial }).products[0];
   assert.equal(after.editorialDescription, 'Ручной текст редактора', 'синк меняет цену, но не редакторский текст');
   assert.equal(after.price, 9999);
@@ -643,9 +674,13 @@ test('ItemRuntimeDto — ровно пять полей WSDL, без PriceRetail
     /* Даже если сервер пришлёт лишнее, в оперативные данные оно не попадёт. */
     PriceRetail: 999, TransitDate: '2026-01-01',
   });
-  assert.deepEqual(Object.keys(rt).sort(), ['available', 'id', 'mainOffice', 'price', 'syncedAt', 'transit']);
+  assert.deepEqual(Object.keys(rt).sort(), ['available', 'id', 'mainOffice', 'priceForeign', 'syncedAt', 'transit']);
   assert.equal(rt.priceRetail, undefined);
   assert.equal(rt.transitDate, undefined);
+  /* PriceLocal в оперативном DTO нет, поэтому и рублёвой цены здесь быть
+     не может: подменить ею ценник — уронить его в восемьдесят четыре раза. */
+  assert.equal(rt.price, undefined);
+  assert.equal(rt.priceForeign, 100);
 });
 
 test('CompatibilityDto разбирается по полям, а не разбором строки', async () => {
@@ -789,13 +824,14 @@ test('строка Compatibility поставщика не затирается 
   const client = new VttClient({ url: 'http://mock/', fetchImpl: createMockFetch({ items: makeItems(4) }) });
   await fullSync({ client, credentials: CRED, store, logger: null, config: CONFIG });
   const rec = store.loadAll().get('VTT-00001');
-  assert.ok(rec.compatibility?.length, 'разобранная строка ItemDto на месте');
+  assert.ok(rec.compatibilityText, 'свободный текст поставщика сохранён целиком');
   assert.ok(rec.compatibilityLabels?.length, 'официальные модели лежат рядом');
-  assert.notDeepEqual(rec.compatibility, rec.compatibilityLabels, 'это два разных источника');
 
   const { modelsOf } = await import('../src/publish.mjs');
-  assert.deepEqual(modelsOf(rec), rec.compatibilityLabels, 'витрина предпочитает официальные данные');
-  assert.deepEqual(modelsOf({ compatibility: ['HP LJ 1010'] }), ['HP LJ 1010'], 'без них — строка поставщика');
+  assert.deepEqual(modelsOf(rec), rec.compatibilityLabels, 'модели берутся только из структурного источника');
+  /* Свободный текст в список моделей не превращается: у VTT в этом поле
+     лежат и «Повреждённая упаковка», и «с чипом». */
+  assert.deepEqual(modelsOf({ compatibilityText: 'Повреждённая упаковка' }), []);
 });
 
 test('GetRelatedItems попадает в полную выгрузку и уважает предел', async () => {
@@ -844,4 +880,233 @@ test('groupId поставщика хранится отдельно от выб
   assert.ok(rec.groupId, 'присланный поставщиком Id раздела сохранён');
   assert.ok(rec.categoryId, 'категория витрины проставлена');
   assert.equal(rec.categorySource, 'GetCategoryItems', 'и видно, откуда она взялась');
+});
+
+/* ------------------------------------------------------------------ *
+   Импорт реальной выгрузки: CSV, таксономия, сжатие индекса, картинки
+ * ------------------------------------------------------------------ */
+
+test('CSV: разделитель, кавычки, переводы строк внутри поля, BOM', async () => {
+  const { parseCsv, readCsvCatalog } = await import('../src/csv.mjs');
+  const text = '﻿Id;Name;Compatibility\n' +
+    '1;Простой;HP LJ 1010\n' +
+    '2;"Имя; с разделителем";"Первая строка\nВторая строка"\n' +
+    '3;"Кавычка ""внутри""";\n';
+  const rows = parseCsv(text);
+  assert.equal(rows[0][0], 'Id', 'BOM снят с имени первой колонки');
+  assert.equal(rows.length, 4, 'перевод строки внутри кавычек не разорвал строку');
+  assert.equal(rows[2][1], 'Имя; с разделителем');
+  assert.equal(rows[2][2], 'Первая строка\nВторая строка');
+  assert.equal(rows[3][1], 'Кавычка "внутри"');
+
+  const { columns, items } = readCsvCatalog(text);
+  assert.deepEqual(columns, ['Id', 'Name', 'Compatibility']);
+  assert.equal(items.length, 3);
+  assert.equal(items[1].Name, 'Имя; с разделителем');
+});
+
+test('нормализация реальных полей VTT: цена в рублях, артикул, фото', async () => {
+  const { normalizeItem, isPhotoUrl, photoUrlList } = await import('../src/normalize.mjs');
+  const raw = {
+    Id: '1230110p', Name: 'Картридж Hi-Black', Brand: 'Hi-Black', Vendor: 'Panasonic',
+    NameAlias: 'HB-KX-FAT410A7', OriginalNumber: 'HB-KX-FAT410A7',
+    Price: '21.27', PriceRetail: '25.00', PriceLocal: '1793.06',
+    Group: 'Картриджи лазерные', RootGroup: 'Картриджи для лазерной печати',
+    AvailableQuantity: '4', TransitQuantity: '0', MainOfficeQuantity: '4', RestQuantity: '2',
+    PhotoUrl: 'dummy.jpg', PhotoUrls: '{"string":[]}',
+    Compatibility: 'Повреждённая упаковка',
+  };
+  const item = normalizeItem(raw, { now: '2026-01-01T00:00:00.000Z' });
+
+  assert.equal(item.price, 1793.06, 'на витрину идёт рублёвая цена PriceLocal');
+  assert.equal(item.priceForeign, 21.27, 'валютная цена сохранена отдельно');
+  assert.equal(item.vendorCode, 'HB-KX-FAT410A7', 'артикул из NameAlias, а не из Vendor');
+  assert.equal(item.compatibleBrand, 'Panasonic', 'Vendor — это марка техники');
+  assert.notEqual(item.vendorCode, 'Panasonic', 'марка техники не может быть артикулом');
+  assert.deepEqual(item.photos, [], 'dummy.jpg — это отсутствие фото, а не адрес');
+  assert.equal(item.compatibilityText, 'Повреждённая упаковка');
+  assert.ok(!item.compatibility?.length, 'свободный текст не превращается в список моделей');
+  assert.equal(item.stock.rest, 2, 'четвёртый остаток сохранён и ни с чем не сложен');
+  assert.equal(item.stock.transit, 0);
+
+  assert.equal(isPhotoUrl('dummy.jpg'), false);
+  assert.equal(isPhotoUrl('http://b2b.vtt.ru/images/1240C002.jpg'), true);
+  assert.deepEqual(photoUrlList('{"string":["http://a/1.jpg","http://a/2.jpg"]}'), ['http://a/1.jpg', 'http://a/2.jpg']);
+  assert.deepEqual(photoUrlList('{"string":[]}'), []);
+});
+
+test('таксономия: каждый корневой раздел VTT имеет соответствие', async () => {
+  const t = await import('../src/shop-taxonomy.mjs');
+  const ROOTS = [
+    'Картриджи для лазерной печати', 'Компьютер. запчасти и аксессуары', 'Запчасти для ремонта техники',
+    'Чернила', 'Картриджи для струйной печати', 'Тонеры/ Девелоперы', 'Чипы',
+    'Фотобарабаны и комплекты фотобарабанов', 'Запчасти для восстановления картриджей',
+    'Печатающая техника и опции к ней', 'Чистящие средства и материалы для обслуживания',
+    'Картриджи матричные и ленты красящие', 'Прочие расходные материалы', 'Бумага и пленки',
+    'Инструменты/пакеты/спецоборудование',
+  ];
+  for (const root of ROOTS) {
+    const res = t.shopCategoryOf({ categoryRoot: root });
+    assert.equal(res.status, 'mapped', `раздел «${root}» не разложен`);
+  }
+  /* Неизвестный раздел не растворяется в лазерных картриджах, а уходит в
+     «Прочее» и называет себя в отчёте. */
+  const unknown = t.shopCategoryOf({ categoryRoot: 'Совершенно новый раздел' });
+  assert.equal(unknown.id, 'other');
+  assert.equal(unknown.status, 'unknown-root');
+
+  assert.equal(t.shopBrandOf({ compatibleBrand: 'Kyocera-Mita' }).id, 'kyocera');
+  assert.equal(t.shopBrandOf({ compatibleBrand: 'SAMSUNG BY HP' }).id, 'samsung', 'написание поставщика не делит бренд надвое');
+  assert.equal(t.shopBrandOf({ compatibleBrand: 'Minolta' }).id, 'konica');
+  assert.equal(t.shopBrandOf({}).id, 'universal');
+
+  const rep = t.taxonomyReport([
+    { categoryRoot: 'Чипы', compatibleBrand: 'HP' },
+    { categoryRoot: 'Бумага и пленки', compatibleBrand: 'Lomond' },
+    { categoryRoot: 'Неизвестно', compatibleBrand: 'Неизвестно' },
+  ]);
+  assert.equal(rep.cats.zip, 1);
+  assert.equal(rep.cats.paper, 1);
+  assert.equal(rep.cats.other, 1);
+  assert.equal(rep.unknownRoots['Неизвестно'], 1);
+  assert.equal(rep.unknownVendors['Неизвестно'], 1);
+});
+
+test('сжатие индекса: круговой обход без потерь', async () => {
+  const { packIndex, unpackRows } = await import('../../tools/index-pack.mjs');
+  const fields = ['id', 'slug', 'name', 'cat', 'brand', 'img', 'type', 'color', 'res', 'demo', 'src'];
+  const rows = [
+    ['a', 'a', 'Товар А', 'laser', 'hp', 'http://b2b.vtt.ru/images/a.jpg', 'Картридж', 'Bk', 3000, null, 'vtt'],
+    ['b', 'b-2', 'Товар Б', 'zip', null, '/assets/img/no-photo.svg', '', null, null, true, 'vtt'],
+    ['c', 'c', 'Товар В', 'laser', 'hp', 'assets/img/p_1.webp', 'Тонер', '', 0, null, null],
+  ];
+  const packed = packIndex(fields, rows);
+  assert.equal(packed.packed, 1);
+  assert.deepEqual(unpackRows(packed), rows, 'разбор восстанавливает строки байт в байт');
+
+  /* Сжатие должно что-то экономить, иначе оно только усложняет формат. */
+  assert.ok(JSON.stringify(packed.rows).length < JSON.stringify(rows).length, 'сжатый индекс меньше исходного');
+  assert.equal(packed.rows[0][1], 0, 'слаг, совпавший с идентификатором, не хранится');
+  assert.equal(packed.rows[1][1], 'b-2', 'несовпавший слаг остаётся строкой');
+  assert.equal(typeof packed.rows[0][3], 'number', 'раздел заменён номером в словаре');
+  assert.notEqual(packed.rows[1][6], null, 'пустая строка не подменяется отсутствием значения');
+
+  /* Несжатый файл проходит насквозь: старый каталог читается тем же кодом. */
+  assert.deepEqual(unpackRows({ fields, rows }), rows);
+});
+
+test('картинки: варианты не растягиваются и собираются в srcset', async () => {
+  const { makeVariants, srcsetOf, fallbackSrc, ImageManifest, urlHash } = await import('../src/images.mjs');
+  const sharp = (await import('sharp')).default;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-img-'));
+
+  const wide = await sharp({ create: { width: 1200, height: 900, channels: 3, background: { r: 10, g: 20, b: 30 } } }).jpeg().toBuffer();
+  const made = await makeVariants(wide, { outDir: dir, publicDir: 'assets/img/vtt', name: 'wide' });
+  assert.deepEqual(made.variants.map((v) => v.width), [320, 640, 960], 'три ширины по списку');
+  assert.equal(made.variants[0].height, 240, 'пропорции сохранены');
+  for (const v of made.variants) {
+    for (const f of ['webp', 'avif']) assert.ok(fs.existsSync(path.join(dir, path.basename(v.files[f]))), `нет файла ${v.files[f]}`);
+  }
+
+  /* Узкий исходник не достраивается до 320: увеличенная картинка хуже
+     честной маленькой. */
+  const small = await sharp({ create: { width: 200, height: 150, channels: 3, background: { r: 1, g: 2, b: 3 } } }).jpeg().toBuffer();
+  const madeSmall = await makeVariants(small, { outDir: dir, publicDir: 'assets/img/vtt', name: 'small' });
+  assert.deepEqual(madeSmall.variants.map((v) => v.width), [200], 'ширина исходника, а не 320');
+
+  const set = srcsetOf(made);
+  assert.match(set, /320w/); assert.match(set, /960w/);
+  assert.ok(set.indexOf('320w') < set.indexOf('960w'), 'от узкого к широкому');
+  assert.match(fallbackSrc(made), /-960\.webp$/, 'запасной src — самый широкий вариант');
+  assert.equal(srcsetOf(null), '');
+
+  /* Манифест помнит и готовое, и неудачи: иначе каждая сборка снова
+     ходила бы за картинкой, которой нет. */
+  const mf = path.join(dir, 'manifest.json');
+  const m1 = new ImageManifest(mf);
+  m1.set('http://x/a.jpg', { hash: urlHash('http://x/a.jpg'), variants: made.variants, bytes: made.bytes });
+  m1.set('http://x/b.jpg', { error: 'HTTP 404' });
+  m1.save();
+  const m2 = new ImageManifest(mf);
+  assert.equal(m2.stats().ok, 1);
+  assert.equal(m2.stats().failed, 1);
+  assert.equal(m2.isReady('http://x/a.jpg', path.dirname(dir)), false, 'файлов по пути нет — запись не считается готовой');
+});
+
+test('импорт CSV: полная выгрузка, повтор без дублей, отчёт', async () => {
+  const { readCsvCatalog } = await import('../src/csv.mjs');
+  const { normalizeItem } = await import('../src/normalize.mjs');
+  const { deriveCategoryTree, createCategoryMapper, UNMAPPED_ID } = await import('../src/categories.mjs');
+  const { store } = tmpStore();
+
+  const head = 'Id;Name;Brand;Vendor;NameAlias;Group;RootGroup;Price;PriceLocal;AvailableQuantity;MainOfficeQuantity;PhotoUrl;PhotoUrls;Compatibility';
+  const lines = [head];
+  for (let i = 0; i < 250; i++) {
+    const root = i % 3 === 0 ? 'Картриджи для лазерной печати' : i % 3 === 1 ? 'Чипы' : 'Бумага и пленки';
+    const group = i % 3 === 0 ? 'Картриджи лазерные' : i % 3 === 1 ? 'Чипы' : 'Фотобумага';
+    lines.push(`VTT-${i};Товар ${i};Hi-Black;HP;HB-${i};${group};${root};1.19;100.${i % 100};${i % 5};${i % 5};dummy.jpg;{"string":[]};`);
+  }
+  /* Дубль идентификатора и строка без Id: обе должны попасть в счётчики,
+     а не тихо исчезнуть. */
+  lines.push('VTT-7;Дубль;Hi-Black;HP;HB-7;Чипы;Чипы;1.19;100.7;1;1;dummy.jpg;{"string":[]};');
+  lines.push(';Без идентификатора;Hi-Black;HP;X;Чипы;Чипы;1;1;1;1;dummy.jpg;{"string":[]};');
+
+  const { items: rows } = readCsvCatalog(lines.join('\n') + '\n');
+  assert.equal(rows.length, 252);
+
+  const seen = new Map();
+  let withoutId = 0, duplicates = 0;
+  const normalized = [];
+  for (const raw of rows) {
+    const id = String(raw.Id ?? '').trim();
+    if (!id) { withoutId += 1; continue; }
+    if (seen.has(id)) { duplicates += 1; continue; }
+    const item = normalizeItem(raw, { now: '2026-01-01T00:00:00.000Z' });
+    seen.set(id, item);
+    normalized.push(item);
+  }
+  assert.equal(withoutId, 1);
+  assert.equal(duplicates, 1);
+  assert.equal(normalized.length, 250);
+
+  const tree = deriveCategoryTree(normalized);
+  const assign = createCategoryMapper(tree);
+  for (const item of normalized) {
+    const d = assign(item);
+    item.categoryId = d.id;
+    assert.notEqual(d.id, UNMAPPED_ID, `товар ${item.id} остался без категории`);
+  }
+  assert.equal(tree.roots.length, 3, 'три корневых раздела поставщика');
+
+  const first = store.upsertItems(normalized, { now: '2026-01-01T00:00:00.000Z', syncId: 'csv-1' });
+  assert.equal(first.added.length, 250);
+  const second = store.upsertItems(normalized, { now: '2026-01-02T00:00:00.000Z', syncId: 'csv-2' });
+  assert.equal(second.added.length, 0);
+  assert.equal(second.updated.length, 0, 'повторный импорт того же файла ничего не меняет');
+  assert.equal(second.unchanged.length, 250);
+  assert.equal(store.loadAll().size, 250, 'дубль не создал второй карточки');
+});
+
+test('исчезнувшее поле поставщика не остаётся в карточке навсегда', async () => {
+  const { store } = tmpStore();
+  const withPrice = { id: 'P1', name: 'Товар', vendorCode: 'A-1', price: 1500, supplierDescription: 'Текст поставщика' };
+  store.upsertItems([withPrice], { now: '2026-01-01T00:00:00.000Z' });
+  assert.equal(store.loadAll().get('P1').price, 1500);
+
+  /* Следующая выгрузка цены и описания не прислала: значит их больше нет.
+     Это ровно тот случай, что дала реальная выгрузка VTT — 972 позиции
+     с «−1» вместо суммы. Старая цена в карточке остаться не может. */
+  const without = { id: 'P1', name: 'Товар', vendorCode: 'A-1' };
+  const rep = store.upsertItems([without], { now: '2026-01-02T00:00:00.000Z' });
+  assert.equal(rep.updated.length, 1);
+  const rec = store.loadAll().get('P1');
+  assert.equal(rec.price, undefined, 'цена, которой больше нет, исчезла из карточки');
+  assert.equal(rec.supplierDescription, undefined);
+  assert.equal(rec.firstSeenAt, '2026-01-01T00:00:00.000Z', 'служебные отметки сохранились');
+
+  /* А обогащение при этом не теряется: его пишут другие операции. */
+  store.patchItem('P1', { compatibilityLabels: ['HP LJ 1010'], categorySource: 'GetCategoryItems' });
+  store.upsertItems([without], { now: '2026-01-03T00:00:00.000Z' });
+  assert.deepEqual(store.loadAll().get('P1').compatibilityLabels, ['HP LJ 1010']);
+  assert.equal(store.loadAll().get('P1').categorySource, 'GetCategoryItems');
 });

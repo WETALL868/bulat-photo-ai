@@ -17,7 +17,7 @@
   Ни характеристик, ни сертификатов, ни гарантий, ни «совместим также с»
   здесь не появляется: выдуманная строка в карточке дороже пустого места.
 */
-import { slugify } from './normalize.mjs';
+import { slugify, REQUIRED_FOR_CARD } from './normalize.mjs';
 
 export const DESCRIPTION_VERSION = 1;
 
@@ -42,18 +42,20 @@ export function typeOf(item) {
 const fmt = (n) => Number(n).toLocaleString('ru-RU');
 
 /*
-  Список совместимых моделей. Источников два, и порядок между ними не
-  случаен: GetGoodsCompatibilityInformation отдаёт бренд и модель
-  отдельными полями, а строка Compatibility в ItemDto — это свободный
-  текст, который приходится резать разделителями. Поэтому официальные
-  данные предпочтительнее, а строка остаётся запасным вариантом там, где
-  операция недоступна учётной записи. Оба поля хранятся в сторе рядом и не
-  затирают друг друга.
+  Список совместимых моделей. Берётся ТОЛЬКО из структурного источника —
+  GetGoodsCompatibilityInformation, где бренд и модель приходят
+  отдельными полями.
+
+  Свободный текст Compatibility сюда не попадает, и это решение по фактам
+  реальной выгрузки: в одном и том же поле у VTT лежат и списки моделей
+  («LJ 3052/3055/3390/3392 CLJ M375/M475»), и состояние товара
+  («Повреждённая упаковка»), и примечания («с чипом», «Позиция снята с
+  производства»). Разрезание по разделителям дало бы карточке чипы
+  «Повреждённая упаковка» и «3055» — то есть выдуманную совместимость.
+  Текст показывается как есть, отдельным полем, за подписью поставщика.
 */
 export function modelsOf(item) {
-  const official = item.compatibilityLabels ?? [];
-  if (official.length) return official;
-  return item.compatibility ?? [];
+  return item.compatibilityLabels ?? item.compatibility ?? [];
 }
 
 /*
@@ -154,11 +156,29 @@ export function usablePhoto(url) {
   } catch { return false; }
 }
 
+/*
+  Цена на витрине.
+
+  Полная выгрузка даёт рублёвую цену (PriceLocal) и её же в валюте
+  поставщика (Price). Оперативная выгрузка даёт только валютную — такого
+  поля, как PriceLocal, в ItemRuntimeDto нет. Поэтому свежая цена
+  переводится в рубли по курсу самой этой позиции, снятому с полной
+  выгрузки: PriceLocal / Price. Это курс поставщика, а не придуманный
+  нами, и он берётся с той же карточки, а не усредняется по каталогу.
+
+  Если курс снять не с чего (валютной цены в полной выгрузке не было),
+  оперативная цена не применяется вовсе: лучше показать вчерашнюю
+  рублёвую цену, чем сегодняшнюю в чужой валюте.
+*/
 export function priceOf(item) {
   const rt = item.runtime ?? {};
-  const price = rt.price ?? item.price;
-  const retail = rt.priceRetail ?? item.priceRetail;
-  return { price, retail };
+  const base = item.price;
+  if (rt.priceForeign === undefined || rt.priceForeign === null) {
+    return { price: base, retail: undefined, from: 'full' };
+  }
+  const rate = item.priceForeign > 0 && base > 0 ? base / item.priceForeign : null;
+  if (!rate) return { price: base, retail: undefined, from: 'full', note: 'курс неизвестен' };
+  return { price: Math.round(rt.priceForeign * rate * 100) / 100, retail: undefined, from: 'runtime', rate };
 }
 
 /*
@@ -196,6 +216,11 @@ export function toShopProduct(item, { editorial = {}, categoryPath = [], shopCat
     chip: null,
     compat: modelsOf(item).join(', '),
     models: modelsOf(item),
+    /* Свободный текст поставщика едет отдельным полем и показывается как
+       есть: резать его на модели нельзя, но и терять нельзя — у 6 681
+       позиции это единственные сведения о совместимости. */
+    compatText: item.compatibilityText ?? '',
+    compatibleBrand: item.compatibleBrand ?? '',
     equip: '', tech: '', print: '',
     weight: item.weight ?? '',
     img: usablePhoto(item.photos?.[0]) ? item.photos[0] : PHOTO_PLACEHOLDER,
@@ -211,7 +236,21 @@ export function toShopProduct(item, { editorial = {}, categoryPath = [], shopCat
        отдельно и в эти счётчики не попадают. */
     rate: 0, reviews: 0, pop: 50, badge: '',
     price: price ?? 0,
-    old: retail && price && retail > price ? retail : 0,
+    /* Цены нет — товар не продаётся кнопкой, а показывается «по запросу».
+       Ноль в ценнике хуже отсутствия цены: он выглядит как бесплатно. */
+    priceOnRequest: !(price > 0),
+    priceFrom: (item.runtime ? 'runtime' : 'full'),
+    /*
+      Зачёркнутой «старой цены» у импортированных товаров нет.
+      PriceRetail поставщик присылает в своей валюте, и это его
+      рекомендованная розница, а не наша прежняя цена. Пересчитать её в
+      рубли можно, но показать как «было 2 040 ₽ — стало 1 825 ₽» —
+      значит объявить чужую наценку своей скидкой. Поле остаётся, чтобы
+      цифра не потерялась, но на ценник не идёт.
+    */
+    old: 0,
+    priceRetailForeign: item.priceRetailForeign ?? 0,
+    priceForeign: item.priceForeign ?? 0,
     stock: av.inStock ? 1 : 0,
     stockDetail: { available: av.available, transit: av.transit, mainOffice: av.mainOffice },
     source: 'vtt',
@@ -230,7 +269,18 @@ export function publish(store, options = {}) {
   const catById = new Map(categories.map((c) => [c.id, c]));
   const all = store.loadAll();
   const products = [];
-  const report = { total: all.size, inactive: 0, filtered: 0, published: 0, incomplete: [], noPrice: [], noPhoto: [] };
+  /*
+    Отчёт о неполноте разделён на два. «Не хватает обязательного» — это
+    карточка, которую нельзя показывать: без названия, артикула или цены.
+    «Не хватает желательного» — это ресурс, фото, описание: карточка
+    работает, но беднее. Раньше они шли одной кучей, и на реальной
+    выгрузке в неё попадали все девять с половиной тысяч товаров —
+    отчёт, в котором всё, не сообщает ничего.
+  */
+  const report = {
+    total: all.size, inactive: 0, filtered: 0, published: 0,
+    incomplete: [], missingRequired: [], noPrice: [], noPhoto: [], noDescription: [], noCompatibility: [],
+  };
 
   for (const item of all.values()) {
     if (item.active === false) { report.inactive += 1; continue; }
@@ -242,7 +292,14 @@ export function publish(store, options = {}) {
     });
     if (!product.price) report.noPrice.push(item.id);
     if (product.photoMissing) report.noPhoto.push(item.id);
-    if (item.missing?.length) report.incomplete.push({ id: item.id, name: item.name ?? null, missing: item.missing });
+    if (item.missing?.length) {
+      const required = item.missing.filter((f) => REQUIRED_FOR_CARD.includes(f));
+      const entry = { id: item.id, name: item.name ?? null, missing: item.missing };
+      report.incomplete.push(entry);
+      if (required.length) report.missingRequired.push({ ...entry, required });
+    }
+    if (!item.supplierDescription) report.noDescription.push(item.id);
+    if (!item.compatibilityText) report.noCompatibility.push(item.id);
     products.push(product);
     report.published += 1;
   }

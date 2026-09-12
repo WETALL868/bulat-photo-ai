@@ -23,9 +23,19 @@
 const FIELD = {
   id: ['Id', 'ID', 'ItemId'],
   name: ['Name', 'ItemName'],
-  vendorCode: ['Vendor', 'VendorCode', 'Article', 'Code'],
+  /*
+    Артикул. Раньше здесь первым стоял `Vendor` — и это была ошибка,
+    которую показала реальная выгрузка: `Vendor` у VTT содержит не код
+    товара, а марку принтера, под который он подходит (HP, Kyocera-Mita,
+    Canon — 33 значения на 9 483 строки). Артикул лежит в `NameAlias`
+    (заполнен у всех строк) и дублируется в `OriginalNumber` у 80%.
+  */
+  vendorCode: ['NameAlias', 'VendorCode', 'Article', 'PartNumber', 'Code'],
   originalNumber: ['OriginalNumber', 'OriginalNumbers', 'OriginalCode'],
   brand: ['Brand', 'Producer', 'Manufacturer'],
+  /* Марка техники, к которой подходит товар. Структурное поле — в отличие
+     от свободного текста Compatibility, по нему можно фильтровать. */
+  compatibleBrand: ['Vendor'],
   groupId: ['GroupId', 'CategoryId', 'GroupID'],
   group: ['Group', 'GroupName'],
   rootGroup: ['RootGroup', 'RootGroupName'],
@@ -33,12 +43,22 @@ const FIELD = {
   compatibility: ['Compatibility'],
   photoUrl: ['PhotoUrl', 'PhotoURL'],
   photoUrls: ['PhotoUrls', 'PhotoURLs'],
-  price: ['Price'],
-  priceRetail: ['PriceRetail'],
+  /*
+    Цены. `Price` и `PriceRetail` в выгрузке выражены НЕ в рублях:
+    отношение PriceLocal/Price по всем 8 511 строкам с ненулевой ценой
+    лежит в диапазоне 84,273–84,333 — это курс, а не разброс цен. Чип за
+    0,19 «единиц» и за 16,02 ₽ — одна и та же позиция. Рублёвая цена
+    только одна, `PriceLocal`, и именно она идёт на витрину.
+  */
+  priceLocal: ['PriceLocal'],
+  priceForeign: ['Price'],
+  priceRetailForeign: ['PriceRetail'],
   available: ['AvailableQuantity'],
   transit: ['TransitQuantity'],
   transitDate: ['TransitDate'],
   mainOffice: ['MainOfficeQuantity'],
+  rest: ['RestQuantity'],
+  reserved: ['Reserved'],
   barcode: ['Barcode'],
   color: ['ColorName', 'Color'],
   resource: ['Resource', 'ResourcePages', 'Yield'],
@@ -70,6 +90,17 @@ export function asNumber(value) {
      в выгрузке превращалось в 0.7999999999999999 и в таком виде попадало
      прямо в карточку. Шести знаков хватает любому весу и габариту. */
   return Math.round(n * 1e6) / 1e6;
+}
+
+/*
+  Цена. Отрицательное значение ценой не является: у VTT так помечены 972
+  позиции из 9 483 — «-1» вместо суммы. Показать «−1 ₽» на витрине или,
+  что хуже, продать за эту сумму нельзя, поэтому такое значение означает
+  «цены нет», а карточка честно говорит «по запросу».
+*/
+export function asPrice(value) {
+  const n = asNumber(value);
+  return n === undefined || n < 0 ? undefined : n;
 }
 
 /* Целое неотрицательное: остаток «-1» или «много» — это не количество. */
@@ -123,7 +154,42 @@ export function parseCompatibility(value) {
 }
 
 export const REQUIRED_FOR_CARD = ['name', 'vendorCode', 'price'];
-export const RECOMMENDED_FOR_CARD = ['brand', 'category', 'compatibility', 'photos', 'resource'];
+export const RECOMMENDED_FOR_CARD = ['brand', 'category', 'compatibilityText', 'photos', 'resource'];
+
+/*
+  Пригодная ссылка на фото. У VTT «нет картинки» выражается строкой
+  `dummy.jpg` — так помечены 3 282 товара из 9 483. Если пропустить это
+  значение дальше, карточка получит ссылку на несуществующий файл вместо
+  честной заглушки, и вместо «фото не передано» покупатель увидит битое
+  изображение.
+*/
+const PHOTO_STUBS = new Set(['dummy.jpg', 'dummy.jpeg', 'dummy.png', 'no-photo.jpg', 'nophoto.jpg']);
+export function isPhotoUrl(value) {
+  const s = asText(value);
+  if (!s) return false;
+  if (PHOTO_STUBS.has(s.toLowerCase())) return false;
+  return /^https?:\/\/.+\.[a-z0-9]{2,5}(\?|$)/i.test(s);
+}
+
+/*
+  PhotoUrls приходит из WCF как сериализованный список строк:
+  {"string":["http://…jpg","http://…jpg"]}. У 6 201 товара он непустой, и
+  до 12 картинок на карточку. Разбирается и как JSON, и как обычный
+  список — форма зависит от того, пришли данные из SOAP или из CSV.
+*/
+export function photoUrlList(value) {
+  if (value === undefined || value === null || value === '') return [];
+  if (typeof value === 'string' && /^\s*[{[]/.test(value)) {
+    try {
+      const parsed = JSON.parse(value);
+      const list = Array.isArray(parsed) ? parsed : (parsed?.string ?? parsed?.Url ?? []);
+      return asList(list);
+    } catch {
+      /* Не JSON — значит обычная строка со ссылками, разбираем как список. */
+    }
+  }
+  return asList(value);
+}
 
 export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
   if (!raw || typeof raw !== 'object') throw new TypeError('normalizeItem: ожидался объект ItemDto');
@@ -131,7 +197,10 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
   const id = asText(pick(raw, FIELD.id));
   const name = asText(pick(raw, FIELD.name));
   const vendorCode = asText(pick(raw, FIELD.vendorCode));
-  const photos = [...new Set([...asList(pick(raw, FIELD.photoUrl)), ...asList(pick(raw, FIELD.photoUrls))])];
+  const photos = [...new Set([
+    ...asList(pick(raw, FIELD.photoUrl)),
+    ...photoUrlList(pick(raw, FIELD.photoUrls)),
+  ])].filter(isPhotoUrl);
 
   const item = {
     id: id ?? '',
@@ -140,6 +209,7 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
     vendorCode,
     originalNumber: asText(pick(raw, FIELD.originalNumber)),
     brand: asText(pick(raw, FIELD.brand)),
+    compatibleBrand: asText(pick(raw, FIELD.compatibleBrand)),
     /* Идентификатор категории в том виде, в каком его прислал VTT.
        Хранится отдельно от categoryId: categoryId — это уже наше решение
        о разделе витрины (оно может прийти из GetCategoryItems или из
@@ -156,7 +226,12 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
        нормализованным и редакционным текстом — иначе после синка нельзя
        понять, где чей текст. */
     supplierDescription: asText(pick(raw, FIELD.description)),
-    compatibility: parseCompatibility(pick(raw, FIELD.compatibility)),
+    /* Свободный текст поставщика сохраняется целиком и показывается как
+       есть. Резать его на «совместимые модели» нельзя: в одном и том же
+       поле лежат и списки моделей, и «Повреждённая упаковка», и «с
+       чипом», и «Позиция снята с производства». Структурные модели даёт
+       отдельная операция GetGoodsCompatibilityInformation. */
+    compatibilityText: asText(pick(raw, FIELD.compatibility)),
     photos,
     dimensions: {
       width: asNumber(pick(raw, FIELD.width)),
@@ -165,12 +240,26 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
     },
     weight: asNumber(pick(raw, FIELD.weight)),
     inPackage: asCount(pick(raw, FIELD.inPackage)),
-    price: asNumber(pick(raw, FIELD.price)),
-    priceRetail: asNumber(pick(raw, FIELD.priceRetail)),
+    /* Рублёвая цена — единственная, которую можно показать покупателю.
+       Валютная сохраняется отдельно и в рубли не пересчитывается: курс
+       поставщика — его дело, а придуманный курс на витрине был бы
+       ошибкой в деньгах. */
+    price: asPrice(pick(raw, FIELD.priceLocal)) ?? asPrice(pick(raw, FIELD.priceForeign)),
+    /* Откуда взята цена, видно в самой карточке. Если PriceLocal в ответе
+       не пришёл, цена берётся из Price — но помечается как валюта
+       неподтверждённая, и это уходит в отчёт публикации. Молча показать
+       двадцать один «рубль» вместо тысячи семисот — ошибка в деньгах, и
+       она не должна быть незаметной. */
+    priceSource: asPrice(pick(raw, FIELD.priceLocal)) !== undefined ? 'PriceLocal'
+      : (asPrice(pick(raw, FIELD.priceForeign)) !== undefined ? 'Price' : undefined),
+    priceForeign: asPrice(pick(raw, FIELD.priceForeign)),
+    priceRetailForeign: asPrice(pick(raw, FIELD.priceRetailForeign)),
     stock: {
       available: asCount(pick(raw, FIELD.available)),
       transit: asCount(pick(raw, FIELD.transit)),
       mainOffice: asCount(pick(raw, FIELD.mainOffice)),
+      rest: asCount(pick(raw, FIELD.rest)),
+      reserved: asCount(pick(raw, FIELD.reserved)),
       transitDate: asText(pick(raw, FIELD.transitDate)),
     },
     syncedAt: now,
@@ -203,8 +292,15 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
   ItemRuntimeDto по официальному WSDL — ровно пять полей:
   Id, Price, AvailableQuantity, TransitQuantity, MainOfficeQuantity.
   PriceRetail и TransitDate в оперативном DTO НЕТ: раньше я их здесь ждал,
-  и это было предположение. Они приходят только в ItemDto, поэтому
-  оперативный синк их не трогает и не обнуляет.
+  и это было предположение. Они приходят только в ItemDto.
+
+  Важнее другое, и это видно только на реальных данных. PriceLocal в
+  оперативном DTO тоже нет — а `Price` там та же валютная цена, что и в
+  ItemDto: 21,27 против 1 793,06 ₽ у одной и той же позиции. Положить её
+  в поле рублёвой цены значило бы уронить ценник каталога в восемьдесят
+  четыре раза. Поэтому здесь она и называется валютной, а перевод в рубли
+  делает витрина — по курсу самого поставщика, снятому с этой же позиции
+  на полной выгрузке.
 
   Три склада остаются тремя полями и не суммируются.
 */
@@ -212,7 +308,7 @@ export function normalizeRuntime(raw, { now = new Date().toISOString() } = {}) {
   if (!raw || typeof raw !== 'object') throw new TypeError('normalizeRuntime: ожидался объект ItemRuntimeDto');
   const out = {
     id: asText(pick(raw, FIELD.id)) ?? '',
-    price: asNumber(pick(raw, FIELD.price)),
+    priceForeign: asNumber(pick(raw, FIELD.priceForeign)),
     available: asCount(pick(raw, FIELD.available)),
     transit: asCount(pick(raw, FIELD.transit)),
     mainOffice: asCount(pick(raw, FIELD.mainOffice)),

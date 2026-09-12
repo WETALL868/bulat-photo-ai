@@ -19,6 +19,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { unpackRows } from './index-pack.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'seo-pages');
@@ -33,6 +34,12 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const SITE = 'https://hi-black.example';       // боевой домен подставляется здесь
 const args = process.argv.slice(2);
 const LIMIT = args.includes('--limit') ? Number(args[args.indexOf('--limit') + 1]) : Infinity;
+const argValue = (name, fallback) => {
+  const eq = args.find((a) => a.startsWith(`--${name}=`));
+  if (eq) return eq.slice(name.length + 3);
+  const i = args.indexOf(`--${name}`);
+  return i >= 0 ? args[i + 1] : fallback;
+};
 
 const read = (p) => JSON.parse(fs.readFileSync(path.join(ROOT, p), 'utf8'));
 const catalog = read('data/catalog/index.json');
@@ -44,7 +51,10 @@ const live = read('live/catalog-live.json');
 const site = read('data/site.json');
 
 const F = Object.fromEntries(meta.fields.map((f, i) => [f, i]));
-const products = catalog.rows.map((r) => Object.fromEntries(meta.fields.map((f, i) => [f, r[i]])));
+/* Индекс лежит сжатым — тем же модулем, что его собрал, он и
+   разворачивается: предрендер должен видеть раздел «laser», а не номер
+   в словаре. */
+const products = unpackRows(catalog).map((r) => Object.fromEntries(meta.fields.map((f, i) => [f, r[i]])));
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
@@ -81,7 +91,29 @@ for (const key of combos) {
     desc: `Совместимые ${c.name.toLowerCase()} Hi-Black для принтеров и МФУ ${b.name}. Гарантия ресурса, отгрузка со склада в Москве, доставка по России.`,
   });
 }
-for (const p of products.slice(0, LIMIT)) {
+/*
+  Какие карточки предрендерить.
+
+  Демонстрационные страницы отдаются поисковику с noindex и в карту сайта
+  не попадают — предрендерить их незачем: девять с половиной тысяч файлов
+  по 80 КБ это семьсот мегабайт и полтора часа сборки ради страниц,
+  которые никто не должен индексировать. Витрина всё равно рисует их в
+  браузере, поэтому для человека ничего не меняется.
+
+  Небольшая выборка демо-страниц всё же собирается — чтобы статический
+  путь был проверен на настоящих импортированных данных, а не только на
+  товарах прототипа.
+*/
+const DEMO_SAMPLE = Number(argValue('demo-sample', 24));
+const seoProducts = [];
+let demoTaken = 0;
+for (const p of products) {
+  if (p.demo) { if (demoTaken >= DEMO_SAMPLE) continue; demoTaken += 1; }
+  seoProducts.push(p);
+}
+const skippedDemo = products.filter((p) => p.demo).length - demoTaken;
+
+for (const p of seoProducts.slice(0, LIMIT)) {
   const l = live.items[p.id] || {};
   add('/product/' + p.slug, 'product/' + p.slug, {
     title: `${p.name} — купить в фирменном магазине Hi-Black`,
@@ -204,5 +236,8 @@ fs.writeFileSync(path.join(ROOT, 'robots.txt'), `User-agent: *\nDisallow: /cart\
 
 const bytes = routes.reduce((a, r) => a + fs.statSync(path.join(OUT, r.file + '.html')).size, 0);
 console.log(`Собрано страниц: ${routes.length} за ${((Date.now() - t0) / 1000).toFixed(0)} с, ${(bytes / 1024 / 1024).toFixed(1)} МБ`);
-console.log(`  товаров ${products.slice(0, LIMIT).length}, моделей принтеров ${Math.min(Object.keys(compat).length, LIMIT)}, категорий ${cats.length}`);
+console.log(`  товаров ${seoProducts.slice(0, LIMIT).length}, моделей принтеров ${Math.min(Object.keys(compat).length, LIMIT)}, категорий ${cats.length}`);
+if (skippedDemo) {
+  console.log(`  не предрендерено демонстрационных карточек: ${skippedDemo} (они noindex и вне карты сайта; витрина рисует их в браузере)`);
+}
 if (errors.length) console.log('  ошибки в браузере:', [...new Set(errors)].slice(0, 5));

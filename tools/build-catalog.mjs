@@ -23,6 +23,7 @@
 'use strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { packIndex } from './index-pack.mjs';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { contacts, legal, shop, messengers} from '../catalog-source/site.config.mjs';
@@ -307,7 +308,8 @@ function buildReviews(p, brandName) {
 */
 async function readVttStore(storeRoot) {
   const { VttStore } = await import('../vtt/src/store.mjs');
-  const { publish, modelsOf } = await import('../vtt/src/publish.mjs');
+  const { publish } = await import('../vtt/src/publish.mjs');
+  const tax = await import('../vtt/src/shop-taxonomy.mjs');
   const store = new VttStore(storeRoot);
   if (!fs.existsSync(path.join(storeRoot, 'items'))) {
     throw new Error(
@@ -321,20 +323,76 @@ async function readVttStore(storeRoot) {
   const cfgFile = path.join(ROOT, 'vtt/config.json');
   const filter = fs.existsSync(cfgFile) ? (JSON.parse(fs.readFileSync(cfgFile, 'utf8')).publishFilter ?? {}) : {};
 
+  /*
+    Манифест картинок, если этап загрузки уже отработал. Его нет — витрина
+    показывает заглушку и говорит об этом прямо; выдумывать картинку
+    нельзя, а ссылаться на чужой сервер по http — значит получить битую
+    картинку у половины посетителей.
+  */
+  const manifestFile = path.join(storeRoot, 'images/manifest.json');
+  let images = null;
+  if (fs.existsSync(manifestFile)) {
+    try {
+      const { ImageManifest } = await import('../vtt/src/images.mjs');
+      images = new ImageManifest(manifestFile);
+    } catch (e) {
+      console.log(`  манифест картинок не прочитан: ${e.message}`);
+    }
+  }
+
   const { products, report } = publish(store, {
     filter, editorial,
     categories: state.categories ?? [],
-    shopCat: (item) => catFromText(item.category || item.categoryRoot || item.name || ''),
-    shopBrand: (item) => brandFromText([...modelsOf(item), item.name ?? ""].join(" ")),
+    /* Раздел и марка берутся из таблиц соответствия, а не из разбора
+       названия: на реальном ассортименте угадывание по тексту сваливало
+       бумагу и инструмент в лазерные картриджи, и увидеть это было
+       нечем. Всё, чего нет в таблице, попадает в «Прочее» и в отчёт. */
+    shopCat: (item) => tax.shopCategoryOf(item).id,
+    shopBrand: (item) => tax.shopBrandOf(item).id,
   });
 
+  /* Локальные варианты подставляются поверх исходных адресов: сам адрес
+     поставщика остаётся в сторе и в карточке, чтобы этап картинок можно
+     было переиграть, ничего не потеряв. */
+  if (images) {
+    const { srcsetOf, fallbackSrc } = await import('../vtt/src/images.mjs');
+    let withLocal = 0;
+    for (const p of products) {
+      const source = (p.images ?? []).find((u) => images.get(u)?.variants?.length);
+      if (!source) continue;
+      const rec = images.get(source);
+      p.imgOriginal = p.img;
+      p.img = fallbackSrc(rec) || p.img;
+      p.srcset = srcsetOf(rec);
+      p.srcsetAvif = srcsetOf(rec, 'avif');
+      p.imgW = rec.width; p.imgH = rec.height;
+      p.photoMissing = false;
+      withLocal += 1;
+    }
+    console.log(`  локальных картинок подставлено: ${withLocal} из ${products.length}`);
+  }
+
+  const taxonomy = tax.taxonomyReport([...store.loadAll().values()].filter((i) => i.active !== false));
   console.log(`  импорт VTT: в сторе ${report.total}, опубликовано ${report.published}, ` +
     `скрыто ${report.inactive}, отсеяно фильтром ${report.filtered}`);
-  if (report.incomplete.length) console.log(`  неполные данные: ${report.incomplete.length} товаров (отчёт в vtt-data/reports)`);
+  console.log('  разделы витрины: ' + Object.entries(taxonomy.cats).map(([k, v]) => `${k} ${v}`).join(', '));
+  if (Object.keys(taxonomy.unknownRoots).length) {
+    console.log('  РАЗДЕЛЫ ПОСТАВЩИКА БЕЗ СООТВЕТСТВИЯ: ' + JSON.stringify(taxonomy.unknownRoots));
+  }
+  if (Object.keys(taxonomy.unknownVendors).length) {
+    console.log('  марки без соответствия: ' + Object.keys(taxonomy.unknownVendors).join(', ') + ' → универсальные');
+  }
+  if (report.missingRequired.length) {
+    console.log(`  БЕЗ ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ: ${report.missingRequired.length} товаров (название, артикул или цена)`);
+  }
+  console.log(`  пробелы в данных: без фото ${report.noPhoto.length}, без описания ${report.noDescription.length}, ` +
+    `без совместимости ${report.noCompatibility.length}, без цены ${report.noPrice.length}`);
   store.saveReport('last-publish', report);
+  store.saveReport('last-taxonomy', taxonomy);
 
   return {
-    products, vttCategories: state.categories ?? [], vttReport: report,
+    products, vttCategories: state.categories ?? [], vttReport: report, taxonomy,
+    importedCats: tax.IMPORTED_SHOP_CATS, importedBrandNames: tax.IMPORTED_BRAND_NAMES,
     cats: null, brands: null, laserBrands: null, lines: null, pages: null, pageText: null,
   };
 }
@@ -356,26 +414,70 @@ const fallback = SOURCE === 'data-js' ? src : readDataJs();
   На боевых данных флаг не нужен: там источником становится сам стор
   (--source=vtt), и никакой пометки demo у товаров не появляется.
 */
-const WITH_VTT = Number(argOf('with-vtt', 0)) || 0;
+/* `--with-vtt=all` — весь ассортимент поставщика; число — ограничение для
+   быстрой проверки сборки, чтобы не ждать девять с половиной тысяч
+   карточек на каждой правке вёрстки. */
+const WITH_VTT_RAW = String(argOf('with-vtt', 0));
+const WITH_VTT = WITH_VTT_RAW === 'all' ? Infinity : (Number(WITH_VTT_RAW) || 0);
+let imported = null;
 if (WITH_VTT > 0 && SOURCE !== 'vtt') {
-  const imported = await readVttStore(argOf('store', path.join(ROOT, 'vtt-data')));
+  imported = await readVttStore(argOf('store', path.join(ROOT, 'vtt-data')));
   const demoFlag = argOf('vtt-demo', '1') !== '0';
   const existing = new Set(src.products.map((p) => p.id));
-  let taken = 0;
+  let taken = 0, renamed = 0;
   for (const p of imported.products) {
     if (taken >= WITH_VTT) break;
-    if (existing.has(p.id)) continue;
-    src.products.push({ ...p, demo: demoFlag, source: 'vtt' });
-    existing.add(p.id);
+    /*
+      Совпадение идентификаторов не повод потерять товар. Артикул у VTT
+      не уникален — один и тот же NameAlias встречается у позиций с чипом
+      и без, в повреждённой упаковке и в целой, — а раньше такой товар
+      просто пропускался: из 9 483 позиций на витрину доходило 8 104.
+      Теперь к идентификатору дописывается собственный Id поставщика,
+      который уникален по определению.
+    */
+    let id = p.id;
+    if (existing.has(id)) {
+      id = `${p.id}-${slugify(p.vttId || '')}`.replace(/-+$/, '');
+      let n = 2;
+      while (existing.has(id)) id = `${p.id}-${slugify(p.vttId || '')}-${n++}`;
+      renamed += 1;
+    }
+    src.products.push({ ...p, id, demo: demoFlag, source: 'vtt' });
+    existing.add(id);
     taken += 1;
   }
   src.vttCategories = imported.vttCategories;
-  console.log(`  подмешано товаров импорта: ${taken}${demoFlag ? ' (помечены demo)' : ''}`);
+  console.log(`  подмешано товаров импорта: ${taken}${demoFlag ? ' (помечены demo)' : ''}` +
+    (renamed ? `, из них ${renamed} с уточнённым идентификатором из-за совпадения артикулов` : ''));
+  if (taken < imported.products.length && WITH_VTT === Infinity) {
+    console.log(`  ВНИМАНИЕ: перенесено ${taken} из ${imported.products.length}`);
+  }
 } // словари и тексты страниц берём из прототипа
 const products = src.products;
 const cats = src.cats || fallback.cats;
 const brandDict = src.brands || fallback.brands;
 const laserBrands = src.laserBrands || fallback.laserBrands;
+
+/*
+  Разделы и марки, которых в каталоге магазина не было.
+
+  Ассортимент поставщика шире прототипа: там есть бумага, инструмент и
+  печатающая техника, а среди марок — Lomond, Deli, RISO. Без записи в
+  словаре такой товар попал бы в раздел, которого нет в навигации, и
+  просто исчез бы с витрины: каталог рисуется по списку cats. Поэтому
+  недостающие записи добавляются, а существующие не трогаются — у них
+  свои тексты и картинки.
+*/
+const importedCats = src.importedCats ?? imported?.importedCats ?? [];
+const importedBrandNames = src.importedBrandNames ?? imported?.importedBrandNames ?? {};
+if (products.some((p) => p.source === 'vtt')) {
+  const have = new Set(cats.map((c) => c.id));
+  const used = new Set(products.map((p) => p.cat));
+  for (const c of importedCats) if (!have.has(c.id) && used.has(c.id)) cats.push({ ...c, img: '' });
+  for (const [id, name] of Object.entries(importedBrandNames)) {
+    if (!brandDict[id] && products.some((p) => p.brand === id)) brandDict[id] = { name, logo: '' };
+  }
+}
 const brandName = (id) => (brandDict[id] ? brandDict[id].name : id);
 
 products.sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name, 'ru'));
@@ -408,56 +510,49 @@ function demoReviewsFor(p) {
   const facts = [];
   if (p.code) facts.push(['Артикул в выгрузке', p.code]);
   if (p.res) facts.push(['Заявленный ресурс', `${nf(p.res)} страниц`]);
-  if (p.models?.length) facts.push(['Совместимость по выгрузке', p.models.slice(0, 4).join(', ')]);
-  if (p.originalNumber) facts.push(['Оригинальный номер', p.originalNumber]);
+  if (p.compatText) facts.push(['Совместимость по выгрузке', p.compatText.slice(0, 90)]);
+  if (p.originalNumber && p.originalNumber !== p.code) facts.push(['Оригинальный номер', p.originalNumber]);
   if (p.color) facts.push(['Цвет', p.color]);
-  if (p.catPath?.length || p.vttCategory) facts.push(['Раздел поставщика', (p.catPath ?? []).join(' / ') || p.vttCategory]);
+  if (p.vttCategory || p.catPath?.length) facts.push(['Раздел поставщика', (p.catPath ?? []).join(' / ') || p.vttCategory]);
   if (p.weight) facts.push(['Вес', `${nf(p.weight)} кг`]);
   if (p.stockDetail) facts.push(['Остатки на момент выгрузки',
-    `доступно ${nf(p.stockDetail.available)}, в пути ${nf(p.stockDetail.transit)}, на центральном складе ${nf(p.stockDetail.mainOffice)}`]);
+    `доступно ${nf(p.stockDetail.available)}, центральный склад ${nf(p.stockDetail.mainOffice)}`]);
   if (p.price) facts.push(['Цена из выгрузки', `${nf(p.price)} ₽`]);
   /* Запасной факт: имя товара есть всегда, поэтому хотя бы одна запись
      наберётся у любой карточки. Требование «минимум одна» выполняется
      без единого выдуманного слова. */
-  if (!facts.length && p.name) facts.push(['Наименование в выгрузке', p.name]);
+  if (!facts.length && p.name) facts.push(['Наименование в выгрузке', p.name.slice(0, 90)]);
 
   /* Ровно три записи, если фактов хватает; меньше — только когда фактов
-     меньше. Больше трёх не нужно: это проверка вёрстки, а не лента. */
+     меньше. Больше трёх не нужно: это проверка вёрстки, а не лента.
+
+     Текст держится коротким намеренно. На 9 483 карточках каждая лишняя
+     сотня байт в записи — это мегабайт данных каталога, который браузер
+     скачивает ради проверочной записи. */
   const count = Math.min(3, facts.length);
-  const ANGLE = [
-    { label: 'карточка', what: 'подписи и переносы в основном блоке записи' },
-    { label: 'ответ магазина', what: 'вложенный ответ под записью' },
-    { label: 'длинный текст', what: 'перенос длинной строки и выравнивание колонок' },
-  ];
+  const ANGLE = ['подписи и переносы в карточке записи', 'вложенный ответ магазина', 'длинную строку и выравнивание'];
 
   const out = [];
   for (let i = 0; i < count; i++) {
     const [label, value] = facts[i];
-    /* Второй факт подмешивается со сдвигом, поэтому у двух товаров подряд
-       записи не совпадают дословно: набор фактов у каждого свой. */
-    const extra = facts[(i + count) % facts.length];
-    const also = extra && extra[0] !== label ? ` ${extra[0]}: ${extra[1]}.` : '';
+    /*
+      Запись хранится без постоянных частей. Имя «Демонстрационная запись
+      №N», подпись «ДЕМО / тестовые данные» и автор ответа одинаковы у
+      всех записей на всех товарах, и хранить их девять с половиной тысяч
+      раз по три — это два с половиной мегабайта каталога, которые
+      браузер скачивает ради повторяющейся строки. Их подставляет
+      отрисовка: это оформление, а не данные.
+
+      Оценка 5 из 5 — это оценка самой демонстрационной записи, и она не
+      попадает ни в рейтинг товара, ни в микроразметку: p.rate и
+      p.reviews у импортированных товаров остаются нулями.
+    */
     out.push({
       demo: true,
-      name: `Демонстрационная запись №${i + 1}`,
-      city: 'ДЕМО / тестовые данные',
-      date: '',
-      /* Оценка 5 из 5 — это оценка самой демонстрационной записи, и она
-         не попадает ни в рейтинг товара, ни в микроразметку: p.rate и
-         p.reviews у импортированных товаров остаются нулями. */
+      n: i + 1,
       rate: 5,
-      printer: p.models?.[0] ?? '',
-      text: `${label}: ${value}.${also} Запись проверяет ${ANGLE[i].what} ` +
-        `(${ANGLE[i].label}) на импортированном товаре «${p.name}» и не является отзывом покупателя.`,
-      plus: '',
-      minus: '',
-      useful: 0,
-      reply: {
-        demo: true,
-        author: 'ДЕМО / тестовые данные',
-        text: `Демонстрационный ответ магазина к записи №${i + 1}: проверка блока ответов ` +
-          `по товару ${p.code || p.id}. Реальные ответы появятся вместе с реальными отзывами.`,
-      },
+      text: `${label}: ${value}. Запись проверяет ${ANGLE[i]}; это не отзыв покупателя.`,
+      reply: `Демонстрационный ответ магазина №${i + 1} по позиции ${p.code || p.id}.`,
     });
   }
   return out;
@@ -575,7 +670,9 @@ for (let i = 0; i < products.length; i += CHUNK_SIZE) {
       reviews: p.reviewList,
       ...(p.source ? { source: p.source } : {}),
       ...(p.demo ? { demo: true } : {}),
-      ...(p.vttCategoryId ? { vttCat: p.vttCategoryId, vttCatPath: p.catPath ?? [] } : {}),
+      /* Имя раздела — последний элемент пути, второй раз его хранить
+         незачем: на 9 579 карточках это полмегабайта повтора. */
+      ...(p.catPath?.length ? { vttCatPath: p.catPath } : (p.vttCategory ? { vttCatPath: [p.vttCategory] } : {})),
       ...(p.supplierDescription ? { supplierDesc: p.supplierDescription } : {}),
       ...(p.originalNumber ? { originalNumber: p.originalNumber } : {}),
       ...(p.stockDetail ? { stockDetail: p.stockDetail } : {}),
@@ -724,7 +821,9 @@ const write = (file, data) => {
 };
 
 const sizes = {};
-sizes.index = write('data/catalog/index.json', { fields: FIELDS, rows });
+/* Сжатие индекса живёт в отдельном модуле: тем же кодом его разбирает
+   предрендер, и формат проверяется тестом на круговой обход. */
+sizes.index = write('data/catalog/index.json', packIndex(FIELDS, rows));
 sizes.categories = write('data/catalog/categories.json', categories);
 sizes.brands = write('data/catalog/brands.json', brands);
 sizes.compatibility = write('data/catalog/compatibility.json', compatibility);

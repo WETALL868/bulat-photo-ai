@@ -16,6 +16,15 @@
 (function () {
   'use strict';
 
+  /*
+    Адрес данных. На сервере это корень сайта, но витрину надо уметь
+    открыть и там, где корня нет: превью публикуется набором файлов рядом
+    со страницей, и путь с ведущим слешем там не обслуживается. Поэтому
+    префикс задаётся снаружи, а весь остальной код по-прежнему пишет
+    обычные абсолютные адреса.
+  */
+  var PREFIX = window.HB_DATA_BASE || '';
+  function dataUrl(u) { return PREFIX ? PREFIX + u.replace(/^\//, '') : u; }
   var BASE = '/data/catalog/';
   var state = { loaded: false, meta: null, fields: null, rows: [], cats: [], brands: [], live: null, site: null, search: null, compat: null, fams: null };
   var chunkCache = {};
@@ -30,10 +39,52 @@
     if (window.HB_INLINE && Object.prototype.hasOwnProperty.call(window.HB_INLINE, url)) {
       return Promise.resolve(window.HB_INLINE[url]);
     }
-    return fetch(url, { credentials: 'same-origin' }).then(function (r) {
+    return fetch(dataUrl(url), { credentials: 'same-origin' }).then(function (r) {
       if (!r.ok) throw new Error('Не удалось загрузить ' + url + ' (' + r.status + ')');
       return r.json();
     });
+  }
+
+  /*
+    Распаковка индекса.
+
+    Индекс приходит сжатым: повторяющиеся колонки заменены номерами в
+    словарях, у адресов картинок вынесен общий префикс, а слаг, совпавший
+    с идентификатором, не записан вовсе. На девяти с половиной тысячах
+    товаров это разница между 2,5 МБ и третью мегабайта на первой
+    загрузке. Разбор восстанавливает строку в точности; несжатый формат
+    тоже понимается, поэтому старые файлы каталога читаются как раньше.
+  */
+  function unpackIndex(idx) {
+    state.fields = idx.fields;
+    state.rows = idx.rows;
+    state.packed = idx.packed === 1;
+    state.dictIdx = {};
+    state.imgBases = idx.imgBases || [];
+    state.idCol = idx.fields.indexOf('id');
+    state.slugCol = idx.fields.indexOf('slug');
+    state.imgCol = idx.fields.indexOf('img');
+    if (!state.packed) return;
+    var dicts = idx.dicts || {}, names = idx.dictFields || [];
+    for (var d = 0; d < names.length; d++) state.dictIdx[idx.fields.indexOf(names[d])] = dicts[names[d]] || [];
+  }
+
+  function unpackValue(col, value, row) {
+    if (!state.packed) return value;
+    var dict = state.dictIdx[col];
+    if (dict && typeof value === 'number') return dict[value];
+    if (col === state.slugCol && value === 0) return row[state.idCol];
+    if (col === state.imgCol && typeof value === 'string' && value.charCodeAt(0) === 1) {
+      return state.imgBases[Number(value.charAt(1))] + value.slice(2);
+    }
+    return value;
+  }
+
+  /* Слаг нужен и до разбора всей строки: по нему ищется карточка. */
+  function slugAt(i) {
+    var row = state.rows[i];
+    if (!row) return null;
+    return unpackValue(state.slugCol, row[state.slugCol], row);
   }
 
   /* Один товар: строка индекса + цена и остаток из живого файла. */
@@ -41,7 +92,7 @@
     var row = state.rows[i];
     if (!row) return null;
     var p = { row: i };
-    for (var f = 0; f < state.fields.length; f++) p[state.fields[f]] = row[f];
+    for (var f = 0; f < state.fields.length; f++) p[state.fields[f]] = unpackValue(f, row[f], row);
     var l = (state.live && state.live.items[p.id]) || {};
     p.price = l.price || 0;
     p.old = l.old || 0;
@@ -69,8 +120,7 @@
         json('/data/site.json'),
       ]).then(function (r) {
         state.meta = r[0];
-        state.fields = r[1].fields;
-        state.rows = r[1].rows;
+        unpackIndex(r[1]);
         state.cats = r[2];
         state.brands = r[3];
         state.live = r[4];
@@ -84,7 +134,7 @@
     at: hydrate,
     all: function () { var out = []; for (var i = 0; i < state.rows.length; i++) out.push(hydrate(i)); return out; },
     byId: function (id) { for (var i = 0; i < state.rows.length; i++) if (state.rows[i][0] === id) return hydrate(i); return null; },
-    bySlug: function (slug) { for (var i = 0; i < state.rows.length; i++) if (state.rows[i][1] === slug) return hydrate(i); return null; },
+    bySlug: function (slug) { for (var i = 0; i < state.rows.length; i++) if (slugAt(i) === slug) return hydrate(i); return null; },
 
     brandName: function (id) { return (state.site && state.site.brandNames[id]) || id; },
     brandLogo: function (id) { return (state.site && state.site.brandLogos[id]) || null; },

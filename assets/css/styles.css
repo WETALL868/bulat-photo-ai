@@ -1847,3 +1847,13 @@ a.mphone > svg,
 a.mphone > svg *,
 a.mphone .ic,
 a.mphone .ic *{pointer-events:none!important}
+
+/* 20. Цена по запросу
+   --------------------------------------------------------------------------
+   У 972 позиций из 9 483 поставщик не передал цену — в выгрузке там −1.
+   Ноль в ценнике читался бы как «бесплатно», поэтому цифры нет вовсе, а
+   вместо кнопки покупки стоит запрос менеджеру. Размер шрифта меньше
+   обычного ценника: это не сумма, и притворяться суммой не должно. */
+.price-ask{font-size:17px;font-weight:600;color:var(--ink2);white-space:nowrap}
+.oneclick-off{color:var(--ink3,#8b8b8b);cursor:default;text-decoration:none;border:0}
+@media (max-width:700px){.price-ask{font-size:15px}}
