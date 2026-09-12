@@ -28,13 +28,11 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { contacts, legal, shop, messengers} from '../catalog-source/site.config.mjs';
 import { colorKey, colorTitle, colorRank } from '../vtt/src/colors.mjs';
-import { modelsFromName, parseSupplierNote } from '../vtt/src/publish.mjs';
+import { modelsFromName, parseSupplierNote, buildDescription as vttDescription } from '../vtt/src/publish.mjs';
 import { seriesKey, famKey, FAM_MAX, FAM_MIN_SERIES, variantLabel } from '../vtt/src/family.mjs';
 import { ItemRegistry, stableKey } from './item-registry.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT_CATALOG = path.join(ROOT, 'data/catalog');
-const OUT_LIVE = path.join(ROOT, 'live');
 const CHUNK_SIZE = 32; // товаров в одном файле деталей
 
 const args = process.argv.slice(2);
@@ -46,6 +44,11 @@ const argOf = (name, def) => {
   const i = args.indexOf('--' + name);
   return i >= 0 ? args[i + 1] : def;
 };
+/* Каталог можно собрать не в репозиторий, а в отдельную папку: так сборка
+   с демонстрационными записями (--demo-reviews) не подменяет честные
+   данные в data/catalog, из которых строится предрендер и карта сайта. */
+const OUT_CATALOG = path.resolve(ROOT, argOf('out-catalog', 'data/catalog'));
+const OUT_LIVE = path.resolve(ROOT, argOf('out-live', 'live'));
 const SOURCE = argOf('source', 'data-js');
 const IN_FILE = argOf('in', null);
 
@@ -392,6 +395,10 @@ async function readVttStore(storeRoot) {
   store.saveReport('last-taxonomy', taxonomy);
 
   return {
+    /* Сам стор нужен дальше по сборке: описание цветовой позиции
+       дописывается составом серии, а серии собираются уже после
+       публикации — к тому месту исходные поля позиции нужны снова. */
+    items: store.loadAll(),
     products, vttCategories: state.categories ?? [], vttReport: report, taxonomy,
     importedCats: tax.IMPORTED_SHOP_CATS, importedBrandNames: tax.IMPORTED_BRAND_NAMES,
     cats: null, brands: null, laserBrands: null, lines: null, pages: null, pageText: null,
@@ -532,41 +539,87 @@ products.sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name, 'ru'));
 const DEMO_REVIEWS = (() => {
   const raw = argOf('demo-reviews', null);
   if (raw === null) return 0;
-  return raw === '' ? 2 : Math.max(0, Math.min(3, Number(raw) || 0));
+  return raw === '' ? 3 : Math.max(0, Math.min(3, Number(raw) || 0));
 })();
+
+/*
+  Записи ставятся не на весь каталог, а на короткий список карточек.
+
+  Разложить их по всем 4 374 товарам — значит получить тринадцать тысяч
+  однотипных записей и витрину, на которой пустого блока отзывов уже
+  нигде не видно, хотя настоящих отзывов нет ни у одной позиции. Для
+  проверки вёрстки достаточно нескольких карточек с разными данными:
+  цветная серия с ресурсом, чёрно-белый картридж, бумага без ресурса и
+  чернила в миллилитрах — на них видно и длинный текст, и ответ
+  магазина, и поведение блока при разной длине полей.
+
+  Список задаётся через --demo-on=<адрес или код товара, через запятую>.
+*/
+const DEMO_ON = (() => {
+  const raw = argOf('demo-on', null);
+  const list = raw === null
+    ? ['hb-tk-8115bk', 'hb-tk-8115m', 'hb-tk-1150', 'hb-paper-mat2s-a4-160g-m-100l', 'hi-black-hp-h-black-0-1']
+    : String(raw).split(',').map((x) => x.trim()).filter(Boolean);
+  return new Set(list.map((x) => x.toLowerCase()));
+})();
+/* Сверяем по адресу и по коду товара — это то, что уникально. Артикул
+   сюда не годится: у VTT один NameAlias встречается у нескольких
+   позиций, и «HB-TK-1150» в списке дало бы примеры сразу на трёх
+   карточках вместо одной. */
+const wantsDemo = (p) => DEMO_ON.has(String(p.id).toLowerCase()) || DEMO_ON.has(String(p.no));
 
 function demoReviewsFor(p) {
   const nf = (n) => Number(n).toLocaleString('ru-RU');
-  /* Пул фактов — только то, что действительно пришло в выгрузке. */
-  const facts = [];
-  if (p.code) facts.push(['Артикул в выгрузке', p.code]);
-  if (p.res) facts.push(['Заявленный ресурс', `${nf(p.res)} страниц`]);
-  if (p.colorTitle || p.color) facts.push(['Цвет', p.colorTitle || p.color]);
-  if (p.compatText) facts.push(['Примечание поставщика', p.compatText.slice(0, 90)]);
-  if (p.barcode) facts.push(['Штрихкод', p.barcode]);
-  if (!facts.length && p.name) facts.push(['Наименование в выгрузке', p.name.slice(0, 90)]);
-  const ANGLE = ['подписи и переносы в карточке записи', 'вложенный ответ магазина', 'длинную строку и выравнивание'];
-  const out = [];
-  for (let i = 0; i < Math.min(DEMO_REVIEWS, facts.length); i++) {
-    const [label, value] = facts[i];
-    out.push({
-      demo: true, n: i + 1, rate: 5,
-      text: `${label}: ${value}. Запись проверяет ${ANGLE[i]}; это не отзыв покупателя.`,
-      reply: `Демонстрационный ответ магазина №${i + 1} по позиции ${p.code || p.id}.`,
-    });
-  }
-  return out;
+  /*
+    Три записи разной формы — короткая, с ответом магазина и длинная, —
+    чтобы блок было видно во всех состояниях. Больше не нужно: лента из
+    сотен одинаковых записей проверяет не вёрстку, а терпение.
+
+    Ни имени, ни оценки, ни города. Оценки нет намеренно: любая цифра
+    рядом со звёздами — это уже рейтинг, которого у товара нет. Текст
+    собран из полей этой позиции, поэтому на разных карточках записи
+    разные и ни одна не рассказывает выдуманного опыта эксплуатации.
+  */
+  const fits = p.compat || modelsFromName(p.name, p.code) || p.compatibleBrand || '';
+  const cards = [
+    p.res
+      ? { text: `Ресурс этой позиции по данным поставщика — ${nf(p.res)} страниц, артикул ${p.code}.` }
+      : { text: `Артикул этой позиции в выгрузке поставщика — ${p.code}.` },
+    fits
+      ? {
+        text: `Совместимость по данным поставщика: ${String(fits).slice(0, 120)}. Так выглядит запись с ответом магазина.`,
+        reply: 'Так выглядит ответ магазина под записью. На боевой витрине здесь будет ответ менеджера на настоящий отзыв.',
+      }
+      : { text: 'Так выглядит запись с ответом магазина.', reply: 'А так — ответ магазина под ней.' },
+    {
+      text: `${p.colorTitle || p.color ? `Цвет позиции — ${String(p.colorTitle || p.color).replace(/^./, (c) => c.toLowerCase())}. ` : ''}` +
+        `Эта запись длиннее предыдущих: по ней видно, как блок держит несколько строк подряд, ` +
+        `как переносится текст на узком экране и не съезжает ли подпись. ` +
+        `Содержимое взято из карточки ${p.code} и не является чьим-либо мнением о товаре.`,
+    },
+  ];
+  return cards.slice(0, DEMO_REVIEWS).map((c, i) => ({ demo: true, n: i + 1, ...c }));
 }
 
+let demoCards = 0;
 for (const p of products) {
-  p.reviewList = DEMO_REVIEWS ? demoReviewsFor(p) : [];
+  const demo = DEMO_REVIEWS && wantsDemo(p);
+  p.reviewList = demo ? demoReviewsFor(p) : [];
+  if (demo) demoCards += 1;
   /* Счётчики остаются нулевыми при любом флаге: демо-запись не отзыв. */
   p.reviews = 0;
   p.rate = 0;
 }
 if (DEMO_REVIEWS) {
-  console.log(`  ВНИМАНИЕ: добавлено по ${DEMO_REVIEWS} демонстрационных записи на товар ` +
-    '(--demo-reviews). Это проверка вёрстки, не отзывы: в рейтинг, микроразметку и карту сайта они не идут.');
+  console.log(`  ВНИМАНИЕ: добавлено по ${DEMO_REVIEWS} демонстрационных записи, карточек с ними ` +
+    `${demoCards} из ${products.length} (--demo-reviews, --demo-on). ` +
+    'Это проверка вёрстки, не отзывы: в рейтинг, микроразметку и карту сайта они не идут.');
+  console.log('  карточки с примерами: ' +
+    products.filter(wantsDemo).map((p) => `${p.code} (код ${p.no})`).join(', '));
+  /* Промах в списке — это молча пустое превью вместо проверки вёрстки.
+     Лучше остановить сборку, чем показать «отзывов пока нет» и решить,
+     что блок сломан. */
+  if (!demoCards) throw new Error('--demo-on не совпал ни с одной карточкой: ' + [...DEMO_ON].join(', '));
 }
 
 /*
@@ -730,36 +783,6 @@ function vttSpecs(p) {
   return rows;
 }
 
-/* Детали: только то, что нужно на карточке товара. Грузится чанком по 32. */
-const chunks = [];
-for (let i = 0; i < products.length; i += CHUNK_SIZE) {
-  const part = {};
-  for (const p of products.slice(i, i + CHUNK_SIZE)) {
-    part[p.id] = {
-      compat: p.compat,
-      models: p.models,
-      equip: p.equip,
-      weight: p.weight,
-      /* У импортированного товара описание уже собрано из фактов VTT на
-         этапе публикации — здесь его не переписываем, иначе потеряли бы
-         единственный источник правды и начали бы додумывать. */
-      desc: p.source === 'vtt' ? vttDescriptionHtml(p) : buildDescription(p, brandName(p.brand)),
-      specs: p.source === 'vtt' ? vttSpecs(p) : buildSpecs(p, brandName(p.brand)),
-      reviews: p.reviewList,
-      ...(p.source ? { source: p.source } : {}),
-      ...(p.demo ? { demo: true } : {}),
-      /* Имя раздела — последний элемент пути, второй раз его хранить
-         незачем: на 9 579 карточках это полмегабайта повтора. */
-      ...(p.catPath?.length ? { vttCatPath: p.catPath } : (p.vttCategory ? { vttCatPath: [p.vttCategory] } : {})),
-      ...(p.supplierDescription ? { supplierDesc: p.supplierDescription } : {}),
-      ...(p.originalNumber ? { originalNumber: p.originalNumber } : {}),
-      /* stockDetail в публикуемые детали не кладётся: точные остатки —
-         внутренние данные. Наличие витрина берёт из live-файла флагом. */
-    };
-  }
-  chunks.push(part);
-}
-
 /* Комплекты по цветам: правила склейки серий живут в vtt/src/family.mjs. */
 const famBuckets = new Map();
 products.forEach((p, i) => {
@@ -884,6 +907,93 @@ console.log(`  цветовых серий: ${Object.keys(families).length}, в 
   `${Object.values(families).reduce((a, f) => a + f.rows.length, 0)}` +
   (famSkippedBig ? `, отброшено слишком широких групп: ${famSkippedBig}` : ''));
 
+/*
+  Описание цветовой позиции дописывается после сборки серий.
+
+  До этого места сборщик не знает, что HB-TK-8115M — один из четырёх
+  цветов: семейства собираются ниже по файлу, а описание рождается ещё на
+  публикации стора. Из-за этого у цветов одной серии тексты различались
+  цветом, артикулом и ресурсом — и больше ничем, хотя самое полезное про
+  такую позицию как раз состав набора: сколько цветов, с каким ресурсом и
+  какой из них этот.
+
+  Пересобирается только описание и только у товаров из серий. Ни адрес, ни
+  код, ни характеристики не трогаются.
+*/
+{
+  let rebuilt = 0;
+  const storeItems = imported?.items ?? null;
+  for (const [famId, fam] of Object.entries(families)) {
+    const members = fam.rows.map((i, n) => ({
+      code: products[i].code,
+      color: (fam.colors[n] || products[i].colorTitle || products[i].color || '').replace(/\s·.*$/, ''),
+      res: products[i].res ?? null,
+    }));
+    if (members.length < 2) continue;
+    for (const i of fam.rows) {
+      const p = products[i];
+      if (p.source !== 'vtt') continue;
+      const item = storeItems?.get?.(p.vttId);
+      if (!item) continue;
+      const d = vttDescription(item, { family: { series: fam.series, members } });
+      if (d.text) { p.description = d.text; p.descriptionBasedOn = d.basedOn; rebuilt += 1; }
+    }
+  }
+  if (rebuilt) console.log(`  описаний дополнено составом серии: ${rebuilt}`);
+
+  /*
+    Слепок опубликованных описаний для аудитов. Проверять надо ровно тот
+    текст, который увидит покупатель: у товаров из цветных серий он
+    дописывается здесь, уже после публикации стора, и аудит, читающий
+    стор напрямую, этой правки не видит.
+  */
+  const snapshot = products.filter((p) => p.source === 'vtt').map((p) => ({
+    /* Ключ — Id поставщика: адрес карточки выдаёт реестр уже здесь, и по
+       нему слепок с публикацией стора не сойдётся. */
+    vttId: p.vttId, code: p.code, id: p.id, type: p.type,
+    text: p.description ?? '', basedOn: p.descriptionBasedOn ?? [],
+  }));
+  fs.mkdirSync(path.join(ROOT, 'vtt-data/reports'), { recursive: true });
+  fs.writeFileSync(path.join(ROOT, 'vtt-data/reports/published-descriptions.json'), JSON.stringify(snapshot));
+}
+
+/*
+  Детали карточки собираются здесь, а не выше, и это важно: описание
+  товара из цветной серии дописывается составом набора сразу после
+  сборки семейств. Пока чанки строились раньше семейств, дописанный
+  абзац в карточку не попадал — в данных он был, на странице его не было.
+*/
+/* Детали: только то, что нужно на карточке товара. Грузится чанком по 32. */
+const chunks = [];
+for (let i = 0; i < products.length; i += CHUNK_SIZE) {
+  const part = {};
+  for (const p of products.slice(i, i + CHUNK_SIZE)) {
+    part[p.id] = {
+      compat: p.compat,
+      models: p.models,
+      equip: p.equip,
+      weight: p.weight,
+      /* У импортированного товара описание уже собрано из фактов VTT на
+         этапе публикации — здесь его не переписываем, иначе потеряли бы
+         единственный источник правды и начали бы додумывать. */
+      desc: p.source === 'vtt' ? vttDescriptionHtml(p) : buildDescription(p, brandName(p.brand)),
+      specs: p.source === 'vtt' ? vttSpecs(p) : buildSpecs(p, brandName(p.brand)),
+      reviews: p.reviewList,
+      ...(p.source ? { source: p.source } : {}),
+      ...(p.demo ? { demo: true } : {}),
+      /* Имя раздела — последний элемент пути, второй раз его хранить
+         незачем: на 9 579 карточках это полмегабайта повтора. */
+      ...(p.catPath?.length ? { vttCatPath: p.catPath } : (p.vttCategory ? { vttCatPath: [p.vttCategory] } : {})),
+      ...(p.supplierDescription ? { supplierDesc: p.supplierDescription } : {}),
+      ...(p.originalNumber ? { originalNumber: p.originalNumber } : {}),
+      /* stockDetail в публикуемые детали не кладётся: точные остатки —
+         внутренние данные. Наличие витрина берёт из live-файла флагом. */
+    };
+  }
+  chunks.push(part);
+}
+
+
 /* Поисковый индекс: токен → номера строк. Клиент ищет по началу слова. */
 const searchIndex = {};
 products.forEach((p, i) => {
@@ -945,14 +1055,23 @@ const featured = products.slice(0, 8).map((p) => p.id);
   будет — и витрина молча покажет заглушки. Поэтому карта переживает
   пересборку.
 */
-const THUMBS_FILE = path.join(OUT_CATALOG, 'thumbs.json');
-const keptThumbs = fs.existsSync(THUMBS_FILE) ? JSON.parse(fs.readFileSync(THUMBS_FILE, 'utf8')) : null;
+const THUMBS_FILE = [path.join(OUT_CATALOG, 'thumbs.json'), path.join(ROOT, 'data/catalog/thumbs.json')]
+  .find((f) => fs.existsSync(f));
+const keptThumbs = THUMBS_FILE ? JSON.parse(fs.readFileSync(THUMBS_FILE, 'utf8')) : null;
 fs.rmSync(OUT_CATALOG, { recursive: true, force: true });
 fs.mkdirSync(path.join(OUT_CATALOG, 'chunks'), { recursive: true });
 fs.mkdirSync(OUT_LIVE, { recursive: true });
 
+/* Пути в коде записаны от корня репозитория; --out-catalog/--out-live
+   переносят именно выход каталога, а всё остальное (реестр, site.json,
+   отчёты) остаётся на месте. */
+const outPath = (file) => {
+  if (file.startsWith('data/catalog/')) return path.join(OUT_CATALOG, file.slice('data/catalog/'.length));
+  if (file.startsWith('live/')) return path.join(OUT_LIVE, file.slice('live/'.length));
+  return path.join(ROOT, file);
+};
 const write = (file, data) => {
-  const p = path.join(ROOT, file);
+  const p = outPath(file);
   fs.writeFileSync(p, JSON.stringify(data));
   return fs.statSync(p).size;
 };

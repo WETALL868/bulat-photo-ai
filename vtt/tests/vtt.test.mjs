@@ -1532,10 +1532,11 @@ test('описание собирается из фактов, не повтор
   assert.match(d.text, /^Голубой тонер-картридж Hi-Black HB-TK-8115C/, 'цвет не назван по-русски');
   assert.ok(d.text.includes('Kyocera Ecosys M8124cidn/M8130cidn'), 'совместимость из названия потеряна');
   /* Габариты, штрихкод и упаковка переехали в характеристики. */
-  /* Штрихкод теперь есть — но как то, что покупатель сверяет при
-     получении, а не как строка выгрузки с подписью. */
-  assert.ok(d.text.includes('Штрихкод позиции'), 'штрихкод должен быть в абзаце про проверку');
-  assert.ok(!d.text.includes('Штрихкод:'), 'штрихкод не должен идти подписью из выгрузки');
+  /* Штрихкода и веса в тексте нет: замер близких дублей показал, что
+     «штрихкод позиции» стоял на 4 025 карточках, а «вес одной штуки» на
+     3 227 — это переписывание полей ради длины. Их место в таблице. */
+  assert.ok(!/Штрихкод/i.test(d.text), 'штрихкод вернулся в текст описания');
+  assert.ok(!/Вес одной штуки/i.test(d.text), 'вес вернулся в текст описания');
   /*
     Габаритов в тексте нет, и «см» тем более: единицы измерения поставщик
     не указывает, а 0,38 × 0,45 × 0,57 см — это спичечный коробок вместо
@@ -1835,14 +1836,35 @@ test('описание собирается абзацами и добирает
     Compatibility: 'с чипом, без бункера отработки тонера', Barcode: '4690665028424',
     NumberInPackage: '6.00', GrossWeight: '0.80',
   });
-  const d = buildDescription(item);
+  /*
+    Состав серии — то, чем цветовые варианты действительно различаются.
+    Без него у чёрного и пурпурного картриджей одной серии оставались
+    цвет, артикул и ресурс, и текст читался как один шаблон.
+  */
+  const family = {
+    series: 'TK-8115',
+    members: [
+      { code: 'HB-TK-8115BK', color: 'Чёрный (Bk)', res: 12000 },
+      { code: 'HB-TK-8115C', color: 'Голубой (C)', res: 6000 },
+      { code: 'HB-TK-8115M', color: 'Пурпурный (M)', res: 6000 },
+      { code: 'HB-TK-8115Y', color: 'Жёлтый (Y)', res: 6000 },
+    ],
+  };
+  const d = buildDescription(item, { family });
   assert.ok(d.text.length >= DESCRIPTION_MIN, `описание короче ${DESCRIPTION_MIN}: ${d.text.length}`);
   assert.ok(d.paragraphs.length >= 4, `абзацев мало: ${d.paragraphs.length}`);
 
   /* Каждый абзац опирается на свои факты этой позиции. */
   assert.match(d.paragraphs[0], /^Пурпурный тонер-картридж Hi-Black HB-TK-8115M для Kyocera/);
   assert.ok(d.text.includes(`${Number(6000).toLocaleString('ru-RU')} страниц`));
-  assert.ok(d.text.includes('4690665028424'), 'штрихкод — проверяемый факт, он должен быть в тексте');
+  assert.ok(d.text.includes('Серия TK-8115 выпускается в 4 цветах'), 'состав серии не назван');
+  assert.ok(d.text.includes('пурпурный вариант серии'), 'не сказано, какая это позиция в наборе');
+  assert.ok(d.text.includes('HB-TK-8115BK'), 'соседние цвета не названы артикулами');
+  assert.ok(!/чёрный \(bk\)/i.test(d.text), 'код цвета в связном тексте читается как опечатка');
+
+  /* Терминология: у тонер-картриджа тонер, а не «краска». */
+  assert.ok(!/краск/i.test(d.text), 'у тонер-картриджа не должно быть «краски»');
+  assert.ok(d.text.includes('фактический зависит от заполнения страниц и условий печати'));
 
   /* И ни одного придуманного свойства. */
   for (const invented of ['без полос', 'не осыпается', 'ISO', '5 %', 'гарантия 12', 'лучшее качество']) {
@@ -1850,6 +1872,38 @@ test('описание собирается абзацами и добирает
   }
   /* Складских количеств в публичном тексте нет. */
   assert.ok(!/\b500\b/.test(d.text));
+});
+
+test('набивка не возвращается: процедурные советы убраны из описаний', async () => {
+  /*
+    Проверяется не текст одной позиции, а то, что фразы-набивки не
+    вернутся в генератор. Каждая из них стояла на тысячах карточек и
+    занимала в среднем 72 % описания.
+  */
+  const { buildDescription } = await import('../src/publish.mjs');
+  /* Позиция со всеми полями сразу: если набивка вернётся, она вернётся
+     именно на такой — там для неё есть все поводы. */
+  const rich = normalizeItem({
+    Id: '1', Name: 'Тонер-картридж Hi-Black (HB-X1) для HP LJ 1010/1015, Bk, 6K', Brand: 'Hi-Black',
+    Vendor: 'HP', NameAlias: 'HB-X1', OriginalNumber: 'CE285A', Group: 'Тонер-картриджи',
+    RootGroup: 'Картриджи для лазерной печати', PriceLocal: '1000', ColorName: 'Bk', ItemLifeTime: '6K',
+    Compatibility: 'с чипом', Barcode: '4690665000001', NumberInPackage: '12', GrossWeight: '0.9',
+    Width: '0.3', Height: '0.2', Depth: '0.5', Weight: '5',
+  });
+  const text = buildDescription(rich).text;
+  for (const gone of [
+    'сверьте обозначение модели на корпусе',
+    'При получении сверьте артикул на коробке',
+    'Штрихкод позиции',
+    'Вес одной штуки по выгрузке',
+    'много ли краски',
+    'упаковками по',
+  ]) {
+    assert.ok(!text.includes(gone), `фраза-набивка вернулась в описание: «${gone}»`);
+  }
+  /* А содержательное осталось. */
+  assert.ok(text.includes('CE285A') && text.includes('HP LJ 1010/1015'));
+  assert.ok(text.includes('Поставляется с чипом.'));
 });
 
 test('после «для» не всегда модели: назначение не выдаётся за совместимость', async () => {
@@ -1906,6 +1960,52 @@ test('демонстрационных записей по умолчанию н
   }
   assert.ok(checked > 1000, 'проверять было нечего');
   assert.equal(withReviews, 0, 'в опубликованный каталог попали отзывы, которых нет');
+});
+
+test('демонстрационные записи изолированы от индексируемой сборки', async () => {
+  const builder = fs.readFileSync(path.join(process.cwd(), 'tools/build-catalog.mjs'), 'utf8');
+  const artifact = fs.readFileSync(path.join(process.cwd(), 'tools/build-artifact.mjs'), 'utf8');
+
+  /* Записи ставятся на короткий список карточек, а не на весь каталог:
+     тринадцать тысяч однотипных примеров — это не проверка вёрстки. */
+  assert.ok(builder.includes("argOf('demo-on', null)"), 'список карточек с примерами пропал');
+  assert.ok(/const demo = DEMO_REVIEWS && wantsDemo\(p\);/.test(builder),
+    'примеры снова раскладываются по всем товарам');
+  /* Артикул для сверки не годится: он у поставщика не уникален. */
+  assert.ok(!/DEMO_ON\.has\(String\(p\.code\)/.test(builder),
+    'сверка по артикулу вернулась — один артикул даст примеры на нескольких карточках');
+
+  /* Демо-сборка пишется в отдельную папку, а не поверх data/catalog,
+     из которого строятся предрендер и карта сайта. */
+  assert.ok(builder.includes("argOf('out-catalog', 'data/catalog')"), 'отдельная папка сборки пропала');
+  assert.ok(artifact.includes("argOf('catalog', 'data/catalog')"), 'превью больше не умеет брать каталог со стороны');
+
+  /* Превью не индексируется ни при каких условиях. */
+  assert.ok(/name="robots" content="noindex/.test(artifact), 'в превью пропал noindex');
+
+  /* Микроразметка с рейтингом появляется только при настоящих отзывах. */
+  const seo = fs.readFileSync(path.join(process.cwd(), 'tools/build-seo.mjs'), 'utf8');
+  assert.ok(/p\.reviews > 0 && p\.rate > 0/.test(seo),
+    'AggregateRating перестал требовать настоящих отзывов');
+
+  /* И в уже собранном предрендере примеров нет. */
+  const dir = path.join(process.cwd(), 'seo-pages');
+  if (fs.existsSync(dir)) {
+    let checked = 0, demo = 0;
+    const walk = (d) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const f = path.join(d, e.name);
+        if (e.isDirectory()) walk(f);
+        else if (e.name.endsWith('.html')) {
+          checked += 1;
+          if (fs.readFileSync(f, 'utf8').includes('Демонстрационный отзыв')) demo += 1;
+        }
+      }
+    };
+    walk(dir);
+    assert.ok(checked > 100, 'предрендер нечего было проверять');
+    assert.equal(demo, 0, 'демонстрационные записи попали в индексируемые страницы');
+  }
 });
 
 test('форма отзыва спрашивает e-mail и обещает ровно то, что делает', async () => {

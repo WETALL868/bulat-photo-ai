@@ -32,7 +32,25 @@ const argOf = (name, fallback) => {
 };
 
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'vtt/config.json'), 'utf8'));
-const { products } = publish(new VttStore(path.join(ROOT, 'vtt-data')), { filter: cfg.publishFilter });
+let { products } = publish(new VttStore(path.join(ROOT, 'vtt-data')), { filter: cfg.publishFilter });
+
+/*
+  Проверяется опубликованный текст, а не то, что вернул стор. У товаров из
+  цветных серий описание дописывается составом набора уже в сборщике
+  каталога — аудит, читающий стор напрямую, этой правки не видел бы и
+  мерил бы не то, что увидит покупатель.
+*/
+const snapshotFile = path.join(ROOT, 'vtt-data/reports/published-descriptions.json');
+if (fs.existsSync(snapshotFile)) {
+  const snap = new Map(JSON.parse(fs.readFileSync(snapshotFile, 'utf8')).map((r) => [r.vttId, r]));
+  products = products.map((p) => {
+    const r = snap.get(p.vttId);
+    return r ? { ...p, description: r.text, descriptionBasedOn: r.basedOn } : p;
+  });
+  console.log(`(текст взят из последней сборки каталога: ${snap.size} позиций)\n`);
+} else {
+  console.log('(каталог не собран — текст взят из стора; соберите npm run catalog)\n');
+}
 
 const norm = (t) => String(t ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 const byText = new Map();

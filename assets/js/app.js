@@ -692,9 +692,10 @@
           /* Демо-набор не притворяется сводкой: цифры рейтинга здесь нет
              вовсе, потому что рейтинга нет. */
           ? '<div class="rev-sum rev-sum-demo"><div class="rev-none">' + ic('info', 28) +
-            '<b>Демонстрационные записи</b>' +
-            '<span>Настоящих отзывов у этого товара пока нет. Ниже — проверочные записи для согласования вёрстки: ' +
-            'они собраны из полей выгрузки и не влияют ни на рейтинг, ни на микроразметку, ни на карту сайта.</span></div>' +
+            '<b>Отзывов пока нет</b>' +
+            '<span>Ниже — примеры оформления, а не отзывы покупателей: они собраны из полей выгрузки ' +
+            'поставщика, не имеют авторов и оценок и не влияют ни на рейтинг товара, ни на микроразметку, ' +
+            'ни на карту сайта. Настоящие отзывы появятся здесь после проверки модератором.</span></div>' +
             '<button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button></div>'
         : revs.length
           ? '<div class="rev-sum"><div class="big"><b>' + ratef(revAvg) + '</b><span>из 5</span></div>' + stars(revAvg, 20) +
@@ -718,10 +719,10 @@
           */
           if (rv.demo) {
             return '<article class="rev rev-demo"><div class="rh"><div class="who">' +
-              '<span class="ava ava-demo">Д</span><div><b>Демонстрационная запись №' + (rv.n || 1) + '</b>' +
-              '<span class="demo-tag">ДЕМО · проверка вёрстки, не отзыв покупателя</span></div></div></div>' +
+              '<span class="ava ava-demo">Д</span><div><b>Демонстрационный отзыв №' + (rv.n || 1) + '</b>' +
+              '<span class="demo-tag">Пример оформления, не отзыв покупателя</span></div></div></div>' +
               '<p>' + esc(rv.text || '') + '</p>' +
-              (rv.reply ? '<div class="rreply"><b>ДЕМО · ответ магазина</b><p>' + esc(typeof rv.reply === 'string' ? rv.reply : rv.reply.text) + '</p></div>' : '') +
+              (rv.reply ? '<div class="rreply"><b>Пример ответа магазина</b><p>' + esc(typeof rv.reply === 'string' ? rv.reply : rv.reply.text) + '</p></div>' : '') +
               '</article>';
           }
           var name = rv.name || 'Покупатель';

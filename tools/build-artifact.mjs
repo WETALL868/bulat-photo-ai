@@ -42,7 +42,18 @@ const OUT = path.resolve(ROOT, argOf('out', 'dist/artifact'));
 const IMAGE_PROXY = argOf('image-proxy', 'wsrv');
 const MAX_FILES = 255;
 
-const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+/* Собранный каталог можно взять не из репозитория, а из отдельной папки:
+   так превью с демонстрационными записями (--demo-reviews) не требует
+   подменять честные data/catalog, из которых строится предрендер.
+   Адреса файлов в самом превью при этом не меняются. */
+const SRC_CATALOG = path.resolve(ROOT, argOf('catalog', 'data/catalog'));
+const SRC_LIVE = path.resolve(ROOT, argOf('live', 'live'));
+const srcPath = (rel) => {
+  if (rel.startsWith('data/catalog/')) return path.join(SRC_CATALOG, rel.slice('data/catalog/'.length));
+  if (rel.startsWith('live/')) return path.join(SRC_LIVE, rel.slice('live/'.length));
+  return path.join(ROOT, rel);
+};
+const read = (rel) => fs.readFileSync(srcPath(rel), 'utf8');
 const readJson = (rel) => JSON.parse(read(rel));
 
 fs.rmSync(OUT, { recursive: true, force: true });
@@ -60,7 +71,7 @@ function put(rel, body) {
   return rel;
 }
 function copy(rel) {
-  const src = path.join(ROOT, rel);
+  const src = srcPath(rel);
   if (!fs.existsSync(src)) return null;
   return put(rel, fs.readFileSync(src));
 }
@@ -124,7 +135,7 @@ copy('live/catalog-live.json');
   как раньше.
 */
 let atlasFiles = 0;
-if (fs.existsSync(path.join(ROOT, 'data/catalog/thumbs.json'))) {
+if (fs.existsSync(srcPath('data/catalog/thumbs.json'))) {
   const thumbs = JSON.parse(read('data/catalog/thumbs.json'));
   put('data/catalog/thumbs.json', relativeAssets(read('data/catalog/thumbs.json')));
   for (const rel of thumbs.files ?? []) if (copy(rel)) atlasFiles += 1;
@@ -137,15 +148,22 @@ if (fs.existsSync(path.join(ROOT, 'data/catalog/thumbs.json'))) {
   иначе он попросит файл, которого нет.
 */
 const meta = readJson('data/catalog/meta.json');
-const chunkDir = path.join(ROOT, 'data/catalog/chunks');
+const chunkDir = srcPath('data/catalog/chunks');
 const chunkFiles = fs.readdirSync(chunkDir)
   .filter((f) => /^detail-\d+\.json$/.test(f))
   .sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
 
 let groups = 0;
+/* Демонстрационные записи считаются и называются вслух: собрать превью с
+   примерами оформления и не заметить этого нельзя. */
+let demoCards = 0, demoRecords = 0;
 for (let i = 0; i < chunkFiles.length; i += GROUP) {
   const merged = {};
   for (const f of chunkFiles.slice(i, i + GROUP)) Object.assign(merged, JSON.parse(fs.readFileSync(path.join(chunkDir, f), 'utf8')));
+  for (const card of Object.values(merged)) {
+    const demo = (card.reviews || []).filter((r) => r && r.demo);
+    if (demo.length) { demoCards += 1; demoRecords += demo.length; }
+  }
   put(`data/catalog/chunks/detail-${groups}.json`, relativeAssets(JSON.stringify(merged)));
   groups += 1;
 }
@@ -235,8 +253,16 @@ const body = (html.match(/<body>([\s\S]*)<\/body>/) || ['', ''])[1];
   теги из внутренней «головы» разбираются как содержимое тела. Поэтому
   отдаём только то, что кладётся в тело, — заголовок, стили и разметку.
 */
+/*
+  Превью не должно попадать в индекс ни при каких условиях. Это не боевая
+  витрина: здесь может стоять флаг --demo-reviews с примерами оформления
+  вместо отзывов, здесь адреса картинок идут через прокси, а данные
+  собраны для просмотра, а не для покупателя из поиска. Боевые страницы
+  строит tools/build-seo.mjs из data/catalog, и этой строки там нет.
+*/
+const noindex = '<meta name="robots" content="noindex,nofollow">';
 fs.writeFileSync(path.join(OUT, 'index.html'),
-  '<meta charset="utf-8">\n' + title + '\n' + style + '\n' + body);
+  '<meta charset="utf-8">\n' + noindex + '\n' + title + '\n' + style + '\n' + body);
 
 /* --------------------------------------------------------------- итог */
 
@@ -244,6 +270,10 @@ const bytes = published.reduce((a, rel) => a + fs.statSync(path.join(OUT, rel)).
 const page = fs.statSync(path.join(OUT, 'index.html')).size;
 const mb = (n) => (n / 1048576).toFixed(2) + ' МБ';
 console.log(`Превью собрано в ${path.relative(ROOT, OUT)}`);
+if (demoCards) {
+  console.log(`  ДЕМОНСТРАЦИОННЫЕ ЗАПИСИ: ${demoRecords} на ${demoCards} карточках — примеры оформления, не отзывы.`);
+  console.log('  Страница помечена noindex; предрендер и карта сайта строятся отдельно и этих записей не содержат.');
+}
 console.log(`  страница ${mb(page)}, файлов рядом ${published.length}, данные ${mb(bytes)}`);
 console.log(`  чанков деталей ${groups} (по ${meta.chunkSize} товаров), картинок ${needed.size}` +
   (atlasFiles ? `, атласов ${atlasFiles}` : ''));
