@@ -40,6 +40,13 @@ const concurrency = Math.max(1, Number(valueOf('concurrency', 4)) || 4);
 const timeoutMs = Number(valueOf('timeout', 30000)) || 30000;
 const fromDir = valueOf('from-dir', null);
 const force = has('force');
+const primaryOnly = has('primary');
+const widths = valueOf('widths', null)
+  ? valueOf('widths', '').split(',').map(Number).filter((n) => Number.isFinite(n) && n > 0)
+  : WIDTHS;
+const formats = valueOf('formats', null)
+  ? valueOf('formats', '').split(',').map((s) => s.trim()).filter((s) => FORMATS.includes(s))
+  : FORMATS;
 
 if (has('report')) {
   const s = manifest.stats();
@@ -53,7 +60,19 @@ if (!fs.existsSync(path.join(storeRoot, 'items'))) {
   process.exit(2);
 }
 
-const urls = collectUrls(store);
+/* Для компактного preview нужен только основной кадр карточки. Такой
+   запуск не меняет обычный полный режим и позволяет подготовить атласы
+   без скачивания дополнительных ракурсов, которые текущая витрина пока
+   не показывает. */
+const urls = primaryOnly ? new Map() : collectUrls(store);
+if (primaryOnly) {
+  for (const item of store.loadAll().values()) {
+    if (item.active === false || !item.photos?.[0]) continue;
+    const url = item.photos[0];
+    if (!urls.has(url)) urls.set(url, []);
+    urls.get(url).push(item.id);
+  }
+}
 const all = [...urls.keys()];
 const todo = all.filter((u) => force || (!manifest.isReady(u, ROOT) && !manifest.get(u)?.error));
 const targets = limit > 0 ? todo.slice(0, limit) : todo;
@@ -94,7 +113,7 @@ async function worker() {
     const hash = urlHash(url);
     try {
       const { buffer } = await sourceBytes(url);
-      const made = await makeVariants(buffer, { outDir, publicDir, name: hash, widths: WIDTHS, formats: FORMATS });
+      const made = await makeVariants(buffer, { outDir, publicDir, name: hash, widths, formats });
       manifest.set(url, {
         hash, items: urls.get(url)?.length ?? 0,
         width: made.width, height: made.height, format: made.format,

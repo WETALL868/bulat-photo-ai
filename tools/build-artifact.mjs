@@ -165,7 +165,13 @@ const needed = new Set();
 const collect = (value) => {
   if (typeof value === 'string') {
     const m = value.match(/\/assets\/img\/[^"')\s]+/g);
-    if (m) for (const one of m) needed.add(one.slice(1));
+    if (m) for (const one of m) {
+      /* Когда карта атласов собрана, индивидуальные VTT-миниатюры уже
+         представлены ячейками внутри неё. Публикация тысяч исходных
+         файлов поверх атласов снова превысила бы лимит 255 файлов. */
+      if (atlasFiles && one.startsWith('/assets/img/vtt/')) continue;
+      needed.add(one.slice(1));
+    }
     return;
   }
   if (Array.isArray(value)) { value.forEach(collect); return; }
@@ -212,7 +218,20 @@ html = html.replace(/(src|href)="\/assets\//g, '$1="assets/');
 const title = '<title>Магазин Hi-Black</title>';
 const style = (html.match(/<style>[\s\S]*?<\/style>/) || [''])[0];
 const body = (html.match(/<body>([\s\S]*)<\/body>/) || ['', ''])[1];
-fs.writeFileSync(path.join(OUT, 'index.html'), title + '\n' + style + '\n' + body);
+/*
+  Объявление кодировки нужно: простой preview-сервер может не добавить
+  charset в Content-Type, и тогда русский текст превращается в mojibake
+  ещё до выполнения встроенного JS. Оно идёт первым, в пределах первой
+  тысячи байт, — иначе браузер успеет выбрать кодировку сам.
+
+  А вот полного каркаса здесь быть не должно. Публикация сама оборачивает
+  файл в <!doctype html><head>…</head><body>, и второй такой каркас
+  внутри даёт вложенные html и body: разметка становится невалидной, а
+  теги из внутренней «головы» разбираются как содержимое тела. Поэтому
+  отдаём только то, что кладётся в тело, — заголовок, стили и разметку.
+*/
+fs.writeFileSync(path.join(OUT, 'index.html'),
+  '<meta charset="utf-8">\n' + title + '\n' + style + '\n' + body);
 
 /* --------------------------------------------------------------- итог */
 

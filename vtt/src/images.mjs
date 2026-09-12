@@ -87,7 +87,18 @@ export async function fetchImage(url, { timeoutMs = 30000, fetchImpl = fetch } =
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
-    const res = await fetchImpl(url, { signal: ac.signal, redirect: 'follow' });
+    /* Файловый сервер VTT часть существующих изображений маскирует под
+       404 для стандартного User-Agent Node/undici, хотя тот же адрес
+       отдаёт 200 браузеру. Просим ресурс как обычный браузерный клиент;
+       это публичные карточки товаров, не обход авторизации. */
+    const res = await fetchImpl(url, {
+      signal: ac.signal,
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36',
+        Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      },
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     if (!buf.length) throw new Error('пустой ответ');

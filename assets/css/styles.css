@@ -1879,3 +1879,6 @@ a.mphone .ic *{pointer-events:none!important}
 .atimg{display:block;width:100%;aspect-ratio:1/1;background-repeat:no-repeat;background-color:#fff}
 .cmedia .atimg{height:100%}
 .item .img .atimg{width:100%;height:auto}
+.gmain.has-atlas{cursor:default}
+.gmain .g-atlas-img{width:min(100%,520px);height:auto;flex:0 0 auto}
+.thumb .atimg,.kit-img .atimg,.mini .img .atimg,.coi .atimg,.cmp .atimg{width:100%;height:auto}

@@ -120,7 +120,9 @@ export async function buildAtlases(sources, { outDir, publicDir, cell, perAtlas,
 
 /* ------------------------------------------------------------- запуск */
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+/* URL-сравнение через строку file:// ломается на Windows из-за обратных
+   слешей и буквы диска. Сравниваем нормализованные системные пути. */
+if (path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1])) {
   const storeRoot = path.resolve(argOf('store', path.join(ROOT, 'vtt-data')));
   const fromDir = argOf('from-dir', null);
   const publicDir = argOf('public', 'assets/img/atlas');
@@ -146,11 +148,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   for (const row of rows) {
     const id = row[col.id];
     const url = row[col.img];
-    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) continue;
-    const rec = manifest.items?.[url];
-    const local = rec?.variants?.length
-      ? path.join(ROOT, [...rec.variants].sort((a, b) => b.width - a.width)[0].files.webp)
-      : (fromDir ? path.join(path.resolve(fromDir), path.basename(new URL(url).pathname)) : null);
+    if (typeof url !== 'string') continue;
+    const isRemote = /^https?:\/\//i.test(url);
+    const rec = isRemote ? manifest.items?.[url] : null;
+    /* После build-catalog локальный вариант уже подставлен в img. Это
+       нормальный и самый надёжный источник для упаковщика; прежний код
+       пропускал его из-за проверки только на http(s), из-за чего запуск
+       в документированном порядке vtt:images -> catalog -> pack-thumbs
+       не мог собрать ни одного атласа. */
+    const local = !isRemote && /^\/?assets\/img\/vtt\//i.test(url)
+      ? path.join(ROOT, url.replace(/^\//, ''))
+      : rec?.variants?.length
+        ? path.join(ROOT, [...rec.variants].sort((a, b) => b.width - a.width)[0].files.webp)
+        : (fromDir && isRemote ? path.join(path.resolve(fromDir), path.basename(new URL(url).pathname)) : null);
     if (local && fs.existsSync(local)) sources.push({ id, file: local });
     else missing.push(id);
   }

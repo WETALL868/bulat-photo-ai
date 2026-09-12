@@ -241,15 +241,16 @@
   function imgHtml(p, attrs) {
     var a = attrs || {};
     var t = C.thumb && C.thumb(p.id);
+    var view = a.view ? ' data-gview="' + esc(a.view) + '"' : '';
     if (t) {
       var px = t.cols > 1 ? (t.col / (t.cols - 1)) * 100 : 0;
       var py = t.rows > 1 ? (t.row / (t.rows - 1)) * 100 : 0;
-      return '<span class="atimg' + (a.cls ? ' ' + a.cls : '') + '" role="img" aria-label="' + esc(a.alt || p.name) + '"' +
+      return '<span class="atimg' + (a.cls ? ' ' + a.cls : '') + '" role="img" aria-label="' + esc(a.alt || p.name) + '"' + view +
         ' style="background-image:url(' + t.file + ');background-size:' + (t.cols * 100) + '% ' + (t.rows * 100) + '%;' +
         'background-position:' + px.toFixed(4) + '% ' + py.toFixed(4) + '%"></span>';
     }
     return '<img src="' + p.img + '" alt="' + esc(a.alt || '') + '"' +
-      (a.cls ? ' class="' + a.cls + '"' : '') + (a.eager ? '' : ' loading="lazy"') + '>';
+      (a.cls ? ' class="' + a.cls + '"' : '') + view + (a.eager ? '' : ' loading="lazy"') + '>';
   }
   function priceBlock(p, cls) {
     if (noPrice(p)) {
@@ -534,10 +535,12 @@
       var revAvg = revs.length ? Math.round(revs.reduce(function (a, r) { return a + (r.rate || 0); }, 0) / revs.length * 10) / 10 : 0;
       var headRate = isDemoRevs ? revAvg : p.rate;
       var src = p.img;
-      var views = [{ t: 'img' }, { t: 'zoom', pos: '18% 50%' }, { t: 'zoom', pos: '82% 50%' }];
+      var hasAtlas = !!(C.thumb && C.thumb(p.id));
+      var views = [{ t: 'img' }];
+      if (!hasAtlas) views.push({ t: 'zoom', pos: '18% 50%' }, { t: 'zoom', pos: '82% 50%' });
       if (d.models.length) views.push({ t: 'compat' });
       var thumbs = views.map(function (v, i) {
-        var inner = v.t === 'img' ? '<img src="' + src + '" alt="">' : (v.t === 'zoom' ? '<span class="tz" style="background-image:url(' + src + ');background-position:' + v.pos + '"></span>' : brandLogo(p.brand, 14, '') + '<span class="tl">Совместимость</span>');
+        var inner = v.t === 'img' ? imgHtml(p, { alt: '' }) : (v.t === 'zoom' ? '<span class="tz" style="background-image:url(' + src + ');background-position:' + v.pos + '"></span>' : brandLogo(p.brand, 14, '') + '<span class="tl">Совместимость</span>');
         return '<div class="thumb ' + (i === 0 ? 'on' : '') + (v.t === 'compat' ? ' tcompat' : '') + '" data-view="' + i + '" title="' + (v.t === 'img' ? 'Общий вид' : (v.t === 'zoom' ? 'Крупный план' : 'Совместимые модели')) + '">' + inner + '</div>';
       }).join('');
       var compatCard = '<div class="gcompat" data-gview="compat" hidden>' + brandLogo(p.brand, 34, '') + '<h3>Подходит для принтеров ' + esc(C.brandName(p.brand)) + '</h3><div class="tags">' + d.models.map(function (m) {
@@ -585,7 +588,7 @@
         '<div class="pgrid"><header class="phead">' +
         '<h1>' + esc(p.name) + '</h1>' +
         '<div class="pmeta"><span class="rate">' + stars(p.rate, 16) + '<b>' + ratef(p.rate) + '</b><a href="#" data-tab-link="reviews">' + p.reviews + ' ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</a></span><span>Артикул: <b>' + esc(p.code) + '</b></span><span>Код товара: <b>' + (100000 + hash(p.id) % 900000) + '</b></span>' + badge(p) + '</div></header>' +
-        '<div class="gallery"><div class="gmain" id="gmain" data-src="' + src + '"><img src="' + src + '" alt="' + esc(p.name) + '" data-gview="img"><div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>' + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span><span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span></div><div class="thumbs">' + thumbs + '</div></div>' +
+        '<div class="gallery"><div class="gmain' + (hasAtlas ? ' has-atlas' : '') + '" id="gmain" data-src="' + (hasAtlas ? '' : src) + '">' + imgHtml(p, { alt: p.name, eager: true, view: 'img', cls: hasAtlas ? 'g-atlas-img' : '' }) + (hasAtlas ? '' : '<div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>') + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span>' + (hasAtlas ? '' : '<span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span>') + '</div><div class="thumbs">' + thumbs + '</div></div>' +
         '<div class="pinfo"><div class="keyspecs"><h3>Коротко о товаре</h3>' + key.map(function (k) { return '<div class="krow"><span>' + esc(k[0]) + '</span><b>' + esc(k[1]) + '</b></div>'; }).join('') + '</div>' +
         (compatChips ? '<div class="compat"><h3>Подходит для принтеров ' + brandLogo(p.brand, 18, '') + '</h3><div class="tags">' + compatChips + '</div></div>' : '') +
         '<a class="allspecs" href="#" data-spec-jump>Все характеристики ' + ic('chev-down', 16) + '</a></div>' +
@@ -712,7 +715,7 @@
     var items = fam.items.map(function (x) {
       var here = x.id === current.id;
       return '<a class="kit-i' + (here ? ' on' : '') + (x.stock ? '' : ' out') + '" href="' + link.product(x) + '">' +
-        '<span class="kit-img"><img src="' + x.img + '" alt="" loading="lazy"></span>' +
+        '<span class="kit-img">' + imgHtml(x, {}) + '</span>' +
         '<span class="kit-c"><b>' + esc(x.color || 'Цвет') + '</b><span>' + esc(x.code) + '</span></span>' +
         '<span class="kit-pr">' + fmt(x.price) + ' ₽</span>' +
         (x.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Под заказ</span>') +
@@ -785,7 +788,7 @@
         (maxOn() ? '' : '<i class="maxnote">' + maxPending() + '</i>')) +
       '</div>' +
       '<div class="sec addon-sec"><div class="sec-head"><h3>Добавить к заказу</h3><a class="more" href="' + link.catalog('') + '">Ещё ' + ic('arrow-right', 18) + '</a></div><div class="addon">' + addon.map(function (p) {
-        return '<div class="mini"><a class="img" href="' + link.product(p) + '"><img src="' + p.img + '" alt="" loading="lazy"></a><div class="mb"><a class="t" href="' + link.product(p) + '">' + esc(p.name) + '</a><div class="p"><div class="price">' + fmt(p.price) + ' ₽</div><button class="add" type="button" data-add="' + p.id + '" aria-label="В корзину">' + ic('plus', 18) + '</button></div></div></div>';
+        return '<div class="mini"><a class="img" href="' + link.product(p) + '">' + imgHtml(p, {}) + '</a><div class="mb"><a class="t" href="' + link.product(p) + '">' + esc(p.name) + '</a><div class="p"><div class="price">' + fmt(p.price) + ' ₽</div><button class="add" type="button" data-add="' + p.id + '" aria-label="В корзину">' + ic('plus', 18) + '</button></div></div></div>';
       }).join('') + '</div></div></div>' +
       '<div class="sec">' + advantages() + '</div></div>';
   }
@@ -830,7 +833,7 @@
         return '<label class="opt' + (pay === x[0] ? ' on' : '') + '"><input type="radio" name="pay" value="' + x[0] + '"' + (pay === x[0] ? ' checked' : '') + '><span class="rd"></span><span class="ot"><b>' + x[1] + '</b><span>' + x[2] + '</span></span></label>';
       }).join('') + '</div><div class="note">Заказ уходит на сервер магазина, оплата в прототипе не проводится.</div></section></div>' +
       '<div class="summary"><h3>Ваш заказ</h3><div class="colist">' + items.map(function (it) {
-        return '<div class="coi"><img src="' + it.p.img + '" alt="" loading="lazy"><span>' + esc(it.p.name) + '</span><b>' + it.q + ' × ' + fmt(it.p.price) + ' ₽</b></div>';
+        return '<div class="coi">' + imgHtml(it.p, {}) + '<span>' + esc(it.p.name) + '</span><b>' + it.q + ' × ' + fmt(it.p.price) + ' ₽</b></div>';
       }).join('') + '</div><div class="srow"><span>Товары</span><b>' + fmt(sum) + ' ₽</b></div>' + (promo ? '<div class="srow"><span>Скидка</span><b>−' + fmt(promo) + ' ₽</b></div>' : '') + '<div class="srow"><span>Доставка</span><b' + (drow[3] == null ? ' class="soft"' : '') + '>' + dtext + '</b></div><div class="srow total"><span>Итого</span><b>' + fmt(sum - promo + dcost) + ' ₽</b></div>' +
       '<div class="agrees" id="agrees">' +
       '<label class="agree"><input type="checkbox" name="agree-pd"><span>Я даю согласие на <a href="' + link.page('pdconsent') + '">обработку персональных данных</a> и ознакомлен(а) с <a href="' + link.page('privacy') + '">Политикой конфиденциальности</a></span></label>' +
@@ -870,7 +873,7 @@
     ];
     return '<div class="wrap"><div class="ph1">' + crumbs([['Главная', link.home()], ['Сравнение', '']]) + '<h1>Сравнение <span>' + items.length + ' ' + plural(items.length, 'товар', 'товара', 'товаров') + '</span></h1></div>' +
       '<div class="cmp-wrap"><table class="cmp"><thead><tr><th></th>' + items.map(function (p) {
-        return '<th><a href="' + link.product(p) + '"><img src="' + p.img + '" alt=""><span>' + esc(p.name) + '</span></a><button class="btn btn-y btn-sm" type="button" data-add="' + p.id + '">В корзину</button><button class="rmc" type="button" data-cmp="' + p.id + '">' + ic('close', 14) + 'Убрать</button></th>';
+        return '<th><a href="' + link.product(p) + '">' + imgHtml(p, { alt: p.name }) + '<span>' + esc(p.name) + '</span></a><button class="btn btn-y btn-sm" type="button" data-add="' + p.id + '">В корзину</button><button class="rmc" type="button" data-cmp="' + p.id + '">' + ic('close', 14) + 'Убрать</button></th>';
       }).join('') + '</tr></thead><tbody>' + rows.map(function (r) {
         return '<tr><td>' + r[0] + '</td>' + items.map(function (p) { return '<td>' + r[1](p) + '</td>'; }).join('') + '</tr>';
       }).join('') + '</tbody></table></div></div>';
@@ -1335,6 +1338,7 @@
     if (t) { slideTo(+t.dataset.dot); restartSlider(); return; }
     if (e.target.closest('#gmain') && !e.target.closest('.gcompat')) {
       var g = document.getElementById('gmain');
+      if (!g.dataset.src) return;
       lb.querySelector('img').src = g.dataset.src; lb.classList.add('open');
       return;
     }
@@ -1568,7 +1572,7 @@
     qItem = { p: p, q: Math.max(1, q | 0) };
     var sum = p.price * qItem.q;
     document.getElementById('q-prod').innerHTML =
-      '<img src="' + p.img + '" alt="" loading="lazy">' +
+      imgHtml(p, {}) +
       '<div class="qp-t"><b>' + esc(p.name) + '</b><span>Артикул ' + esc(p.code) + '</span></div>' +
       '<div class="qp-s"><span>' + qItem.q + ' шт. × ' + fmt(p.price) + ' ₽</span><b>' + fmt(sum) + ' ₽</b></div>';
     var f = document.getElementById('q-form');
