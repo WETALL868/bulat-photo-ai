@@ -19,7 +19,8 @@
     "build:preview": "node tools/build-catalog.mjs --with-vtt=all && node tools/build-seo.mjs",
     "vtt:csv": "node vtt/bin/vtt-import-csv.mjs",
     "vtt:images": "node vtt/bin/vtt-images.mjs",
-    "artifact": "node tools/build-artifact.mjs"
+    "artifact": "node tools/build-artifact.mjs",
+    "test:ui": "node tools/test-ui.mjs"
   },
   "devDependencies": {
     "fast-xml-parser": "^5.11.1",

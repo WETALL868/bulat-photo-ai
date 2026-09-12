@@ -94,24 +94,26 @@ for (const key of combos) {
 /*
   Какие карточки предрендерить.
 
-  Демонстрационные страницы отдаются поисковику с noindex и в карту сайта
-  не попадают — предрендерить их незачем: девять с половиной тысяч файлов
-  по 80 КБ это семьсот мегабайт и полтора часа сборки ради страниц,
-  которые никто не должен индексировать. Витрина всё равно рисует их в
-  браузере, поэтому для человека ничего не меняется.
+  Раньше здесь стоял отбор по пометке demo: импортированные товары
+  считались проверочными, отдавались с noindex и в карту сайта не
+  попадали. Пометки больше нет — это настоящие позиции поставщика, им в
+  поиске самое место.
 
-  Небольшая выборка демо-страниц всё же собирается — чтобы статический
-  путь был проверен на настоящих импортированных данных, а не только на
-  товарах прототипа.
+  Осталось ограничение другого рода, и оно не про индексацию, а про
+  время сборки: четыре с лишним тысячи страниц по 80 КБ — это триста с
+  лишним мегабайт и больше часа работы браузера. Поэтому предрендер
+  идёт бюджетом (--products=N), а всё сверх бюджета витрина рисует в
+  браузере — для человека разницы нет.
+
+  Важно, что карта сайта строится ровно по предрендеренным адресам.
+  Адрес без готовой страницы сервер отдаёт как 404 (см. .htaccess), и
+  положить такой адрес в sitemap.xml значило бы пообещать поисковику
+  страницу, которой нет. Поэтому «в карте» и «предрендерено» — одно и
+  то же множество, а разница с полным каталогом печатается в отчёте.
 */
-const DEMO_SAMPLE = Number(argValue('demo-sample', 24));
-const seoProducts = [];
-let demoTaken = 0;
-for (const p of products) {
-  if (p.demo) { if (demoTaken >= DEMO_SAMPLE) continue; demoTaken += 1; }
-  seoProducts.push(p);
-}
-const skippedDemo = products.filter((p) => p.demo).length - demoTaken;
+const PRERENDER_PRODUCTS = Number(argValue('products', Infinity));
+const seoProducts = products.slice(0, PRERENDER_PRODUCTS);
+const skippedProducts = products.length - seoProducts.length;
 
 for (const p of seoProducts.slice(0, LIMIT)) {
   const l = live.items[p.id] || {};
@@ -171,8 +173,7 @@ for (const r of routes) {
     .replace(/<meta name="description"[^>]*>/, '<meta name="description" content="' + esc(r.meta.desc) + '">');
 
   const canonical = SITE + r.url;
-  let head = (r.meta?.product?.demo ? '<meta name="robots" content="noindex,nofollow">' : '') +
-    `<link rel="canonical" href="${canonical}">` +
+  let head = `<link rel="canonical" href="${canonical}">` +
     `<meta property="og:type" content="${r.meta.product ? 'product' : 'website'}">` +
     `<meta property="og:title" content="${esc(r.meta.title)}">` +
     `<meta property="og:description" content="${esc(r.meta.desc)}">` +
@@ -187,10 +188,11 @@ for (const r of routes) {
       name: p.name, sku: p.code, brand: { '@type': 'Brand', name: 'Hi-Black' },
       image: SITE + p.img,
       /* AggregateRating выводится только там, где есть настоящие
-         опубликованные отзывы. Демо-записи в счётчики не попадают, поэтому
-         reviews у таких товаров ноль — и разметки не будет. Цифра в
-         разметке обязана совпадать с видимой на странице. */
-      aggregateRating: (!p.demo && p.reviews > 0 && p.rate > 0)
+         опубликованные отзывы. Пока их нет ни у одного товара, поэтому
+         разметки рейтинга не будет ни на одной странице — и это верно:
+         цифра в разметке обязана совпадать с видимой на странице, а
+         видимая говорит «Пока нет отзывов». */
+      aggregateRating: (p.reviews > 0 && p.rate > 0)
         ? { '@type': 'AggregateRating', ratingValue: p.rate, reviewCount: p.reviews }
         : undefined,
       offers: { '@type': 'Offer', price: l.price, priceCurrency: 'RUB', availability: l.available ? 'https://schema.org/InStock' : 'https://schema.org/PreOrder', url: canonical },
@@ -219,25 +221,23 @@ stop();
 /*
   Карта сайта и robots.txt.
 
-  Демонстрационные товары в карту не попадают и помечены noindex: это
-  проверочные данные для preview, им нечего делать в поиске. Правило
-  одно и то же и для страницы товара, и для его будущей страницы отзывов —
-  иначе «не индексируется» превращалось бы в «не индексируется наполовину».
+  В карту идут все собранные адреса — ровно те, у которых на диске есть
+  готовая страница. Адрес без страницы сервер отдаёт как 404, и обещать
+  его поисковику нельзя.
 */
 const now = new Date().toISOString().slice(0, 10);
-const indexable = routes.filter((r) => !r.meta?.product?.demo);
-const demoCount = routes.length - indexable.length;
+const indexable = routes;
 const sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
   indexable.map((r) => `<url><loc>${SITE}${r.url}</loc><lastmod>${now}</lastmod><changefreq>${r.url === '/' ? 'daily' : 'weekly'}</changefreq></url>`).join('\n') +
   '\n</urlset>\n';
-if (demoCount) console.log(`  из карты сайта исключено демонстрационных страниц: ${demoCount}`);
 fs.writeFileSync(path.join(ROOT, 'sitemap.xml'), sitemap);
 fs.writeFileSync(path.join(ROOT, 'robots.txt'), `User-agent: *\nDisallow: /cart\nDisallow: /checkout\nDisallow: /order\nDisallow: /favorites\nDisallow: /compare\nDisallow: /login\nDisallow: /search\nSitemap: ${SITE}/sitemap.xml\n`);
 
 const bytes = routes.reduce((a, r) => a + fs.statSync(path.join(OUT, r.file + '.html')).size, 0);
 console.log(`Собрано страниц: ${routes.length} за ${((Date.now() - t0) / 1000).toFixed(0)} с, ${(bytes / 1024 / 1024).toFixed(1)} МБ`);
 console.log(`  товаров ${seoProducts.slice(0, LIMIT).length}, моделей принтеров ${Math.min(Object.keys(compat).length, LIMIT)}, категорий ${cats.length}`);
-if (skippedDemo) {
-  console.log(`  не предрендерено демонстрационных карточек: ${skippedDemo} (они noindex и вне карты сайта; витрина рисует их в браузере)`);
+if (skippedProducts) {
+  console.log(`  не предрендерено карточек: ${skippedProducts} (бюджет --products=${PRERENDER_PRODUCTS}); ` +
+    'их нет и в карте сайта — адреса без готовой страницы сервер отдаёт как 404');
 }
 if (errors.length) console.log('  ошибки в браузере:', [...new Set(errors)].slice(0, 5));

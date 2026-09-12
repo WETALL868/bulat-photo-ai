@@ -116,6 +116,89 @@ if ($route === 'callback') {
     exit;
 }
 
+/*
+  Отзыв о товаре.
+
+  Приходит с карточки и НИКОГДА не публикуется сразу. Запись ложится в
+  var/reviews со статусом pending, и на витрину попадает только после
+  того, как её открыл и одобрил человек. Поэтому ответ говорит
+  «отправлен на проверку», а не «опубликован»: между этими словами
+  разница в одного модератора.
+
+  Что здесь принципиально:
+    • статус ставит сервер, а не запрос. Поле status из тела игнорируется
+      целиком — иначе опубликовать что угодно можно было бы одной
+      строчкой в JSON;
+    • «покупка подтверждена» не выставляется. Подтвердить покупку может
+      только заказ, а не форма, и до появления такой сверки этого флага
+      у отзыва нет вовсе;
+    • одинаковый отзыв на один товар не принимается дважды: ключ
+      считается по товару и тексту, и повторная отправка возвращает тот
+      же ответ, ничего не создавая.
+*/
+if ($route === 'review') {
+    if ($method !== 'POST') {
+        header('Allow: POST');
+        fail(405, 'Отзыв отправляется методом POST');
+    }
+    $raw = file_get_contents('php://input', false, null, 0, 8192);
+    $in = json_decode((string) $raw, true);
+    if (!is_array($in)) {
+        fail(400, 'Не разобрали отзыв');
+    }
+    $cut = static fn (string $k, int $n): string => mb_substr(trim((string) ($in[$k] ?? '')), 0, $n);
+    $product = $cut('product', 120);
+    $name = $cut('name', 80);
+    $text = $cut('text', 2000);
+    if ($product === '' || $name === '' || mb_strlen($text) < 20) {
+        fail(422, 'Нужны товар, имя и текст отзыва');
+    }
+    $rate = isset($in['rate']) ? (int) $in['rate'] : 0;
+    if ($rate < 1 || $rate > 5) {
+        $rate = 0;
+    }
+    $config = settings();
+    $dir = rtrim((string) $config['orders_dir'], '/') . '/../reviews';
+    if (!is_dir($dir) && !@mkdir($dir, 0770, true) && !is_dir($dir)) {
+        error_log('[hi-black] нет папки для отзывов: ' . $dir);
+        fail(503, 'Отзыв не приняли. Попробуйте позже.');
+    }
+    /* Ключ повтора — товар и текст. Имя в него не входит намеренно: один
+       и тот же текст под двумя именами это тот же отзыв. */
+    $key = substr(hash('sha256', $product . "\0" . $text), 0, 16);
+    $file = $dir . '/' . preg_replace('/[^A-Za-z0-9_-]+/', '-', $product) . '-' . $key . '.json';
+    if (is_file($file)) {
+        echo json_encode(['ok' => true, 'status' => 'pending', 'duplicate' => true], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $review = [
+        'createdAt' => date('c'),
+        /* Статус ставит сервер. Значение из запроса сюда не попадает. */
+        'status' => 'pending',
+        'verified' => false,
+        'product' => $product,
+        'name' => $name,
+        'rate' => $rate ?: null,
+        'printer' => $cut('printer', 80),
+        'text' => $text,
+        'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
+    ];
+    if (file_put_contents($file, json_encode($review, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX) === false) {
+        error_log('[hi-black] не удалось сохранить отзыв');
+        fail(503, 'Отзыв не приняли. Попробуйте позже.');
+    }
+    if ($config['manager_email'] !== '') {
+        @mail(
+            (string) $config['manager_email'],
+            'Новый отзыв на модерации — ' . $config['shop_name'],
+            $product . "\n" . $name . ' — ' . ($rate ?: '?') . "/5\n\n" . $text,
+            'Content-Type: text/plain; charset=utf-8'
+        );
+    }
+    echo json_encode(['ok' => true, 'status' => 'pending'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if ($route !== 'order') {
     fail(404, 'Неизвестный запрос');
 }

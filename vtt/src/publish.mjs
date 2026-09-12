@@ -17,9 +17,10 @@
   Ни характеристик, ни сертификатов, ни гарантий, ни «совместим также с»
   здесь не появляется: выдуманная строка в карточке дороже пустого места.
 */
-import { slugify, REQUIRED_FOR_CARD } from './normalize.mjs';
+import { slugify, REQUIRED_FOR_CARD, isDamagedPackage } from './normalize.mjs';
+import { colorTitle, colorPhrase } from './colors.mjs';
 
-export const DESCRIPTION_VERSION = 1;
+export const DESCRIPTION_VERSION = 2;
 
 /* Тип расходника выводится из категории и названия — но только если он там
    действительно назван. Ничего не додумывается по «похожести». */
@@ -59,52 +60,134 @@ export function modelsOf(item) {
 }
 
 /*
-  Детерминированное описание. При тех же данных получается тот же текст —
-  это важно и для повторной сборки, и для того, чтобы diff показывал
-  реальные изменения, а не перестановку слов.
+  Совместимость из названия.
+
+  Название у VTT построено единообразно: «<тип> <марка> (<артикул>) для
+  <техника>, <цвет>, <ресурс>». Часть после «для» — это слова самого
+  поставщика о том, к чему товар подходит, и единственный источник таких
+  сведений у 6 681 позиции: структурная совместимость по этому каталогу
+  не приходит вовсе.
+
+  Разбор намеренно трусливый. Мы отрезаем только хвост из цвета, ресурса
+  и служебных пометок — то, что стоит последними запятыми и распознаётся
+  списком. Ничего не переставляем, ничего не дополняем и не режем на
+  отдельные модели: «M8124cidn/M8130cidn» остаётся одной фразой, потому
+  что делить её на элементы — уже додумывание. Если после отрезания
+  хвоста ничего осмысленного не осталось, функция возвращает пустую
+  строку и в описании этого предложения просто нет.
+*/
+const FOR_RE = /(^|[^\p{L}\p{N}])для\s+/iu;
+const TAIL_TOKENS = /^(?:[a-zа-яё]{1,4}|\d+(?:[.,]\d+)?\s*[kк]|\d+(?:[.,]\d+)?\s*(?:мл|л|г|кг|шт)\.?|с\s+чипом|без\s+чипа|б\/ч|\d+(?:[.,]\d+)?)$/iu;
+
+export function modelsFromName(name) {
+  const text = String(name ?? '');
+  const m = FOR_RE.exec(text);
+  if (!m) return '';
+  let rest = text.slice(m.index + m[0].length).trim();
+  rest = rest.replace(/\([^)]*\)\s*$/u, '').trim();
+  const parts = rest.split(',').map((s) => s.trim()).filter(Boolean);
+  while (parts.length > 1 && TAIL_TOKENS.test(parts[parts.length - 1])) parts.pop();
+  const out = parts.join(', ').replace(/[\s.,;-]+$/u, '').trim();
+  return out.length >= 3 && out.length <= 140 ? out : '';
+}
+
+/*
+  Описание карточки.
+
+  Собирается только из полей, которые поставщик действительно прислал.
+  Ни гарантий, ни «печатает без полос», ни цены и остатка: цена и остаток
+  меняются каждой выгрузкой, и зашитые в текст они устареют молча.
+
+  Габаритов в тексте нет намеренно. В выгрузке есть Width/Height/Depth,
+  но единицы не указаны нигде, а сверка GrossVolume с произведением
+  сторон сходится лишь у части позиций — значит, «0,38 × 0,45 × 0,57 см»
+  было бы утверждением о размере, которого никто не подтверждал. Числа
+  остаются в характеристиках без единицы и с оговоркой.
+
+  Текст детерминирован: те же данные дают тот же текст, поэтому diff
+  показывает изменения у поставщика, а не перестановку слов.
 */
 export function buildDescription(item) {
   const facts = [];
+  const used = {};
   const type = typeOf(item);
-  const head = [type, item.vendorCode && `${item.vendorCode}`].filter(Boolean).join(' ');
+  const code = item.vendorCode ?? '';
 
-  if (head) {
-    const brand = item.brand ? ` производства ${item.brand}` : '';
-    facts.push(`${head}${brand}.`);
+  /* Первое предложение — что это за вещь. Порядок слов зависит от того,
+     какие поля есть, поэтому у позиции без марки техники получается не
+     та же фраза с подменённым артикулом, а другая фраза. */
+  if (code && type) {
+    const brand = item.brand ? ` ${item.brand}` : '';
+    const forBrand = item.compatibleBrand ? ` для техники ${item.compatibleBrand}` : '';
+    facts.push(`${code} — ${type.toLowerCase()}${brand}${forBrand}.`);
+    used.type = 1; used.vendorCode = 1;
+    if (item.brand) used.brand = 1;
+    if (item.compatibleBrand) used.compatibleBrand = 1;
+  } else if (type) {
+    facts.push(`${type}${item.brand ? ` ${item.brand}` : ''}.`);
+    used.type = 1;
   }
-  if (item.originalNumber) facts.push(`Оригинальный номер: ${item.originalNumber}.`);
-  if (item.resource) facts.push(`Заявленный ресурс — ${fmt(item.resource)} страниц.`);
-  if (item.color) facts.push(`Цвет: ${item.color.toLowerCase()}.`);
 
   const models = modelsOf(item);
   if (models.length) {
     const list = models.slice(0, 12).join(', ');
     const more = models.length > 12 ? ` и ещё ${models.length - 12} моделей` : '';
     facts.push(`Совместимость по данным поставщика: ${list}${more}.`);
+    used.compatibility = 1;
+  } else {
+    const fromName = modelsFromName(item.name);
+    if (fromName) {
+      facts.push(`Поставщик указывает совместимость: ${fromName}.`);
+      used.compatibilityFromName = 1;
+    }
   }
 
-  const d = item.dimensions;
-  if (d && (d.width || d.height || d.depth)) {
-    const dims = [d.width, d.height, d.depth].filter((v) => v !== undefined).map((v) => fmt(v)).join(' × ');
-    facts.push(`Габариты упаковки: ${dims} см.`);
+  const colorText = colorPhrase(item.color);
+  const resource = item.resource ? `заявленный ресурс — ${fmt(item.resource)} страниц` : '';
+  const volume = item.volumeMl ? `объём — ${fmt(item.volumeMl)} мл` : '';
+  const measure = resource || volume;
+  if (colorText && measure) {
+    facts.push(`Цвет — ${colorText}, ${measure}.`);
+    used.color = 1; used[resource ? 'resource' : 'volumeMl'] = 1;
+  } else if (colorText) {
+    facts.push(`Цвет — ${colorText}.`);
+    used.color = 1;
+  } else if (measure) {
+    facts.push(`${measure[0].toUpperCase()}${measure.slice(1)}.`);
+    used[resource ? 'resource' : 'volumeMl'] = 1;
   }
-  if (item.weight) facts.push(`Вес: ${fmt(item.weight)} кг.`);
-  if (item.inPackage && item.inPackage > 1) facts.push(`В упаковке ${fmt(item.inPackage)} шт.`);
-  if (item.barcode) facts.push(`Штрихкод: ${item.barcode}.`);
+
+  /* Свободная строка поставщика идёт под его подписью и без разбора: в
+     ней лежат и «с чипом», и «Позиция снята с производства». */
+  const note = String(item.compatibilityText ?? '').trim();
+  if (note && !used.compatibility && note !== modelsFromName(item.name)) {
+    facts.push(`Примечание поставщика: ${note.replace(/\.$/, '')}.`);
+    used.compatibilityText = 1;
+  }
+
+  if (item.originalNumber && item.originalNumber !== code) {
+    facts.push(`Оригинальный номер: ${item.originalNumber}.`);
+    used.originalNumber = 1;
+  }
+
+  const pack = [];
+  if (item.inPackage && item.inPackage > 1) { pack.push(`в упаковке ${fmt(item.inPackage)} шт.`); used.inPackage = 1; }
+  if (item.grossWeight) { pack.push(`вес одной штуки ${fmt(item.grossWeight)} кг`); used.grossWeight = 1; }
+  else if (item.weight) { pack.push(`вес ${fmt(item.weight)} кг`); used.weight = 1; }
+  if (pack.length) facts.push(`${pack[0][0].toUpperCase()}${pack[0].slice(1)}${pack[1] ? `, ${pack[1]}` : ''}.`);
+
+  if (item.categoryRoot || item.category) {
+    const path = [item.categoryRoot, item.category].filter(Boolean).join(' / ');
+    facts.push(`Раздел поставщика: ${path}.`);
+    used.category = 1;
+  }
+  if (item.barcode) { facts.push(`Штрихкод: ${item.barcode}.`); used.barcode = 1; }
 
   return {
     text: facts.join(' '),
-    /* Из каких полей собран текст — чтобы потом было видно, почему
-       описание короткое, и чтобы редактор понимал, что можно дополнить. */
-    basedOn: Object.keys({
-      ...(type ? { type: 1 } : {}), ...(item.vendorCode ? { vendorCode: 1 } : {}),
-      ...(item.brand ? { brand: 1 } : {}), ...(item.originalNumber ? { originalNumber: 1 } : {}),
-      ...(item.resource ? { resource: 1 } : {}), ...(item.color ? { color: 1 } : {}),
-      ...(models.length ? { compatibility: 1 } : {}),
-      ...(d && (d.width || d.height || d.depth) ? { dimensions: 1 } : {}),
-      ...(item.weight ? { weight: 1 } : {}), ...(item.inPackage > 1 ? { inPackage: 1 } : {}),
-      ...(item.barcode ? { barcode: 1 } : {}),
-    }),
+    /* Из каких полей собран текст — чтобы было видно, почему описание
+       короткое, и что можно дополнить редакционной правкой. */
+    basedOn: Object.keys(used),
     version: DESCRIPTION_VERSION,
   };
 }
@@ -151,6 +234,23 @@ export function ownBrandInName(name, marks = []) {
   встретившись в названии чужого товара оно протащило бы его на витрину.
 */
 export function matchesFilter(item, filter = {}) {
+  /*
+    Повреждённая упаковка на витрину не попадает вовсе. Это не вариант
+    товара и не «уценка со скидкой»: карточка, поисковая выдача, страница
+    для индексации и переключатель цвета такой позиции не создаются.
+    Отсев идёт здесь, до присвоения адреса и до сборки семейств, — иначе
+    исключённая позиция успела бы занять slug и попасть в комплект
+    ссылкой в никуда.
+
+    В сторе такие позиции остаются: это настоящая выгрузка поставщика, и
+    терять её из-за решения о витрине нельзя.
+  */
+  if (filter.excludeDamagedPackage !== false) {
+    const damaged = item.packageDamaged ?? isDamagedPackage({
+      name: item.name, description: item.supplierDescription, compatibility: item.compatibilityText,
+    });
+    if (damaged) return false;
+  }
   const brands = (filter.brands ?? []).map((s) => String(s).trim().toLowerCase());
   const exclude = (filter.excludeBrands ?? []).map((s) => String(s).trim().toLowerCase());
   const cats = filter.categories ?? [];
@@ -259,7 +359,15 @@ export function toShopProduct(item, { editorial = {}, categoryPath = [], shopCat
     supplierBrand: item.brand ?? '',
     type: typeOf(item) ?? '',
     res: item.resource ?? null,
+    /* Строка ресурса от поставщика едет рядом с разобранным числом: по
+       ней видно, что именно разобрано, а что осталось как есть. */
+    lifeTime: item.lifeTime ?? '',
+    volumeMl: item.volumeMl ?? null,
+    /* Код цвета остаётся кодом: по нему собираются семейства и по нему
+       покупатель сверяется с надписью на картридже. Русское название —
+       отдельным полем, для показа. */
     color: item.color ?? '',
+    colorTitle: colorTitle(item.color),
     chip: null,
     compat: modelsOf(item).join(', '),
     models: modelsOf(item),
@@ -270,6 +378,15 @@ export function toShopProduct(item, { editorial = {}, categoryPath = [], shopCat
     compatibleBrand: item.compatibleBrand ?? '',
     equip: '', tech: '', print: '',
     weight: item.weight ?? '',
+    grossWeight: item.grossWeight ?? '',
+    inPackage: item.inPackage ?? 0,
+    barcode: item.barcode ?? '',
+    categoryRoot: item.categoryRoot ?? '',
+    /* Габариты без единицы измерения: поставщик её не указывает, а
+       подписать «см» под 0,38 × 0,45 × 0,57 значит утверждать размер,
+       которого никто не подтверждал. */
+    dimensions: item.dimensions ?? null,
+    grossDimensions: item.grossDimensions ?? null,
     img: usablePhoto(item.photos?.[0]) ? item.photos[0] : PHOTO_PLACEHOLDER,
     images: (item.photos ?? []).filter(usablePhoto),
     /* Адреса в том виде, в каком их прислал поставщик. Витрина ходит по
@@ -328,13 +445,19 @@ export function publish(store, options = {}) {
     отчёт, в котором всё, не сообщает ничего.
   */
   const report = {
-    total: all.size, inactive: 0, filtered: 0, published: 0,
+    total: all.size, inactive: 0, filtered: 0, damagedPackage: 0, published: 0,
     incomplete: [], missingRequired: [], noPrice: [], noPhoto: [], noDescription: [], noCompatibility: [],
   };
 
   for (const item of all.values()) {
     if (item.active === false) { report.inactive += 1; continue; }
-    if (!matchesFilter(item, filter)) { report.filtered += 1; continue; }
+    if (!matchesFilter(item, filter)) {
+      report.filtered += 1;
+      /* Повреждённая упаковка считается отдельно от чужих марок: это
+         разные причины, и в отчёте они не должны сливаться. */
+      if (item.packageDamaged) report.damagedPackage += 1;
+      continue;
+    }
     const cat = catById.get(item.categoryId);
     const product = toShopProduct(item, {
       editorial, categoryPath: cat?.path ?? [],

@@ -27,6 +27,9 @@ import { packIndex } from './index-pack.mjs';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { contacts, legal, shop, messengers} from '../catalog-source/site.config.mjs';
+import { colorKey, colorTitle, colorRank } from '../vtt/src/colors.mjs';
+import { modelsFromName } from '../vtt/src/publish.mjs';
+import { seriesKey, famKey, FAM_MAX, FAM_MIN_SERIES, variantLabel } from '../vtt/src/family.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_CATALOG = path.join(ROOT, 'data/catalog');
@@ -249,50 +252,31 @@ function buildSpecs(p, brandName) {
 /*
   Отзывы.
 
-  Раньше они собирались в браузере на каждый показ карточки: текст менялся от
-  перерисовки к перерисовке и не попадал в готовые страницы для поиска. Теперь
-  отзывы создаются один раз здесь, лежат в чанке рядом с товаром и живут ровно
-  столько, сколько живёт каталог.
+  Их здесь больше нет, и это осознанное решение, а не упущение.
 
-  Количество отзывов, оценка и сам список согласованы между собой: показанное
-  число — это длина списка, а оценка — среднее по нему.
+  Раньше в этом месте лежал список из десяти готовых текстов с именами,
+  городами и датами, и сборка раздавала их товарам по хешу артикула. На
+  витрине это выглядело как отзывы покупателей: имя, город, «покупка
+  подтверждена», «отзыв полезен?». Ни одного из этих людей не
+  существовало, дат таких не было, и опыта эксплуатации, о котором они
+  рассказывали, тоже. Шесть карточек подряд показывали один и тот же
+  текст с разной подписью — по этому совпадению всё и вскрылось.
+
+  Придуманный отзыв от лица покупателя — это не «наполнение прототипа».
+  Он влияет на решение о покупке, попадает в рейтинг, в микроразметку и
+  в поисковую выдачу. Поэтому вместо генератора здесь пусто: настоящих
+  отзывов у нас пока нет, и карточка так и говорит — «Пока нет отзывов».
+
+  Откуда они появятся. Форма на карточке отправляет отзыв на модерацию
+  (POST /api/review), сервер кладёт его в var/reviews со статусом
+  pending. Опубликованным отзыв становится только после проверки
+  человеком, и только тогда попадает в счётчики, в звёзды и в
+  AggregateRating. VTT отзывов не отдаёт — источник только собственный.
+
+  Поле reviewList остаётся в форме данных: как только появятся
+  настоящие записи, их будет куда положить, и вёрстка их уже умеет
+  показывать.
 */
-const REV_POOL = [
-  { name: 'Алексей', city: 'Москва', rate: 5, text: 'Беру уже третий раз, на замену оригиналу. Ресурс по ощущениям такой же — прошлый отходил примерно столько, сколько заявлено, при обычных офисных документах.', plus: 'Встал без проблем, принтер {printer} сразу увидел картридж, счётчик показывает 100%. Печать плотная, без полос.', minus: 'Коробка пришла слегка помятой, но на картридже это не сказалось.' },
-  { name: 'Марина', city: 'Тула', rate: 5, text: 'Заказывала для небольшого офиса, за месяц никаких проблем — ни серого фона, ни осыпания тонера. Буду брать ещё.', plus: 'Цена, наличие, отправили в день заказа. Пришёл СДЭКом за два дня.', minus: 'Нет.' },
-  { name: 'ООО «Вектор-Сервис»', city: 'Санкт-Петербург', rate: 4, text: 'Закупаем партиями для сервисного обслуживания клиентов с {printer}. За полгода брака не было.', plus: 'Оплата по счёту, документы выдали сразу вместе с товаром. Качество печати не отличить от оригинала.', minus: 'Хотелось бы видеть ресурс не только числом, но и при каком заполнении — нашли только в характеристиках.' },
-  { name: 'Дмитрий', city: 'Казань', rate: 5, text: 'Поставил в {printer} вместо оригинала — разницы в отпечатках не увидел ни на тексте, ни на схемах.', plus: 'Ресурс соответствует заявленному, цена в два раза ниже оригинала.', minus: 'Нет.' },
-  { name: 'Ольга', city: 'Екатеринбург', rate: 5, text: 'Второй заказ в этом магазине. Всё чётко: подобрали по модели принтера, привезли на следующий день.', plus: 'Подбор по модели в шапке — не надо гадать с артикулом.', minus: 'Курьер приехал ближе к вечеру, хотя интервал был до обеда.' },
-  { name: 'ИП Смирнов', city: 'Нижний Новгород', rate: 4, text: 'Используем в {printer} на приёме документов, печатаем много. Расходника хватает примерно на месяц.', plus: 'Стабильное качество от партии к партии, есть отсрочка по счёту.', minus: 'На одной партии коробки были без защитной плёнки.' },
-  { name: 'Сергей', city: 'Воронеж', rate: 5, text: 'Отличная замена оригиналу. Тонер не осыпается, чёткий мелкий текст, фотографии в документах печатает без полос.', plus: 'Гарантия 12 месяцев и реальный обмен по браку — проверял.', minus: 'Нет.' },
-  { name: 'Анна', city: 'Самара', rate: 5, text: 'Брала для домашнего {printer}. Всё работает, чип распознался сразу, ничего сбрасывать не пришлось.', plus: 'Быстрая доставка, аккуратная упаковка.', minus: 'Нет.' },
-  { name: 'Павел', city: 'Новосибирск', rate: 5, text: 'Заказывал сразу три штуки про запас. Установил первый — печатает ровно, тонер ложится равномерно даже на плотной бумаге.', plus: 'Цена ниже, чем у оригинала, при том же результате.', minus: 'Нет.' },
-  { name: 'Екатерина', city: 'Ростов-на-Дону', rate: 4, text: 'Для {printer} подошёл точно, сомнений при заказе не было — совместимость указана прямо в карточке.', plus: 'Понятное описание и характеристики, ничего не пришлось уточнять по телефону.', minus: 'Хотелось бы самовывоз ближе к центру.' },
-];
-const REV_DATES = ['28 августа 2026', '16 августа 2026', '3 августа 2026', '21 июля 2026', '9 июля 2026', '30 июня 2026', '14 июня 2026', '2 июня 2026', '25 мая 2026', '11 мая 2026'];
-function fnv(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
-function buildReviews(p, brandName) {
-  const h = fnv(p.id);
-  const n = Math.min(6, Math.max(3, p.reviews || 3));
-  const printer = brandName + (p.models[0] ? ' ' + p.models[0] : '');
-  const out = [];
-  for (let i = 0; i < n; i++) {
-    const r = REV_POOL[(h + i * 3) % REV_POOL.length];
-    out.push({
-      name: r.name,
-      city: r.city,
-      rate: r.rate,
-      date: REV_DATES[(h + i * 2) % REV_DATES.length],
-      printer,
-      text: r.text.replaceAll('{printer}', printer),
-      plus: r.plus.replaceAll('{printer}', printer),
-      minus: r.minus,
-      useful: 2 + ((h + i * 7) % 9),
-    });
-  }
-  return out;
-}
-
 /* --------------------------------------------------------------- сборка */
 
 /*
@@ -438,7 +422,15 @@ const WITH_VTT = WITH_VTT_RAW === 'all' ? Infinity : (Number(WITH_VTT_RAW) || 0)
 let imported = null;
 if (WITH_VTT > 0 && SOURCE !== 'vtt') {
   imported = await readVttStore(argOf('store', path.join(ROOT, 'vtt-data')));
-  const demoFlag = argOf('vtt-demo', '1') !== '0';
+  /*
+    Пометка ДЕМО снята. Импортированные позиции — не макет: это реальные
+    товары из выгрузки поставщика, с настоящим артикулом, ценой и
+    остатком, и показывать над ними плашку «проверочные данные» значит
+    врать в другую сторону. Флаг остался только как ключ запуска: он
+    нужен на синтетических данных (--mock), где товары действительно
+    выдуманы.
+  */
+  const demoFlag = argOf('vtt-demo', '0') !== '0';
   const existing = new Set(src.products.map((p) => p.id));
   let taken = 0, renamed = 0;
   for (const p of imported.products) {
@@ -498,93 +490,42 @@ const brandName = (id) => (brandDict[id] ? brandDict[id].name : id);
 
 products.sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name, 'ru'));
 
-/*
-  Отзывы.
-
-  У товаров прототипа всё остаётся как было — ни текст, ни оценки не
-  трогаем.
-
-  У импортированных товаров настоящих отзывов нет и взяться им неоткуда:
-  VTT отзывы не отдаёт. Поэтому в preview для них собираются ДЕМО-записи,
-  и правила у них жёсткие:
-    • текст строится только из фактических полей этого товара (артикул,
-      ресурс, цвет, совместимость, габариты, упаковка) — никаких
-      впечатлений, свойств и обещаний, которых нет в данных;
-    • автор не человек, а «Демонстрационная запись №N»: принять такую
-      запись за отзыв покупателя невозможно;
-    • каждая запись и весь блок помечены demo;
-    • в rate и reviews они не попадают, поэтому не влияют ни на счётчики,
-      ни на AggregateRating, ни на sitemap.
-*/
-function demoReviewsFor(p) {
-  const nf = (n) => Number(n).toLocaleString('ru-RU');
-  /*
-    Пул фактов. Каждый пункт — то, что реально пришло в выгрузке, и ничего
-    кроме: ни «печатает без полос», ни «пришло быстро». Демо-запись здесь
-    проверяет вёрстку раздела, а не изображает покупателя.
-  */
-  const facts = [];
-  if (p.code) facts.push(['Артикул в выгрузке', p.code]);
-  if (p.res) facts.push(['Заявленный ресурс', `${nf(p.res)} страниц`]);
-  if (p.compatText) facts.push(['Совместимость по выгрузке', p.compatText.slice(0, 90)]);
-  if (p.originalNumber && p.originalNumber !== p.code) facts.push(['Оригинальный номер', p.originalNumber]);
-  if (p.color) facts.push(['Цвет', p.color]);
-  if (p.vttCategory || p.catPath?.length) facts.push(['Раздел поставщика', (p.catPath ?? []).join(' / ') || p.vttCategory]);
-  if (p.weight) facts.push(['Вес', `${nf(p.weight)} кг`]);
-  if (p.stockDetail) facts.push(['Остатки на момент выгрузки',
-    `доступно ${nf(p.stockDetail.available)}, центральный склад ${nf(p.stockDetail.mainOffice)}`]);
-  if (p.price) facts.push(['Цена из выгрузки', `${nf(p.price)} ₽`]);
-  /* Запасной факт: имя товара есть всегда, поэтому хотя бы одна запись
-     наберётся у любой карточки. Требование «минимум одна» выполняется
-     без единого выдуманного слова. */
-  if (!facts.length && p.name) facts.push(['Наименование в выгрузке', p.name.slice(0, 90)]);
-
-  /* Ровно три записи, если фактов хватает; меньше — только когда фактов
-     меньше. Больше трёх не нужно: это проверка вёрстки, а не лента.
-
-     Текст держится коротким намеренно. На 9 483 карточках каждая лишняя
-     сотня байт в записи — это мегабайт данных каталога, который браузер
-     скачивает ради проверочной записи. */
-  const count = Math.min(3, facts.length);
-  const ANGLE = ['подписи и переносы в карточке записи', 'вложенный ответ магазина', 'длинную строку и выравнивание'];
-
-  const out = [];
-  for (let i = 0; i < count; i++) {
-    const [label, value] = facts[i];
-    /*
-      Запись хранится без постоянных частей. Имя «Демонстрационная запись
-      №N», подпись «ДЕМО / тестовые данные» и автор ответа одинаковы у
-      всех записей на всех товарах, и хранить их девять с половиной тысяч
-      раз по три — это два с половиной мегабайта каталога, которые
-      браузер скачивает ради повторяющейся строки. Их подставляет
-      отрисовка: это оформление, а не данные.
-
-      Оценка 5 из 5 — это оценка самой демонстрационной записи, и она не
-      попадает ни в рейтинг товара, ни в микроразметку: p.rate и
-      p.reviews у импортированных товаров остаются нулями.
-    */
-    out.push({
-      demo: true,
-      n: i + 1,
-      rate: 5,
-      text: `${label}: ${value}. Запись проверяет ${ANGLE[i]}; это не отзыв покупателя.`,
-      reply: `Демонстрационный ответ магазина №${i + 1} по позиции ${p.code || p.id}.`,
-    });
-  }
-  return out;
+for (const p of products) {
+  p.reviewList = [];
+  p.reviews = 0;
+  p.rate = 0;
 }
 
-for (const p of products) {
-  if (p.source === 'vtt') {
-    p.reviewList = p.demo ? demoReviewsFor(p) : [];
-    /* Счётчики остаются нулевыми: демо-записи — не отзывы. */
-    p.reviews = 0;
-    p.rate = 0;
-    continue;
+/*
+  Проверка описаний.
+
+  Описание собирается из полей выгрузки, и у двух похожих позиций оно
+  запросто может совпасть слово в слово — тогда на витрине появляется
+  «та же фраза с подменённым артикулом», а это ровно то, чего в карточке
+  быть не должно. Проверка идёт на каждой сборке, а не когда-нибудь
+  руками: пустое описание и дословный дубль — это дефект данных, и
+  увидеть его надо сразу, а не через полгода в выдаче.
+
+  Сравнивается нормализованный текст (без регистра и лишних пробелов):
+  пара, различающаяся только заглавной буквой, — такой же дубль.
+*/
+{
+  const seen = new Map();
+  const empty = [];
+  for (const p of products) {
+    if (p.source !== 'vtt') continue;
+    const text = String(p.description ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!text) { empty.push(p.code || p.id); continue; }
+    if (!seen.has(text)) seen.set(text, []);
+    seen.get(text).push(p.code || p.id);
   }
-  p.reviewList = buildReviews(p, brandName(p.brand));
-  p.reviews = p.reviewList.length;
-  p.rate = Math.round((p.reviewList.reduce((a, r) => a + r.rate, 0) / p.reviewList.length) * 10) / 10;
+  const dups = [...seen.values()].filter((v) => v.length > 1);
+  const dupItems = dups.reduce((a, v) => a + v.length, 0);
+  console.log(`  описания импортированных товаров: ${seen.size + empty.length}, ` +
+    `уникальных ${seen.size}, пустых ${empty.length}, дословных дублей ${dupItems}`);
+  if (empty.length) console.log(`    ПУСТЫЕ: ${empty.slice(0, 10).join(', ')}${empty.length > 10 ? ' и ещё ' + (empty.length - 10) : ''}`);
+  for (const group of dups.slice(0, 5)) console.log(`    ДУБЛЬ: ${group.join(', ')}`);
+  if (dups.length > 5) console.log(`    …и ещё ${dups.length - 5} групп дублей`);
 }
 
 /*
@@ -651,12 +592,36 @@ function vttDescriptionHtml(p) {
 function vttSpecs(p) {
   const rows = [];
   const add = (k, v) => { if (v !== undefined && v !== null && v !== '' && v !== 0) rows.push([k, String(v)]); };
+  const nf = (n) => Number(n).toLocaleString('ru-RU');
   add('Артикул', p.code);
-  add('Оригинальный номер', p.originalNumber);
+  add('Оригинальный номер', p.originalNumber !== p.code ? p.originalNumber : '');
   add('Тип', p.type);
-  add('Ресурс, страниц', p.res ? Number(p.res).toLocaleString('ru-RU') : '');
-  add('Цвет', p.color);
-  add('Вес, кг', p.weight);
+  add('Марка', p.supplierBrand);
+  add('Для техники', p.compatibleBrand);
+  add('Ресурс, страниц', p.res ? nf(p.res) : '');
+  add('Объём, мл', p.volumeMl ? nf(p.volumeMl) : '');
+  /* Строка поставщика показывается, только если из неё не вышло числа:
+     иначе рядом с «6 000 страниц» стояло бы «6K» — то же самое дважды. */
+  add('Ресурс по выгрузке', !p.res && !p.volumeMl ? p.lifeTime : '');
+  add('Цвет', p.colorTitle || p.color);
+  add('Примечание поставщика', p.compatText);
+  add('Штрихкод', p.barcode);
+  add('В упаковке, шт.', p.inPackage > 1 ? nf(p.inPackage) : '');
+  add('Вес одной штуки, кг', p.grossWeight ? nf(p.grossWeight) : '');
+  add('Вес упаковки, кг', p.weight ? nf(p.weight) : '');
+  /*
+    Габариты без единицы измерения — и это не небрежность. В выгрузке
+    есть Width/Height/Depth, но нигде не сказано, в чём они выражены, а
+    сверка GrossVolume с произведением сторон сходится не у всех
+    позиций. Подписать «см» под 0,38 × 0,45 × 0,57 значит заявить размер
+    спичечного коробка для коробки с шестью картриджами. Числа показаны
+    как есть, с честной оговоркой в подписи.
+  */
+  const dims = (d) => (d && (d.width || d.height || d.depth)
+    ? [d.width, d.height, d.depth].filter((v) => v !== undefined && v !== null).map(nf).join(' × ')
+    : '');
+  add('Габариты одной штуки (единицы в выгрузке не указаны)', dims(p.grossDimensions));
+  add('Габариты упаковки (единицы в выгрузке не указаны)', dims(p.dimensions));
   add('Раздел поставщика', (p.catPath ?? []).join(' / ') || p.vttCategory);
   if (p.stockDetail) {
     /* Три склада показываются по отдельности и никогда не суммируются:
@@ -697,35 +662,16 @@ for (let i = 0; i < products.length; i += CHUNK_SIZE) {
   chunks.push(part);
 }
 
-/*
-  Комплекты по цветам.
-
-  Один и тот же картридж выпускается в нескольких цветах: чёрный, голубой,
-  пурпурный, жёлтый. Для покупателя это одна покупка, поэтому цвета одной серии
-  собираются в семейство и показываются на карточке вместе, с возможностью взять
-  весь комплект сразу.
-
-  Признак одной серии: тот же бренд, категория, тип, тот же список совместимых
-  принтеров и тот же ресурс. Цвета при этом должны различаться — иначе в одну
-  кучу попадут версии с чипом и без, а это не комплект.
-*/
-const COLOR_WORDS = /(?:^|[^a-zа-яё])(black|cyan|magenta|yellow|photo|light|grey|gray|ч[её]рн\w*|голуб\w*|пурпурн\w*|ж[её]лт\w*|син\w*|красн\w*|сер\w*|цветн\w*)(?![a-zа-яё])/gi;
-/*
-  Ключ серии — название без цвета. Раньше сравнивали список совместимых
-  принтеров, но у универсальных чернил его нет вовсе («Универсальные для
-  Brother, Тип B»), и такие товары ни в один комплект не попадали.
-*/
-const noColor = (t) => String(t || '').replace(COLOR_WORDS, ' ').toLowerCase().replace(/[^0-9a-zа-яё]+/g, '');
-const famKey = (p) => [p.brand, p.cat, p.type, p.res ?? '', p.compat || noColor(p.name)].join('|');
+/* Комплекты по цветам: правила склейки серий живут в vtt/src/family.mjs. */
 const famBuckets = new Map();
 products.forEach((p, i) => {
   if (!p.color) return;
+  if (seriesKey(p).length < FAM_MIN_SERIES) return;
   const key = famKey(p);
   if (!famBuckets.has(key)) famBuckets.set(key, []);
   famBuckets.get(key).push(i);
 });
 const families = {};
-const COLOR_ORDER = ['Чёрный', 'Голубой', 'Пурпурный', 'Жёлтый', 'Цветной', 'Серый'];
 /*
   В этом срезе каталога у части серий не хватает цвета: жёлтого в выгрузке
   просто нет, хотя магазин им торгует. Достраиваем комплект существующими
@@ -739,41 +685,81 @@ const COLOR_FILL = [
 ];
 const byCode = new Map();
 products.forEach((p, i) => { if (p.code && !byCode.has(p.code)) byCode.set(p.code, i); });
+
+/*
+  Заголовок серии. У товаров прототипа есть разобранный список принтеров —
+  берём его. У импортированных его нет вовсе, и единственный источник —
+  название поставщика: из него вынимается та же часть «для …», что и в
+  описании, тем же осторожным разбором. Если и она не читается, остаётся
+  само название с отрезанным цветом — но не с вычеркнутым каждым словом,
+  иначе «Hi-Black» превращается в «Hi».
+*/
+function famLabel(p) {
+  if (p.compat) return p.type + ' ' + brandName(p.brand) + ' для ' + p.compat.replace(/^для\s+/, '');
+  /* Разбор названия — только для импортированных товаров. У прототипа
+     `brand` означает марку принтера, а не изготовителя расходника, и по
+     этой ветке заголовок вышел бы «Чернила Brother для Brother». */
+  const models = p.source === 'vtt' ? modelsFromName(p.name) : '';
+  if (models && p.type) return `${p.type} ${p.supplierBrand || ''} для ${models}`.replace(/\s{2,}/g, ' ');
+  return String(p.name || '')
+    .replace(/,\s*(black|cyan|magenta|yellow|light\s+\w+|photo\s+\w+|ч[её]рн\w*|голуб\w*|пурпурн\w*|ж[её]лт\w*)\s*(?=,|$)/i, '')
+    .trim();
+}
+
+let famSkippedBig = 0;
 [...famBuckets.entries()]
-  .filter(([, list]) => new Set(list.map((i) => products[i].color)).size > 1)
+  .filter(([, list]) => {
+    /* Считаем по русским названиям, а не по кодам: «Bk» и «BK» — один и
+       тот же чёрный, и семейством из двух цветов это не делает. */
+    if (new Set(list.map((i) => colorKey(products[i].color))).size < 2) return false;
+    if (list.length > FAM_MAX) { famSkippedBig += 1; return false; }
+    return true;
+  })
   .sort((a, b) => a[0].localeCompare(b[0]))
   .forEach(([, own]) => {
     const fill = COLOR_FILL.find((f) => own.some((i) => products[i].code === f.seed));
-    const seen = new Set(own.map((i) => products[i].color));
+    const seen = new Set(own.map((i) => colorKey(products[i].color)));
     const list = own.slice();
     if (fill) {
       for (const code of fill.add) {
         const i = byCode.get(code);
-        if (i == null || list.includes(i) || seen.has(products[i].color)) continue;
-        seen.add(products[i].color);
+        if (i == null || list.includes(i) || seen.has(colorKey(products[i].color))) continue;
+        seen.add(colorKey(products[i].color));
         list.push(i);
       }
     }
     const first = products[own[0]];
     const id = 'set-' + slugify(first.code || first.id).replace(/[a-z]$/i, '') + '-' + list.length;
     const sorted = list.slice().sort((a, b) => {
-      const ia = COLOR_ORDER.indexOf(products[a].color), ib = COLOR_ORDER.indexOf(products[b].color);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+      const d = colorRank(products[a].color) - colorRank(products[b].color);
+      /* При равном цвете — по ресурсу: младший вариант первым, как их и
+         перечисляют в документации на аппарат. */
+      return d !== 0 ? d : (products[a].res ?? 0) - (products[b].res ?? 0);
     });
+    const counts = {};
+    for (const i of sorted) { const k = colorKey(products[i].color); counts[k] = (counts[k] ?? 0) + 1; }
+    /* Две позиции одного цвета и одного объёма встречаются: у VTT это два
+       артикула на один и тот же товар. Подпись должна их различать, иначе
+       в переключателе две одинаковые кнопки — а различает их артикул. */
+    const labels = sorted.map((i) => variantLabel(products[i], counts[colorKey(products[i].color)] > 1));
+    const seenLabel = {};
+    for (const l of labels) seenLabel[l] = (seenLabel[l] ?? 0) + 1;
+    const finalLabels = labels.map((l, n) => (seenLabel[l] > 1 ? `${l} · ${products[sorted[n]].code}` : l));
     families[id] = {
       /* Без списка принтеров (универсальные чернила) заголовок берём из
          названия, убрав из него только сам цвет, а не каждое слово-цвет:
          иначе «Hi-Black» превращается в «Hi». */
-      label: first.compat
-        ? first.type + ' ' + brandName(first.brand) + ' для ' + first.compat.replace(/^для\s+/, '')
-        : String(first.name || '').replace(/,\s*(black|cyan|magenta|yellow|light\s+\w+|photo\s+\w+|ч[её]рн\w*|голуб\w*|пурпурн\w*|ж[её]лт\w*)\s*(?=,|$)/i, '').trim(),
-      colors: sorted.map((i) => products[i].color),
+      label: famLabel(first),
+      colors: finalLabels,
       rows: sorted,
     };
     /* Заимствованный товар остаётся в своей серии: его карточка показывает
        свой комплект, а не чужой. */
     for (const i of own) rows[i][FIELDS.indexOf('fam')] = id;
   });
+console.log(`  цветовых серий: ${Object.keys(families).length}, в них товаров ` +
+  `${Object.values(families).reduce((a, f) => a + f.rows.length, 0)}` +
+  (famSkippedBig ? `, отброшено слишком широких групп: ${famSkippedBig}` : ''));
 
 /* Поисковый индекс: токен → номера строк. Клиент ищет по началу слова. */
 const searchIndex = {};
@@ -907,6 +893,16 @@ const meta = {
 };
 /* Отметка о карте атласов: по ней витрина решает, запрашивать ли её. */
 if (keptThumbs) meta.thumbs = true;
+/*
+  Таблица названий цветов едет вместе с каталогом, а не дублируется в
+  скрипте витрины. Источник один — vtt/src/colors.mjs, и расходиться
+  двум копиям негде. В индексе при этом остаётся код поставщика: по нему
+  работает фильтр, и по нему покупатель сверяется с надписью на
+  картридже.
+*/
+meta.colorTitles = Object.fromEntries(
+  [...new Set(products.map((p) => p.color).filter(Boolean))].map((c) => [c, colorTitle(c)]),
+);
 write('data/catalog/meta.json', meta);
 
 /*

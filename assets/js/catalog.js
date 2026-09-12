@@ -162,6 +162,14 @@
     bySlug: function (slug) { for (var i = 0; i < state.rows.length; i++) if (slugAt(i) === slug) return hydrate(i); return null; },
 
     brandName: function (id) { return (state.site && state.site.brandNames[id]) || id; },
+    /* Название цвета для показа: «Голубой (C)». Таблица приходит из
+       сборки — витрина ничего не переводит сама и незнакомый код
+       показывает как есть, а не называет наугад. */
+    colorTitle: function (code) {
+      if (!code) return '';
+      var t = state.meta && state.meta.colorTitles;
+      return (t && t[code]) || code;
+    },
     brandLogo: function (id) { return (state.site && state.site.brandLogos[id]) || null; },
     catName: function (id) { var c = state.cats.filter(function (x) { return x.id === id; })[0]; return c ? c.name : ''; },
     cat: function (id) { return state.cats.filter(function (x) { return x.id === id; })[0] || null; },
@@ -213,7 +221,21 @@
       return API.families().then(function (all) {
         var f = all[id];
         if (!f) return null;
-        return { id: id, label: f.label, items: f.rows.map(hydrate).filter(Boolean) };
+        /* Подписи вариантов приходят готовыми из сборки: там цвет уже
+           назван по-русски, а одинаковые цвета в серии различены
+           ресурсом, объёмом или артикулом.
+
+           Товар и его подпись отбираются вместе. Если раскрыть строку не
+           удалось, выпасть должны обе — иначе подписи сдвинутся, и у
+           голубого картриджа окажется цена жёлтого. */
+        var pairs = f.rows.map(function (row, i) {
+          return { item: hydrate(row), label: (f.colors || [])[i] || '' };
+        }).filter(function (x) { return !!x.item; });
+        return {
+          id: id, label: f.label,
+          colors: pairs.map(function (x) { return x.label; }),
+          items: pairs.map(function (x) { return x.item; }),
+        };
       });
     },
 

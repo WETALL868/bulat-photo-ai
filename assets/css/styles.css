@@ -1806,30 +1806,83 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .fmax{font-size:16px}
 }
 
-/* 18б. Пометки демонстрационных данных
+/* 18б. Выбор цвета и честное состояние отзывов
    --------------------------------------------------------------------------
-   Всё, что пришло из проверочной выгрузки, обязано выглядеть проверочным.
-   Цвет намеренно не фирменный: жёлтый на витрине значит «акция», и путать
-   эти два смысла нельзя. Полоса заметная, но не кричащая — она служебная.
+   Пометок «ДЕМО» здесь больше нет: импортированные позиции — настоящие
+   товары поставщика, и служебная плашка над ними вводила в заблуждение.
+   Вместо неё два блока, которых карточке не хватало: переключатель цвета
+   и честный пустой блок отзывов.
+
+   Переключатель цвета живёт в левой колонке под галереей, то есть до
+   кнопки покупки: цвет выбирают раньше, чем количество. На телефоне
+   колонки складываются в один столбец, и порядок сохраняется сам.
 */
-.badge-demo{background:#5b21b6;color:#fff;letter-spacing:.04em}
-.demo-note{display:flex;align-items:flex-start;gap:10px;margin:0 0 16px;padding:12px 14px;
-  border:1px dashed #a78bfa;border-radius:12px;background:#f5f3ff;color:#4c1d95;
-  font-size:13px;line-height:1.45}
-.demo-note b{font-weight:700}
-/* Демо-запись в списке отзывов: без «покупка подтверждена», без «отзыв
-   полезен», с явной плашкой — принять её за отзыв покупателя невозможно.
-   Оценка показывается, но подписана как демо-оценка. */
-.rev-demo{border-color:#ddd6fe;background:#faf9ff}
-.rev-demo .ava-demo{background:#5b21b6;color:#fff}
-.rev-demo .demo-tag{display:inline-block;margin-top:2px;padding:1px 7px;border-radius:999px;
-  background:#ede9fe;color:#5b21b6;font-size:11px;font-weight:700;letter-spacing:.03em}
-.rt-demo{flex-wrap:wrap}
-.rt-demo span{color:#5b21b6;font-size:12px}
-/* Сводка над демо-набором: цифра честно помечена, фон отделяет её от
-   настоящей сводки на обычных карточках. */
-.rev-sum-demo{border-color:#ddd6fe;background:#faf9ff}
-.rev-sum-demo .big span{color:#5b21b6;font-weight:700}
+.cpick{border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:20px;background:var(--surface)}
+.cpick h3{font-size:14px;font-weight:600;color:var(--muted);margin-bottom:12px}
+.cpick h3 b{font-family:var(--head);font-weight:800;font-size:16px;color:var(--ink)}
+.cpick-l{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px}
+.cpick-i{display:grid;grid-template-columns:44px minmax(0,1fr);grid-template-areas:"img t" "img p" "img s";
+  gap:1px 10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;
+  padding:8px 10px;position:relative;transition:border-color .15s}
+.cpick-i:hover{border-color:var(--ink)}
+.cpick-i:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+/* Выбранный цвет отмечен и рамкой, и подложкой: одной рамки мало тем,
+   кто плохо различает оттенки границ. aria-current несёт то же самое для
+   экранного диктора. */
+.cpick-i.on{border-color:var(--yellow2);background:#fffdf3;box-shadow:inset 0 0 0 1px var(--yellow2)}
+.cpick-i.out{opacity:.75}
+.cpick-img{grid-area:img;width:44px;height:44px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+/* Подпись «фото не загрузилось» в ячейке 48×48 не помещается целиком —
+   в переключателе достаточно самого пустого места, текст объясняет себя
+   в галерее и в карточке каталога. */
+.cpick-img.hb-imgfail::before{content:"нет фото";font-size:10px}
+.cpick-img img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
+.cpick-t{grid-area:t;min-width:0}
+.cpick-t b{display:block;font-family:var(--head);font-weight:700;font-size:13.5px;line-height:1.25}
+.cpick-t span{display:block;font-size:10.5px;letter-spacing:-.01em;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cpick-p{grid-area:p;font-family:var(--head);font-weight:800;font-size:14px;letter-spacing:-.01em}
+.cpick-s{grid-area:s;font-size:11px;color:var(--green,#137333);display:flex;align-items:center;gap:5px}
+.cpick-s i{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.cpick-s.out{color:var(--muted)}
+/*
+  На телефоне плитками цвет не выбирают: в колонку шириной с ладонь
+  влезают две плитки, и в каждой артикул обрезается многоточием, а «В
+  наличии» переносится на две строки. Поэтому ниже 520 px это список
+  строк — картинка, название с артикулом, наличие и цена справа.
+*/
+@media (max-width:520px){
+  .cpick-l{grid-template-columns:1fr;gap:6px}
+  .cpick-i{grid-template-columns:44px minmax(0,1fr) auto;grid-template-areas:"img t p" "img s p";
+    column-gap:12px;row-gap:2px;padding:8px 12px}
+  .cpick-t b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cpick-p{grid-area:p;align-self:center;text-align:right;white-space:nowrap;font-size:15px}
+  .cpick-s{white-space:nowrap}
+}
+
+/* Отзывов нет — так и написано. Пустые звёзды рядом с нулём читаются как
+   «оценили на ноль», поэтому в этом состоянии звёзд нет вовсе. */
+.rate-none a,.crate-none a{color:var(--muted);border-bottom:1px dashed var(--muted2)}
+.rate-none a:hover,.crate-none a:hover{color:var(--ink)}
+.rev-sum-empty{text-align:left}
+.rev-none{display:flex;flex-direction:column;gap:8px;align-items:flex-start;margin-bottom:16px}
+.rev-none svg{color:var(--muted2)}
+.rev-none b{font-family:var(--head);font-weight:800;font-size:20px;letter-spacing:-.02em}
+.rev-none span{font-size:13.5px;color:var(--muted);line-height:1.5}
+
+/* Оценка в форме — настоящие переключатели, а не картинка со звёздами:
+   прежние звёзды выглядели кликабельными, но ничего не выбирали. */
+.rev-form .frate .fstar{position:relative;cursor:pointer}
+.rev-form .frate .fstar input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.rev-form .frate .fstar span{display:inline-flex;align-items:center;justify-content:center;
+  width:34px;height:34px;border:1px solid var(--line2);border-radius:9px;background:#fff;
+  font-family:var(--head);font-weight:700;font-size:14px}
+.rev-form .frate .fstar input:checked+span{border-color:var(--yellow2);background:var(--yellow,#ffd84d);color:var(--ink)}
+.rev-form .frate .fstar input:focus-visible+span{outline:2px solid var(--ink);outline-offset:2px}
+/* Ответ формы. Он появляется только после настоящей попытки отправки и
+   говорит то, что произошло на самом деле. */
+.rev-msg{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:13.5px;line-height:1.45}
+.rev-msg-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#14532d}
+.rev-msg-bad{background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d}
 .rreply{margin-top:12px;padding:10px 12px;border-left:3px solid #ddd6fe;background:#fff;border-radius:0 10px 10px 0}
 .rreply b{display:block;font-size:12.5px;color:#5b21b6;margin-bottom:3px}
 .rreply p{margin:0;font-size:13.5px;color:var(--ink2)}
@@ -1860,12 +1913,18 @@ a.mphone .ic *{pointer-events:none!important}
 
 /* 21. Картинка не загрузилась
    --------------------------------------------------------------------------
-   Пустой прямоугольник вместо товара читается как поломка витрины. Место
-   картинки подписывается тем же текстом, что и у товара без фото, — так
-   видно, что дело в отсутствующем снимке, а не в сломанной странице. */
+   Пустой прямоугольник вместо товара читается как поломка витрины, поэтому
+   место картинки подписывается.
+
+   Подпись при этом ровно одна и та же для двух разных причин быть не
+   должна. «Фото не передано» — это утверждение о поставщике, и у
+   HB-TK-8115BK оно попросту неверно: адрес снимка поставщик прислал,
+   не загрузился он уже у нас (во фрейме превью чужие картинки
+   блокируются). Поэтому здесь текст про загрузку, а «не передано»
+   осталось только там, где фотографии у поставщика действительно нет. */
 .hb-imgfail{position:relative;background:#f4f4f2;min-height:64px}
 .hb-imgfail img[data-imgfail]{visibility:hidden}
-.hb-imgfail::before{content:"Фото не передано";position:absolute;inset:0;display:flex;
+.hb-imgfail::before{content:"Фото не загрузилось";position:absolute;inset:0;display:flex;
   align-items:center;justify-content:center;padding:6px;text-align:center;
   color:#8b8b8b;font-size:12px;line-height:1.3;pointer-events:none}
 

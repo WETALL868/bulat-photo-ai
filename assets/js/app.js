@@ -202,12 +202,18 @@
 
   /* --------------------------------------------------------- блоки вёрстки */
   function badge(p) {
-    /* Пометка демо идёт первой и не прячется: товар из проверочной
-       выгрузки должен быть виден как проверочный в любом списке. */
-    var demo = p.demo ? '<span class="badge badge-demo">ДЕМО</span>' : '';
-    if (p.badge === 'hit') return demo + '<span class="badge badge-hit">Хит</span>';
-    if (p.badge === 'res') return demo + '<span class="badge badge-new">Увеличенный ресурс</span>';
-    return demo;
+    /*
+      Пометки ДЕМО здесь больше нет. Импортированные позиции — настоящие
+      товары поставщика: у них свой артикул, своя цена и свой остаток, и
+      плашка «проверочные данные» над ними вводила в заблуждение не
+      меньше, чем её отсутствие над выдумкой.
+
+      Со статусом отзывов это никак не связано: отзывов у товара может не
+      быть вовсе, и об этом говорит блок отзывов, а не ярлык на карточке.
+    */
+    if (p.badge === 'hit') return '<span class="badge badge-hit">Хит</span>';
+    if (p.badge === 'res') return '<span class="badge badge-new">Увеличенный ресурс</span>';
+    return '';
   }
   /* Процент скидки показывается только рядом с ценой: там, где есть
      зачёркнутая цена, он и объясняет разницу. */
@@ -262,7 +268,7 @@
   function specsShort(p) {
     var s = [];
     if (p.res) s.push('<span>Ресурс <b>' + fmt(p.res) + ' стр.</b></span>');
-    if (p.color) s.push('<span><b>' + p.color + '</b></span>');
+    if (p.color) s.push('<span><b>' + esc(C.colorTitle(p.color)) + '</b></span>');
     if (p.chip === true) s.push('<span><b>С чипом</b></span>'); else if (p.chip === false) s.push('<span><b>Без чипа</b></span>');
     if (!p.res && p.type) s.push('<span><b>' + esc(p.type) + '</b></span>');
     return s.join('');
@@ -312,7 +318,12 @@
       '<a class="cmedia" href="' + link.product(p) + '">' + imgHtml(p, { alt: p.name }) + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="cbrand" title="Для принтеров ' + esc(C.brandName(p.brand)) + '">' + brandLogo(p.brand, 16) + '</span></a>' +
       '<div class="cacts"><button class="ibtn fav' + fav + '" type="button" data-fav="' + p.id + '" title="' + (S.fav[p.id] ? 'Убрать из избранного' : 'В избранное') + '" aria-label="' + (S.fav[p.id] ? 'Убрать из избранного' : 'В избранное') + '">' + ic('heart', 18) + '</button></div>' +
       '<div class="cbody"><a class="ctitle" href="' + link.product(p) + '">' + esc(p.name) + '</a>' +
-      '<div class="crate">' + stars(p.rate) + '<span>' + ratef(p.rate) + '</span><a href="' + link.product(p, { tab: 'reviews' }) + '"><span class="rn">' + p.reviews + '</span><span class="rw"> ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</span></a></div>' +
+      /* Звёзды показываются только там, где за ними есть настоящие
+         отзывы. Пустые звёзды рядом с нулём читаются как «оценили на
+         ноль», а не как «ещё не оценивали». */
+      (p.reviews > 0
+        ? '<div class="crate">' + stars(p.rate) + '<span>' + ratef(p.rate) + '</span><a href="' + link.product(p, { tab: 'reviews' }) + '"><span class="rn">' + p.reviews + '</span><span class="rw"> ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</span></a></div>'
+        : '<div class="crate crate-none"><a href="' + link.product(p, { tab: 'reviews' }) + '">Нет отзывов</a></div>') +
       '<div class="cspecs">' + specsShort(p) + '</div>' +
       (p.stock ? '<div class="avail"><i></i>В наличии</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') + '</div>' +
       /* Цена и кнопки — отдельный блок, а не хвост описания: в виде списком он
@@ -521,19 +532,13 @@
       var tab = r.query.tab || 'desc';
       var related = C.all().filter(function (x) { return x.id !== p.id && x.brand === p.brand && x.cat === p.cat; }).slice(0, 4);
       if (related.length < 4) related = related.concat(C.all().filter(function (x) { return x.id !== p.id && x.cat === p.cat && related.indexOf(x) < 0; }).slice(0, 4 - related.length));
+      /*
+        В каталоге лежат только настоящие, прошедшие модерацию отзывы.
+        Проверочных записей здесь больше нет: список пуст ровно тогда,
+        когда отзывов нет, и карточка так и говорит.
+      */
       var revs = d.reviews || [];
-      /* Демо-набор определяется по самим записям, а не по флагу товара:
-         так пометка не разъедется, если демо-записи появятся где-то ещё. */
-      var isDemoRevs = revs.length > 0 && revs.every(function (r) { return r.demo; });
-      var sum5 = revs.filter(function (r) { return r.rate === 5; }).length;
-      var sum4 = revs.filter(function (r) { return r.rate === 4; }).length;
-      /* У демо-набора в шапке показывается средняя по самим демо-записям,
-         а не p.rate: p.rate у импортированного товара равен нулю и таким
-         обязан остаться — он уходит в микроразметку и в счётчики. Цифру
-         из шапки от настоящей отличает пометка ДЕМО рядом с ней и плашка
-         над всем блоком. */
       var revAvg = revs.length ? Math.round(revs.reduce(function (a, r) { return a + (r.rate || 0); }, 0) / revs.length * 10) / 10 : 0;
-      var headRate = isDemoRevs ? revAvg : p.rate;
       var src = p.img;
       var hasAtlas = !!(C.thumb && C.thumb(p.id));
       var views = [{ t: 'img' }];
@@ -548,13 +553,16 @@
       }).join('') + '</div></div>';
       var key = [];
       if (p.res) key.push(['Ресурс', fmt(p.res) + ' страниц']);
-      if (p.color) key.push(['Цвет', p.color]);
+      if (p.color) key.push(['Цвет', C.colorTitle(p.color)]);
       if (p.chip !== null) key.push(['Чип', p.chip ? 'Есть' : 'Нет']);
       if (p.type) key.push(['Тип', p.type]);
       /* «Оригинальный аналог» у импортированного товара берётся из
          OriginalNumber поставщика, а не собирается из бренда и артикула:
          собранная строка была бы догадкой. */
-      if (d.originalNumber) key.push(['Оригинальный аналог', d.originalNumber]);
+      /* Совпадение с собственным артикулом — не «аналог»: у VTT
+         OriginalNumber часто повторяет NameAlias, и строка «Оригинальный
+         аналог: HB-TK-8115C» сообщала бы, что товар аналог самого себя. */
+      if (d.originalNumber && d.originalNumber !== p.code) key.push(['Оригинальный аналог', d.originalNumber]);
       else if (p.src !== 'vtt' && p.code && p.type !== 'Тонер') {
         key.push(['Оригинальный аналог', C.brandName(p.brand) + ' ' + p.code.replace(/^HB-/i, '')]);
       }
@@ -565,7 +573,9 @@
       var compatChips = d.models.map(function (m) {
         return '<a class="chip" href="' + link.printer(printerKey(p.brand, m)) + '">' + esc(C.brandName(p.brand) + ' ' + m) + '</a>';
       }).join('');
-      var tabs = [['desc', 'Описание'], ['specs', 'Характеристики'], ['reviews', 'Отзывы <i>' + p.reviews + '</i>'], ['delivery', 'Доставка и оплата']];
+      var tabs = [['desc', 'Описание'], ['specs', 'Характеристики'],
+        ['reviews', 'Отзывы' + (p.reviews > 0 ? ' <i>' + p.reviews + '</i>' : '')],
+        ['delivery', 'Доставка и оплата']];
       var allSpecs = d.specs || [];
       var srow = function (x) { return '<div class="sr"><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b></div>'; };
       var specRows = allSpecs.map(srow).join('');
@@ -587,12 +597,34 @@
       return '<div class="wrap"><div class="ph1 pph">' + crumbs([['Главная', link.home()], [C.catName(p.cat), link.catalog(p.cat)], [C.brandName(p.brand), link.catalog(p.cat, p.brand)], [p.code, '']]) + '</div>' +
         '<div class="pgrid"><header class="phead">' +
         '<h1>' + esc(p.name) + '</h1>' +
-        '<div class="pmeta"><span class="rate">' + stars(p.rate, 16) + '<b>' + ratef(p.rate) + '</b><a href="#" data-tab-link="reviews">' + p.reviews + ' ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</a></span><span>Артикул: <b>' + esc(p.code) + '</b></span><span>Код товара: <b>' + (100000 + hash(p.id) % 900000) + '</b></span>' + badge(p) + '</div></header>' +
+        '<div class="pmeta">' +
+        (p.reviews > 0
+          ? '<span class="rate">' + stars(p.rate, 16) + '<b>' + ratef(p.rate) + '</b><a href="' + link.product(p, { tab: 'reviews' }) + '" data-tab-link="reviews">' + p.reviews + ' ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</a></span>'
+          /* Ссылка ведёт на вкладку отзывов настоящим адресом, а не
+             «#»: она работает и с клавиатуры, и после обновления
+             страницы, и в новой вкладке. */
+          : '<span class="rate rate-none"><a href="' + link.product(p, { tab: 'reviews' }) + '" data-tab-link="reviews">Пока нет отзывов</a></span>') +
+        '<span>Артикул: <b>' + esc(p.code) + '</b></span><span>Код товара: <b>' + (100000 + hash(p.id) % 900000) + '</b></span>' + badge(p) + '</div></header>' +
         '<div class="gallery"><div class="gmain' + (hasAtlas ? ' has-atlas' : '') + '" id="gmain" data-src="' + (hasAtlas ? '' : src) + '">' + imgHtml(p, { alt: p.name, eager: true, view: 'img', cls: hasAtlas ? 'g-atlas-img' : '' }) + (hasAtlas ? '' : '<div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>') + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span>' + (hasAtlas ? '' : '<span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span>') + '</div><div class="thumbs">' + thumbs + '</div></div>' +
         '<div class="pinfo"><div class="keyspecs"><h3>Коротко о товаре</h3>' + key.map(function (k) { return '<div class="krow"><span>' + esc(k[0]) + '</span><b>' + esc(k[1]) + '</b></div>'; }).join('') + '</div>' +
         (compatChips ? '<div class="compat"><h3>Подходит для принтеров ' + brandLogo(p.brand, 18, '') + '</h3><div class="tags">' + compatChips + '</div></div>' : '') +
-        '<a class="allspecs" href="#" data-spec-jump>Все характеристики ' + ic('chev-down', 16) + '</a></div>' +
-        '<div class="buy"><div class="prow">' + priceBlock(p) + '<span class="per">за 1 шт.</span></div>' +
+        /*
+          Ссылка на характеристики.
+
+          Раньше она вела на «#» и открывала… вкладку «Описание»,
+          дораскрывая в ней короткий список. Человек нажимал «Все
+          характеристики» и оставался с описанием — ровно то, чего не
+          просил. Теперь это настоящий адрес карточки с ?tab=specs:
+          он открывает вкладку «Характеристики», переживает обновление
+          страницы, работает с клавиатуры и в новой вкладке, а без
+          скрипта просто загружает ту же страницу уже на нужной вкладке.
+        */
+        '<a class="allspecs" href="' + link.product(p, { tab: 'specs' }) + '" data-spec-jump>Все характеристики ' + ic('chev-down', 16) + '</a></div>' +
+        /* Выбор цвета стоит первым в колонке покупки: цвет выбирают
+           раньше количества, а на телефоне колонки складываются так, что
+           этот блок оказывается сразу под фотографией — до цены и до
+           кнопки, а не после них. */
+        '<div class="buy">' + colorPicker(fam, p) + '<div class="prow">' + priceBlock(p) + '<span class="per">за 1 шт.</span></div>' +
         (p.old && p.old > p.price ? '<div class="saveline">' + ic('percent', 16) + 'Скидка ' + fmt(p.old - p.price) + ' ₽ от прежней цены</div>' : '') +
         (p.stock ? '<div class="avail"><i></i>В наличии на складе в Москве</div><div class="stock">Дату отгрузки подтверждает менеджер</div>' : '<div class="avail out"><i></i>Под заказ</div><div class="stock">Привезём со склада поставщика за 3–5 дней</div>') +
         (noPrice(p)
@@ -616,48 +648,85 @@
               '</div>' + (maxOn() ? ic('external', 16, 'ic ext') : ''))
           : '<a class="ask" href="' + link.page('contacts') + '">' + ic('chat', 22) + '<div><b>Задать вопрос о товаре</b><span>Ответим в чате или по телефону</span></div></a>') + '</div></div>' +
         kitBlock(fam, p) +
-        '<div class="tabs" id="ptabs">' + tabs.map(function (t) { return '<button type="button" class="' + (tab === t[0] ? 'on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+        /* Роли вкладок проставлены явно: по ним экранный диктор
+           объявляет, какая панель открыта, а `aria-controls` связывает
+           кнопку с её содержимым. */
+        '<div class="tabs" id="ptabs" role="tablist">' + tabs.map(function (t) {
+          return '<button type="button" role="tab" id="tab-' + t[0] + '" aria-controls="panel-' + t[0] + '"' +
+            ' aria-selected="' + (tab === t[0] ? 'true' : 'false') + '" class="' + (tab === t[0] ? 'on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>';
+        }).join('') + '</div>' +
         '<div class="tabbody">' +
-        '<div data-panel="desc"' + (tab !== 'desc' ? ' hidden' : '') + ' class="desc-grid"><div class="desc">' + d.desc + '</div><div class="spec-t"><div class="sh">Основные характеристики</div>' + specShort + specMore + '</div></div>' +
-        '<div data-panel="specs"' + (tab !== 'specs' ? ' hidden' : '') + '><div class="spec-t spec-full"><div class="sh">Характеристики</div>' + specRows + '</div></div>' +
-        '<div data-panel="reviews"' + (tab !== 'reviews' ? ' hidden' : '') + ' id="reviews">' +
-        /* У импортированного товара настоящих отзывов ещё нет. Блок
-           показывается целиком — вёрстку надо согласовать, — но над ним
-           стоит плашка, которая снимает любые сомнения в происхождении
-           записей. */
-        (isDemoRevs
-          ? '<div class="demo-note">' + ic('info', 18) +
-            '<div><b>ДЕМО / тестовые данные.</b> Это проверочные записи для согласования вёрстки: ' +
-            'они собраны из фактических полей выгрузки поставщика и не являются отзывами покупателей. ' +
-            'В рейтинг товара, в микроразметку и в карту сайта они не попадают.</div></div>'
-          : '') +
-        '<div class="rev-grid"><div class="rev-sum' + (isDemoRevs ? ' rev-sum-demo' : '') + '"><div class="big"><b>' + ratef(headRate) + '</b><span>из 5' + (isDemoRevs ? ' · ДЕМО' : '') + '</span></div>' + stars(headRate, 20) + '<div class="cnt">' + (isDemoRevs
-          /* Демо-записи не отзывы, поэтому и счётчик, и доля рекомендаций
-             показывают ровно то, что есть: отзывов нет. */
-          ? '0 отзывов · ' + revs.length + ' демонстрационных ' + plural(revs.length, 'запись', 'записи', 'записей')
-          : revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + ' · ' + Math.round(80 + p.rate * 3) + '% рекомендуют') + '</div><div class="bars"><div><span>5</span><i style="--w:' + Math.round(sum5 / revs.length * 100) + '%"></i><span>' + sum5 + '</span></div><div><span>4</span><i style="--w:' + Math.round(sum4 / revs.length * 100) + '%"></i><span>' + sum4 + '</span></div><div><span>3</span><i style="--w:0%"></i><span>0</span></div><div><span>2</span><i style="--w:0%"></i><span>0</span></div><div><span>1</span><i style="--w:0%"></i><span>0</span></div></div><button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button><div class="note">' + (isDemoRevs ? 'Оценка 5 из 5 стоит у самих демонстрационных записей. Рейтинг товара — 0,0: настоящих отзывов на импортированном товаре ещё нет.' : 'Отзывы в прототипе — примеры: они собраны при сборке каталога и одинаковы при каждом заходе.') + '</div></div>' +
+        '<div data-panel="desc" id="panel-desc" role="tabpanel" aria-labelledby="tab-desc"' + (tab !== 'desc' ? ' hidden' : '') + ' class="desc-grid"><div class="desc">' + d.desc + '</div><div class="spec-t"><div class="sh">Основные характеристики</div>' + specShort + specMore + '</div></div>' +
+        '<div data-panel="specs" id="panel-specs" role="tabpanel" aria-labelledby="tab-specs"' + (tab !== 'specs' ? ' hidden' : '') + '><div class="spec-t spec-full"><div class="sh">Характеристики</div>' + specRows + '</div></div>' +
+        /*
+          Отзывы.
+
+          Их может не быть — и это нормальное состояние карточки, а не
+          дырка, которую надо чем-то закрыть. Раньше здесь показывались
+          записи, собранные сборщиком из десяти заготовок: имя, город,
+          «покупка подтверждена», «отзыв полезен?». Покупателя это
+          обманывало дважды — и текстом, и звёздами, которые шли в
+          рейтинг и в микроразметку.
+
+          Теперь правило простое: показывается только то, что пришло от
+          настоящих людей и прошло модерацию. Нет таких записей — так и
+          написано. «Покупка подтверждена» ставится исключительно там,
+          где источник это подтвердил (rv.verified), а не всем подряд.
+        */
+        '<div data-panel="reviews" id="panel-reviews" role="tabpanel" aria-labelledby="tab-reviews"' + (tab !== 'reviews' ? ' hidden' : '') + '>' +
+        '<div class="rev-grid">' +
+        (revs.length
+          ? '<div class="rev-sum"><div class="big"><b>' + ratef(revAvg) + '</b><span>из 5</span></div>' + stars(revAvg, 20) +
+            '<div class="cnt">' + revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + '</div>' +
+            '<div class="bars">' + [5, 4, 3, 2, 1].map(function (n) {
+              var c = revs.filter(function (r) { return Math.round(r.rate) === n; }).length;
+              return '<div><span>' + n + '</span><i style="--w:' + Math.round(c / revs.length * 100) + '%"></i><span>' + c + '</span></div>';
+            }).join('') + '</div>' +
+            '<button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button></div>'
+          : '<div class="rev-sum rev-sum-empty"><div class="rev-none">' + ic('chat', 28) +
+            '<b>Пока нет отзывов</b>' +
+            '<span>Этот товар ещё никто не оценил. Оценки и звёзды появятся, ' +
+            'когда придёт первый отзыв и его проверит модератор.</span></div>' +
+            '<button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать первым</button></div>') +
         '<div class="rev-list">' + revs.map(function (rv) {
-          /* Демонстрационная запись не имеет права выглядеть как отзыв
-             покупателя: у неё нет «покупка подтверждена» и нет блока
-             «полезен ли отзыв», зато есть явная плашка ДЕМО. Оценка у
-             неё показывается — с той же пометкой, — потому что вёрстку
-             строки со звёздами тоже надо согласовать. */
-          if (rv.demo) {
-            /* Постоянные части записи в каталоге не хранятся: они
-               одинаковы у всех демо-записей всех товаров и подставляются
-               здесь. В данных лежит только номер, оценка, текст и ответ. */
-            var dname = rv.name || ('Демонстрационная запись №' + (rv.n || 1));
-            var dreply = typeof rv.reply === 'string' ? rv.reply : (rv.reply && rv.reply.text);
-            return '<article class="rev rev-demo"><div class="rh"><div class="who"><span class="ava ava-demo">Д</span><div><b>' + esc(dname) + '</b><span class="demo-tag">ДЕМО / тестовые данные</span></div></div>' +
-              (rv.rate ? '<div class="rt rt-demo">' + stars(rv.rate) + '<span>' + ratef(rv.rate) + ' из 5 · демо-оценка, в рейтинг товара не идёт</span></div>' : '') + '</div>' +
-              '<p>' + esc(rv.text) + '</p>' +
-              (dreply ? '<div class="rreply"><b>ДЕМО / тестовые данные</b><p>' + esc(dreply) + '</p></div>' : '') +
-              '</article>';
-          }
-          return '<article class="rev"><div class="rh"><div class="who"><span class="ava">' + esc(rv.name[0]) + '</span><div><b>' + esc(rv.name) + '</b><span>' + esc(rv.city) + ' · <span class="ver">' + ic('check', 12) + 'Покупка подтверждена</span></span></div></div><span class="date">' + rv.date + '</span></div><div class="rt">' + stars(rv.rate) + '<span>Принтер: ' + esc(rv.printer) + '</span></div><p>' + esc(rv.text) + '</p><div class="pm"><div><b>Достоинства</b>' + esc(rv.plus) + '</div><div><b>Недостатки</b>' + esc(rv.minus) + '</div></div><div class="useful">Отзыв полезен?<button type="button" data-useful>' + ic('check', 14) + 'Да · ' + (rv.useful || 3) + '</button><button type="button">Нет · 0</button></div></article>';
+          var name = rv.name || 'Покупатель';
+          return '<article class="rev"><div class="rh"><div class="who"><span class="ava">' + esc(name.slice(0, 1)) + '</span><div><b>' + esc(name) + '</b><span>' +
+            (rv.city ? esc(rv.city) : '') +
+            /* Подтверждение покупки — факт из источника, а не оформление.
+               Без подтверждения отметки нет вовсе. */
+            (rv.verified ? (rv.city ? ' · ' : '') + '<span class="ver">' + ic('check', 12) + 'Покупка подтверждена</span>' : '') +
+            '</span></div></div>' + (rv.date ? '<span class="date">' + esc(rv.date) + '</span>' : '') + '</div>' +
+            (rv.rate ? '<div class="rt">' + stars(rv.rate) + (rv.printer ? '<span>Принтер: ' + esc(rv.printer) + '</span>' : '') + '</div>' : '') +
+            '<p>' + esc(rv.text || '') + '</p>' +
+            (rv.plus || rv.minus ? '<div class="pm">' + (rv.plus ? '<div><b>Достоинства</b>' + esc(rv.plus) + '</div>' : '') + (rv.minus ? '<div><b>Недостатки</b>' + esc(rv.minus) + '</div>' : '') + '</div>' : '') +
+            (rv.reply ? '<div class="rreply"><b>Ответ магазина</b><p>' + esc(typeof rv.reply === 'string' ? rv.reply : rv.reply.text) + '</p></div>' : '') +
+            '</article>';
         }).join('') +
-        '<form class="rev-form" id="rev-form"><h3>Оставить отзыв</h3><p>Расскажите, как расходник работает на вашем принтере — это поможет другим покупателям.</p><div class="frate">Оценка ' + stars(5, 24) + '</div><div class="row"><div class="field"><input type="text" placeholder="Ваше имя" required></div><div class="field"><input type="text" placeholder="Модель принтера"></div></div><textarea placeholder="Достоинства, недостатки, впечатления от печати" required></textarea><div class="fbtn"><button class="btn btn-y" type="submit">Отправить отзыв</button><span>Отзыв появится после проверки модератором. Ваш email не публикуется.</span></div></form></div></div></div>' +
-        '<div data-panel="delivery"' + (tab !== 'delivery' ? ' hidden' : '') + '><div class="desc" style="max-width:820px">' + C.site.pageText.delivery_short + '</div></div>' +
+        /*
+          Форма отзыва отправляет данные на сервер (POST /api/review) и
+          сообщает ровно то, что произошло. Раньше она писала «Спасибо»
+          сразу по нажатию, не отправив ничего и ничего не сохранив, —
+          отзыв исчезал, а человек был уверен, что он опубликован.
+
+          В превью сервера нет вовсе, и форма об этом честно скажет
+          после первой же попытки отправки, а не сделает вид, что всё
+          получилось.
+        */
+        '<form class="rev-form" id="rev-form" data-rev-form="' + esc(p.id) + '" novalidate>' +
+        '<h3>Оставить отзыв</h3>' +
+        '<p>Расскажите, как расходник работает на вашем принтере — это поможет другим покупателям.</p>' +
+        '<div class="frate" role="radiogroup" aria-label="Оценка">Оценка ' +
+        [1, 2, 3, 4, 5].map(function (n) {
+          return '<label class="fstar"><input type="radio" name="rate" value="' + n + '"' + (n === 5 ? ' checked' : '') + '><span>' + n + '</span></label>';
+        }).join('') + '</div>' +
+        '<div class="row"><div class="field"><input type="text" name="name" maxlength="80" placeholder="Ваше имя" required></div>' +
+        '<div class="field"><input type="text" name="printer" maxlength="80" placeholder="Модель принтера"></div></div>' +
+        '<textarea name="text" maxlength="2000" placeholder="Достоинства, недостатки, впечатления от печати" required></textarea>' +
+        '<div class="fbtn"><button class="btn btn-y" type="submit">Отправить отзыв</button>' +
+        '<span>Отзыв появится после проверки модератором. Ваш email не публикуется.</span></div>' +
+        '<div class="rev-msg" id="rev-msg" role="status" aria-live="polite" hidden></div>' +
+        '</form></div></div>' +
+        '<div data-panel="delivery" id="panel-delivery" role="tabpanel" aria-labelledby="tab-delivery"' + (tab !== 'delivery' ? ' hidden' : '') + '><div class="desc" style="max-width:820px">' + C.site.pageText.delivery_short + '</div></div>' +
         '</div>' +
         /* Счёт юрлицам вынесен из правой колонки: там он тонул среди мелких
            плашек, а компаниям это первое, что нужно увидеть. */
@@ -706,6 +775,44 @@
     прямо написано: молча добавить неполный комплект — худшее, что можно
     сделать с таким заказом.
   */
+  /*
+    Выбор цвета.
+
+    Цвета одной серии — это не «похожие товары», а четыре кнопки одного
+    выбора: покупатель пришёл за картриджем к своему аппарату и должен
+    сразу видеть, какие цвета есть, сколько каждый стоит и есть ли он на
+    складе. Раньше выбора на карточке не было вовсе: сборщик разводил
+    цвета одной серии по разным семействам из-за разного ресурса —
+    у чёрного 12 000 страниц, у цветных 6 000.
+
+    Каждый вариант — настоящая ссылка на свою карточку, со своей ценой,
+    своим остатком и своим фото. Выбранный помечен и классом, и
+    `aria-current`: подсветка без разметки существует только для
+    зрячего пользователя мыши.
+
+    Подпись берётся из семейства: там цвет уже назван по-русски, а при
+    двух одинаковых цветах в серии к названию добавлено то, чем они
+    различаются, — ресурс, объём или артикул.
+  */
+  function colorPicker(fam, current) {
+    if (!fam || !fam.items || fam.items.length < 2) return '';
+    var labels = fam.colors || [];
+    var here = fam.items.map(function (x) { return x.id; }).indexOf(current.id);
+    var title = here >= 0 ? (labels[here] || current.color) : (current.color || '');
+    return '<section class="cpick"><h3 id="cpick-h">Цвет' + (title ? ': <b>' + esc(title) + '</b>' : '') + '</h3>' +
+      '<div class="cpick-l" role="list" aria-labelledby="cpick-h">' + fam.items.map(function (x, i) {
+        var on = x.id === current.id;
+        return '<a class="cpick-i' + (on ? ' on' : '') + (x.stock ? '' : ' out') + '" role="listitem"' +
+          ' href="' + link.product(x) + '"' + (on ? ' aria-current="page"' : '') +
+          ' title="' + esc((labels[i] || x.color || '') + ' · ' + x.code) + '">' +
+          '<span class="cpick-img">' + imgHtml(x, { alt: '' }) + '</span>' +
+          '<span class="cpick-t"><b>' + esc(labels[i] || x.color || 'Цвет') + '</b><span>' + esc(x.code) + '</span></span>' +
+          '<span class="cpick-p">' + (x.price > 0 ? fmt(x.price) + ' ₽' : 'по запросу') + '</span>' +
+          '<span class="cpick-s' + (x.stock ? '' : ' out') + '"><i></i>' + (x.stock ? 'В наличии' : 'Под заказ') + '</span>' +
+          '</a>';
+      }).join('') + '</div></section>';
+  }
+
   function kitBlock(fam, current) {
     if (!fam || fam.items.length < 2) return '';
     var inStock = fam.items.filter(function (x) { return x.stock; });
@@ -865,7 +972,7 @@
       ['Цена', function (p) { return '<b class="price" style="font-size:18px">' + fmt(p.price) + ' ₽</b>'; }],
       ['Бренд принтера', function (p) { return brandLogo(p.brand, 16, ''); }],
       ['Ресурс', function (p) { return p.res ? fmt(p.res) + ' стр.' : '—'; }],
-      ['Цвет', function (p) { return p.color || '—'; }],
+      ['Цвет', function (p) { return C.colorTitle(p.color) || '—'; }],
       ['Чип', function (p) { return p.chip === true ? 'Есть' : (p.chip === false ? 'Нет' : '—'); }],
       ['Тип', function (p) { return p.type; }],
       ['Рейтинг', function (p) { return stars(p.rate) + ' ' + ratef(p.rate) + ' · ' + p.reviews; }],
@@ -1171,9 +1278,42 @@
   });
 
   /* --------------------------------------------------------- действия */
-  function showTab(name) {
-    document.querySelectorAll('#ptabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
+  /*
+    Переключение вкладки карточки.
+
+    Вкладка попадает в адрес (?tab=…) — тем же параметром, который читает
+    маршрутизатор при отрисовке. Поэтому обновление страницы, «назад» из
+    другой карточки и ссылка, отправленная коллеге, открывают ту же
+    вкладку, что была. Адрес меняется через replaceState: перерисовывать
+    страницу ради переключения вкладки незачем, а в режиме адресов после
+    решётки (превью, файл «всё в одном») replaceState ещё и не вызывает
+    hashchange, то есть не роняет позицию прокрутки.
+  */
+  function showTab(name, opts) {
+    var tabs = document.querySelectorAll('#ptabs button');
+    if (!tabs.length) return false;
+    var known = false;
+    tabs.forEach(function (b) {
+      var on = b.dataset.tab === name;
+      if (on) known = true;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    if (!known) return false;
     document.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.dataset.panel !== name; });
+    if (!opts || opts.sync !== false) {
+      /* Адрес — вещь необязательная для показа вкладки: если история
+         недоступна (песочница, file://), вкладка всё равно открывается. */
+      try { history.replaceState({}, '', withQuery({ tab: name === 'desc' ? '' : name })); } catch (e) { }
+    }
+    return true;
+  }
+
+  /* Прокрутка к открытой панели: с учётом липкой шапки и настройки
+     «меньше движения». */
+  function scrollToTabs() {
+    var el = document.getElementById('ptabs');
+    if (el) el.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' });
   }
   /* Живой поиск по таблице совместимости и переход к нужному бренду. */
   document.addEventListener('input', function (e) {
@@ -1305,20 +1445,25 @@
     t = e.target.closest('[data-tab]');
     if (t) { showTab(t.dataset.tab); return; }
     t = e.target.closest('[data-tab-link]');
-    if (t) { e.preventDefault(); showTab(t.dataset.tabLink); document.getElementById('ptabs').scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+    if (t) { e.preventDefault(); showTab(t.dataset.tabLink); scrollToTabs(); return; }
     t = e.target.closest('[data-spec-jump]');
     if (t) {
-      e.preventDefault();
-      showTab('desc');
-      var st = app.querySelector('.desc-grid .spec-t'), mb = st && st.querySelector('[data-spec-more]');
-      if (mb && mb.getAttribute('aria-expanded') !== 'true') mb.click();
-      if (st) st.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' });
+      /*
+        «Все характеристики» открывает вкладку характеристик и
+        прокручивает к ней. Раньше здесь стоял showTab('desc'), и после
+        нажатия человек оставался на описании — кнопка вкладки при этом
+        работала, из-за чего дефект и выглядел необъяснимым.
+
+        Если вкладку переключить не удалось (вёрстка карточки ещё не
+        отрисована), preventDefault не делается: тогда сработает обычный
+        переход по адресу ?tab=specs, и характеристики всё равно
+        откроются.
+      */
+      if (showTab('specs')) { e.preventDefault(); scrollToTabs(); }
       return;
     }
     t = e.target.closest('[data-scroll]');
     if (t) { var el = document.querySelector(t.dataset.scroll); if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
-    t = e.target.closest('[data-more-rev]');
-    if (t) { e.preventDefault(); showToast('В прототипе показаны три примера отзывов'); return; }
     t = e.target.closest('[data-useful]');
     if (t) { t.classList.add('on'); t.innerHTML = ic('check', 14) + 'Спасибо!'; return; }
     t = e.target.closest('[data-open-f]');
@@ -1487,7 +1632,72 @@
         });
       return;
     }
-    if (f.id === 'rev-form') { e.preventDefault(); f.innerHTML = '<h3>Спасибо за отзыв!</h3><p>Он появится на странице после проверки модератором.</p>'; return; }
+    /*
+      Отзыв.
+
+      Раньше эта строка просто заменяла форму на «Спасибо за отзыв!» —
+      не отправив ничего и нигде ничего не сохранив. Человек уходил
+      уверенным, что отзыв написан, а его не существовало.
+
+      Теперь форма делает ровно то, о чём сообщает:
+        • проверяет, что есть имя и текст, и что текст не в два слова;
+        • блокирует кнопку на время отправки и запоминает отправленное,
+          чтобы повторное нажатие не создало второй такой же отзыв;
+        • отправляет POST /api/review, где сервер кладёт запись в
+          очередь модерации со статусом pending;
+        • сообщает именно то, что произошло: отправлено на проверку —
+          не «опубликовано»;
+        • а там, где сервера нет (превью, файл «всё в одном»), честно
+          говорит, что отправлять некуда, вместо ложного «Спасибо».
+    */
+    if (f.id === 'rev-form') {
+      e.preventDefault();
+      var rmsg = f.querySelector('#rev-msg');
+      var say = function (kind, text) {
+        if (!rmsg) return;
+        rmsg.hidden = false;
+        rmsg.className = 'rev-msg rev-msg-' + kind;
+        rmsg.textContent = text;
+      };
+      var rname = (f.elements.name.value || '').trim();
+      var rtext = (f.elements.text.value || '').trim();
+      if (!rname) { say('bad', 'Укажите имя — без него отзыв не принимаем.'); f.elements.name.focus(); return; }
+      if (rtext.length < 20) { say('bad', 'Напишите хотя бы пару предложений: по двум словам другому покупателю не понять, подошёл расходник или нет.'); f.elements.text.focus(); return; }
+
+      /* Повторную отправку того же текста на тот же товар не делаем:
+         дрогнувшая рука не должна превращаться в два одинаковых отзыва
+         в очереди модерации. */
+      var rkey = 'hb-rev:' + f.dataset.revForm + ':' + rtext.length + ':' + rtext.slice(0, 40);
+      try { if (sessionStorage.getItem(rkey)) { say('ok', 'Этот отзыв уже отправлен на проверку.'); return; } } catch (err) { }
+
+      var rbtn = f.querySelector('button[type=submit]'), rwas = rbtn.innerHTML;
+      rbtn.disabled = true; rbtn.textContent = 'Отправляем…';
+      var rated = f.querySelector('input[name=rate]:checked');
+      var rbody = {
+        product: f.dataset.revForm,
+        name: rname,
+        rate: rated ? Number(rated.value) : null,
+        printer: (f.elements.printer.value || '').trim(),
+        text: rtext,
+      };
+      (OFFLINE
+        ? Promise.reject(new Error('offline'))
+        : fetch('/api/review', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rbody),
+        }).then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); }))
+        .then(function () {
+          try { sessionStorage.setItem(rkey, '1'); } catch (err) { }
+          f.reset();
+          say('ok', 'Отзыв отправлен на проверку. Он появится на странице после модерации — обычно в течение рабочего дня.');
+        })
+        .catch(function (err) {
+          say('bad', String(err && err.message) === 'offline'
+            ? 'Это превью — статические страницы без сервера, отправлять отзыв некуда. Ничего не отправлено и нигде не сохранено. На рабочем сайте эта же форма отправляет отзыв на модерацию.'
+            : 'Не удалось отправить отзыв: сервер не принял запрос. Ничего не сохранено — попробуйте ещё раз позже.');
+        })
+        .then(function () { rbtn.disabled = false; rbtn.innerHTML = rwas; });
+      return;
+    }
     if (f.id === 'login-form') { e.preventDefault(); showToast('В прототипе вход не выполняется'); return; }
   });
   function finishOrder(d, number, offline) {

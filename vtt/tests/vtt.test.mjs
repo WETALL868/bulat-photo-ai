@@ -1383,3 +1383,200 @@ test('фильтр марок прописан в конфигурации, а �
   assert.ok(!f.brandFallback.nameMarks.includes('Content'), 'Content не должен спасать по названию');
   assert.ok(f.brandFallback.nameMarks.includes('Hi-Black'));
 });
+
+/* ===================================================================== */
+/*  Повреждённая упаковка, ресурс, цвета, серии и описания               */
+/* ===================================================================== */
+
+test('повреждённая упаковка распознаётся по всем трём пометкам поставщика', async () => {
+  const { isDamagedPackage } = await import('../src/normalize.mjs');
+  assert.ok(isDamagedPackage({ description: 'Поврежденная упаковка' }), 'Description');
+  assert.ok(isDamagedPackage({ description: 'Повреждённая упаковка' }), 'Description с ё');
+  assert.ok(isDamagedPackage({ compatibility: 'Поврежденная упаковка' }), 'Compatibility');
+  assert.ok(isDamagedPackage({ name: 'Тонер-картридж ... , C, 6K (Повр. упак.)' }), 'Повр. упак.');
+  assert.ok(isDamagedPackage({ name: 'Тонер-картридж ... , Bk,12K, ПУ' }), 'ПУ');
+  assert.ok(isDamagedPackage({ name: 'Картридж ..., П/У' }), 'П/У');
+
+  /* А это не повреждённая упаковка, и путать нельзя. */
+  assert.ok(!isDamagedPackage({ name: 'Тонер-картридж Hi-Black (HB-TK-8115C) для Kyocera, C, 6K' }));
+  assert.ok(!isDamagedPackage({ description: 'Уцененный товар' }));
+  assert.ok(!isDamagedPackage({ name: 'Пурпурный картридж' }), '«пу» внутри слова не пометка');
+  assert.ok(!isDamagedPackage({}));
+});
+
+test('повреждённая упаковка не доходит до витрины, но остаётся в сторе', async () => {
+  const { publish, matchesFilter } = await import('../src/publish.mjs');
+  const { store } = tmpStore();
+  const base = { Brand: 'Hi-Black', Vendor: 'Kyocera-Mita', Group: 'Тонер-картриджи', RootGroup: 'Картриджи для лазерной печати', PriceLocal: '1273.77' };
+  const rows = [
+    { ...base, Id: '4100603160', Name: 'Тонер-картридж Hi-Black (HB-TK-8115BK) для Kyocera Ecosys M8124cidn/M8130cidn, Bk,12K', NameAlias: 'HB-TK-8115BK', ColorName: 'Bk', ItemLifeTime: '12K' },
+    { ...base, Id: '4100603161', Name: 'Тонер-картридж Hi-Black (HB-TK-8115C) для Kyocera Ecosys M8124cidn/M8130cidn, C, 6K', NameAlias: 'HB-TK-8115C', ColorName: 'C', ItemLifeTime: '6K' },
+    { ...base, Id: '4100603160p', Name: 'Тонер-картридж Hi-Black (HB-TK-8115BK) для Kyocera Ecosys M8124cidn/M8130cidn, Bk,12K, ПУ', NameAlias: 'HB-TK-8115BK', ColorName: 'Bk', ItemLifeTime: '12K', Description: 'Поврежденная упаковка' },
+    { ...base, Id: '4100603161p', Name: 'Тонер-картридж Hi-Black (HB-TK-8115C) для Kyocera Ecosys M8124cidn/M8130cidn, C, 6K (Повр. упак.)', NameAlias: 'HB-TK-8115C', ItemLifeTime: '6K', Description: 'Поврежденная упаковка' },
+  ];
+  store.upsertItems(rows.map((r) => normalizeItem(r)), {});
+
+  const res = publish(store, { filter: OWN_FILTER });
+  assert.deepEqual(res.products.map((p) => p.vttId).sort(), ['4100603160', '4100603161'],
+    'позиции с повреждённой упаковкой попали на витрину');
+  assert.equal(res.report.damagedPackage, 2, 'отсев по упаковке не попал в отчёт отдельной строкой');
+  assert.equal(store.loadAll().size, 4, 'из стора удалять нельзя — это выгрузка поставщика');
+
+  /* Ни адреса, ни артикула такой позиции на витрине быть не должно. */
+  const blob = JSON.stringify(res.products);
+  assert.ok(!blob.includes('4100603160p') && !blob.includes('4100603161p'));
+  assert.ok(!/Повр\.?\s*упак|Поврежденная/i.test(blob));
+
+  /* Выключить отсев можно явно — для анализа, но не для витрины. */
+  const all = [...store.loadAll().values()].filter((i) => matchesFilter(i, { ...OWN_FILTER, excludeDamagedPackage: false }));
+  assert.equal(all.length, 4);
+});
+
+test('ресурс читается из ItemLifeTime, объём чернил ресурсом не притворяется', async () => {
+  const { resourcePages, volumeMl } = await import('../src/normalize.mjs');
+  assert.equal(resourcePages('6K'), 6000);
+  assert.equal(resourcePages('12K'), 12000);
+  assert.equal(resourcePages('2,5K'), 2500);
+  assert.equal(resourcePages('1,52К'), 1520, 'кириллическая К — тоже тысячи');
+  assert.equal(resourcePages('300000'), 300000);
+  assert.equal(resourcePages('600'), 600);
+  assert.equal(resourcePages('100мл'), undefined, 'объём не ресурс');
+  assert.equal(resourcePages(''), undefined);
+  assert.equal(resourcePages('чепуха'), undefined, 'непонятную строку ресурсом не объявляем');
+  assert.equal(volumeMl('100мл'), 100);
+  assert.equal(volumeMl('14,4 мл'), 14.4);
+  assert.equal(volumeMl('6K'), undefined);
+
+  const item = normalizeItem({ Id: '1', Name: 'Тонер-картридж', NameAlias: 'HB-1', PriceLocal: '10', ItemLifeTime: '6K' });
+  assert.equal(item.resource, 6000);
+  assert.equal(item.lifeTime, '6K', 'исходная строка поставщика обязана сохраниться');
+  assert.ok(!item.missing.includes('resource'));
+});
+
+test('цвет: код переводится в название, кириллическая С не теряется', async () => {
+  const { colorTitle, colorPhrase, colorLabel, colorRank, colorKey } = await import('../src/colors.mjs');
+  assert.equal(colorTitle('Bk'), 'Чёрный (Bk)');
+  assert.equal(colorTitle('C'), 'Голубой (C)');
+  assert.equal(colorTitle('С'), 'Голубой (С)', 'русская С в поле цвета встречается в выгрузке');
+  assert.equal(colorTitle('4-COL'), 'Четыре цвета (4-COL)');
+  assert.equal(colorTitle('Чёрный'), 'Чёрный', 'название не дублируется само собой');
+  assert.equal(colorTitle('ZZZ'), 'ZZZ', 'незнакомый код остаётся как есть, а не выдумывается');
+  assert.equal(colorTitle(''), '');
+  assert.equal(colorPhrase('C'), 'голубой (C)', 'строчным становится только название, не код');
+  assert.equal(colorLabel('м'), null);
+  assert.ok(colorRank('Bk') < colorRank('C'), 'порядок — как на панели принтера');
+  assert.ok(colorRank('C') < colorRank('Y'));
+  assert.equal(colorKey('Чёрный'), 'черный');
+});
+
+test('серия по цветам: HB-TK-8115 собирается целиком и не липнет к HB-TK-8110', async () => {
+  const { famKey, seriesKey, variantLabel, FAM_MAX } = await import('../src/family.mjs');
+  const mk = (code, color, res, name) => ({
+    code, color, res, name, supplierBrand: 'Hi-Black', cat: 'laser',
+    vttCategoryId: 'g:laser:toner', type: 'Тонер-картридж', compatibleBrand: 'Kyocera-Mita',
+  });
+  const p8115 = [
+    mk('HB-TK-8115BK', 'Bk', 12000, 'Тонер-картридж Hi-Black (HB-TK-8115BK) для Kyocera Ecosys M8124cidn/M8130cidn, Bk,12K'),
+    mk('HB-TK-8115C', 'C', 6000, 'Тонер-картридж Hi-Black (HB-TK-8115C) для Kyocera Ecosys M8124cidn/M8130cidn, C, 6K'),
+    mk('HB-TK-8115M', 'M', 6000, 'Тонер-картридж Hi-Black (HB-TK-8115M) для Kyocera Ecosys M8124cidn/M8130cidn, M, 6K'),
+    mk('HB-TK-8115Y', 'Y', 6000, 'Тонер-картридж Hi-Black (HB-TK-8115Y) для Kyocera Ecosys M8124cidn/M8130cidn, Y, 6K'),
+  ];
+  const keys = new Set(p8115.map(famKey));
+  assert.equal(keys.size, 1, 'разный ресурс у чёрного и цветных не должен разводить серию');
+
+  /* Другая серия для того же аппарата — другой ключ. */
+  const p8110 = mk('HB-TK-8110BK', 'Bk', 12000, 'Тонер-картридж Hi-Black (HB-TK-8110BK) для Kyocera Ecosys M8124cidn/M8130cidn, Bk, 12K (Азия)');
+  assert.ok(!keys.has(famKey(p8110)), 'HB-TK-8110 (Азия) склеился с HB-TK-8115');
+
+  /* Чип к тонер-картриджу не липнет: другой тип и другой раздел. */
+  const chip = { ...p8115[1], type: 'Чип', vttCategoryId: 'g:chips', code: 'HB-CH-TK-8115C' };
+  assert.ok(!keys.has(famKey(chip)), 'чип попал в серию тонер-картриджей');
+
+  /* Чужая марка не липнет даже при совпадении названия. */
+  assert.ok(!keys.has(famKey({ ...p8115[1], supplierBrand: 'NetProduct' })), 'чужая марка склеилась');
+  /* И другая марка техники тоже. */
+  assert.ok(!keys.has(famKey({ ...p8115[1], compatibleBrand: 'HP' })), 'другая техника склеилась');
+
+  /* «Тип B» и «Тип C» у универсальных чернил — разные серии. */
+  const ink = (t, color) => ({ code: `HB-INK-${t}`, color, name: `Чернила Hi-Black Универсальные для Brother (Тип ${t}), ${color}, 0,1 л.`, supplierBrand: 'Hi-Black', cat: 'ink', vttCategoryId: 'g:ink', type: 'Чернила', compatibleBrand: 'Brother' });
+  assert.notEqual(famKey(ink('B', 'Bk')), famKey(ink('C', 'Bk')), '«Тип B» и «Тип C» слились');
+
+  /* Подпись варианта различает одинаковые цвета в одной серии. */
+  assert.equal(variantLabel(p8115[0], false), 'Чёрный (Bk)');
+  /* Разделитель разрядов у toLocaleString неразрывный — сравниваем с тем
+     же форматированием, а не с пробелом из редактора. */
+  const nf = (n) => Number(n).toLocaleString('ru-RU');
+  assert.equal(variantLabel(p8115[0], true), `Чёрный (Bk) · ${nf(12000)} стр.`);
+  assert.equal(variantLabel({ code: 'X', color: 'Bk', volumeMl: 100 }, true), `Чёрный (Bk) · ${nf(100)} мл`);
+  assert.equal(variantLabel({ code: 'HB-X', color: 'Bk' }, true), 'Чёрный (Bk) · HB-X');
+
+  assert.ok(seriesKey(p8115[0]).length >= 8, 'ключ серии не должен вырождаться в пустую строку');
+  assert.equal(FAM_MAX, 12);
+});
+
+test('описание собирается из фактов, не повторяется дословно и не выдумывает единицы', async () => {
+  const { buildDescription, modelsFromName } = await import('../src/publish.mjs');
+  const item = normalizeItem({
+    Id: '4100603161', Name: 'Тонер-картридж Hi-Black (HB-TK-8115C) для Kyocera Ecosys M8124cidn/M8130cidn, C, 6K',
+    Brand: 'Hi-Black', Vendor: 'Kyocera-Mita', NameAlias: 'HB-TK-8115C', OriginalNumber: 'HB-TK-8115C',
+    Group: 'Тонер-картриджи', RootGroup: 'Картриджи для лазерной печати', PriceLocal: '1273.77',
+    ColorName: 'C', ItemLifeTime: '6K', Compatibility: 'с чипом, без бункера отработки тонера',
+    Width: '0.38', Height: '0.45', Depth: '0.57', Weight: '5.00', GrossWeight: '0.80',
+    NumberInPackage: '6.00', Barcode: '4690665028417',
+  });
+  const d = buildDescription(item);
+  assert.ok(d.text.includes('HB-TK-8115C'));
+  assert.ok(d.text.includes(`${Number(6000).toLocaleString('ru-RU')} страниц`), 'ресурс из ItemLifeTime не попал в описание');
+  assert.ok(d.text.includes('голубой (C)'), 'цвет не назван по-русски');
+  assert.ok(d.text.includes('Kyocera Ecosys M8124cidn/M8130cidn'), 'совместимость из названия потеряна');
+  /*
+    Габаритов в тексте нет, и «см» тем более: единицы измерения поставщик
+    не указывает, а 0,38 × 0,45 × 0,57 см — это спичечный коробок вместо
+    коробки с шестью картриджами.
+  */
+  assert.ok(!d.text.includes(' см'), 'в описании появилась непроверенная единица измерения');
+  assert.ok(!d.text.includes('0,38'), 'габариты без единиц не место в тексте');
+  assert.ok(d.basedOn.includes('resource') && d.basedOn.includes('color'));
+  assert.ok(!d.basedOn.includes('dimensions'));
+  /* Цены и остатка в постоянном тексте нет: они меняются каждой выгрузкой. */
+  assert.ok(!d.text.includes(Number(1273).toLocaleString('ru-RU')) && !d.text.includes('₽'));
+  assert.ok(!/\b500\b/.test(d.text));
+
+  /* Соседний цвет той же серии — другой текст, а не тот же с подменённым артикулом. */
+  const other = normalizeItem({
+    Id: '4100603160', Name: 'Тонер-картридж Hi-Black (HB-TK-8115BK) для Kyocera Ecosys M8124cidn/M8130cidn, Bk,12K',
+    Brand: 'Hi-Black', Vendor: 'Kyocera-Mita', NameAlias: 'HB-TK-8115BK', Group: 'Тонер-картриджи',
+    RootGroup: 'Картриджи для лазерной печати', PriceLocal: '1401.07', ColorName: 'Bk', ItemLifeTime: '12K',
+    Barcode: '4690665028400',
+  });
+  const d2 = buildDescription(other);
+  assert.notEqual(d.text, d2.text);
+  assert.ok(!d2.text.includes('HB-TK-8115C'));
+
+  /* Осторожный разбор названия: хвост из цвета и ресурса отрезан, модели целы. */
+  assert.equal(modelsFromName('Тонер-картридж Hi-Black (HB-TK-8115C) для Kyocera Ecosys M8124cidn/M8130cidn, C, 6K'),
+    'Kyocera Ecosys M8124cidn/M8130cidn');
+  assert.equal(modelsFromName('Бумага Hi-Image A4'), '', 'без «для» ничего не выдумываем');
+});
+
+test('отзывов нет — счётчики, рейтинг и микроразметка честно пустые', async () => {
+  const { toShopProduct } = await import('../src/publish.mjs');
+  const item = normalizeItem({
+    Id: '1', Name: 'Тонер-картридж Hi-Black (HB-1) для HP, Bk, 6K', Brand: 'Hi-Black',
+    NameAlias: 'HB-1', PriceLocal: '100', Group: 'Тонер-картриджи', RootGroup: 'Картриджи для лазерной печати',
+  });
+  const p = toShopProduct(item);
+  assert.equal(p.rate, 0, 'у товара без отзывов не может быть оценки');
+  assert.equal(p.reviews, 0);
+
+  /* Генератора «отзывов покупателей» в сборщике быть не должно вовсе. */
+  const builder = fs.readFileSync(path.join(process.cwd(), 'tools/build-catalog.mjs'), 'utf8');
+  assert.ok(!builder.includes('REV_POOL'), 'вернулся генератор отзывов');
+  assert.ok(!builder.includes('REV_DATES'), 'вернулся генератор дат отзывов');
+  assert.ok(!/Покупка подтверждена/.test(builder));
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  assert.ok(!app.includes('badge-demo'), 'пометка ДЕМО вернулась на карточку');
+  assert.ok(app.includes('Пока нет отзывов'), 'нет честного пустого состояния');
+  assert.ok(app.includes("fetch('/api/review'"), 'форма отзыва снова ничего не отправляет');
+  assert.ok(/rv\.verified \?/.test(app), '«Покупка подтверждена» должна зависеть от источника');
+});

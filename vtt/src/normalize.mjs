@@ -62,6 +62,22 @@ const FIELD = {
   barcode: ['Barcode'],
   color: ['ColorName', 'Color'],
   resource: ['Resource', 'ResourcePages', 'Yield'],
+  /*
+    Ресурс у VTT лежит в `ItemLifeTime`, а не в `Resource` — поля с таким
+    именем в выгрузке нет вовсе, и из-за этого 3 273 позиции числились
+    «без ресурса». Значение строковое и в трёх видах: «6K» и «1,52К»
+    (латинская и кириллическая К — тысячи страниц), голое число
+    («300000») и объём («100мл», «14,4 мл») у чернил. Объём страницами не
+    является, поэтому разбирается отдельным полем.
+  */
+  lifeTime: ['ItemLifeTime'],
+  /* Габариты и вес одной штуки: у VTT это «Gross*», тогда как Width/
+     Height/Depth/Weight описывают транспортную упаковку из
+     NumberInPackage штук. Разные величины, и смешивать их нельзя. */
+  grossWidth: ['GrossWidth'],
+  grossHeight: ['GrossHeight'],
+  grossDepth: ['GrossDepth'],
+  grossWeight: ['GrossWeight'],
   width: ['Width'],
   height: ['Height'],
   depth: ['Depth'],
@@ -108,6 +124,62 @@ export function asCount(value) {
   const n = asNumber(value);
   if (n === undefined || n < 0) return undefined;
   return Math.floor(n);
+}
+
+/*
+  Ресурс из `ItemLifeTime`.
+
+  Разбираем только то, что написано, и ничего не достраиваем:
+    «6K», «2,5K», «1,52К»  → тысячи страниц (К бывает и кириллическая);
+    «300000», «600»        → страницы как есть;
+    «100мл», «14,4 мл»     → это объём, а не ресурс — см. volumeOf.
+  Всё остальное (а таких значений в выгрузке нет) остаётся неразобранным:
+  показать непонятную строку как «ресурс» хуже, чем не показать ничего.
+*/
+export function resourcePages(value) {
+  const s = asText(value);
+  if (!s) return undefined;
+  if (/мл\s*$/i.test(s)) return undefined;
+  const k = /^(\d+(?:[.,]\d+)?)\s*[KКkк]$/.exec(s);
+  if (k) return Math.round(asNumber(k[1]) * 1000);
+  const plain = /^(\d+(?:[.,]\d+)?)$/.exec(s);
+  if (plain) return asCount(plain[1]);
+  return undefined;
+}
+
+/* Объём в миллилитрах — та же строка ItemLifeTime у чернил и тонера. */
+export function volumeMl(value) {
+  const s = asText(value);
+  if (!s) return undefined;
+  const m = /^(\d+(?:[.,]\d+)?)\s*мл$/i.exec(s);
+  return m ? asNumber(m[1]) : undefined;
+}
+
+/*
+  Повреждённая упаковка.
+
+  Такие позиции VTT продаёт уценкой и помечает сразу в трёх местах:
+  `Description` = «Поврежденная упаковка» (1 522 строки из 9 483),
+  `Compatibility` с тем же текстом и пометка в самом названии («Повр.
+  упак.», «ПУ», «П/У»). Признаки согласованы между собой, но берём
+  объединение: пропустить такую позицию на витрину хуже, чем лишний раз
+  проверить.
+
+  Границы слова заданы явно. В JavaScript `\b` считает словом только
+  латиницу с цифрами, поэтому у кириллического «ПУ» границы нет вовсе и
+  проверка через `\bпу\b` молча не находит ничего.
+*/
+const PU_BOUND = '(^|[^\\p{L}\\p{N}])';
+const PU_END = '($|[^\\p{L}\\p{N}])';
+const PU_TEXT = /поврежд[её]нн|поврежденн/iu;
+const PU_NAME = new RegExp(
+  `${PU_BOUND}(повр\\.?\\s*(?:уп|упак)\\.?|поврежд[её]нн\\p{L}*|поврежденн\\p{L}*|п\\s*[/\\\\]\\s*у|пу)${PU_END}`,
+  'iu',
+);
+export function isDamagedPackage({ name, description, compatibility } = {}) {
+  return PU_TEXT.test(String(description ?? ''))
+    || PU_TEXT.test(String(compatibility ?? ''))
+    || PU_NAME.test(String(name ?? ''));
 }
 
 /* Списки у SOAP приходят и массивом, и одиночным значением, и строкой с
@@ -253,7 +325,14 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
     categoryRoot: asText(pick(raw, FIELD.rootGroup)),
     barcode: asText(pick(raw, FIELD.barcode)),
     color: asText(pick(raw, FIELD.color)),
-    resource: asCount(pick(raw, FIELD.resource)),
+    /* Сначала явное поле ресурса (в реальной выгрузке его нет), затем
+       ItemLifeTime. Объём чернил живёт отдельно и ресурсом не
+       притворяется. */
+    resource: asCount(pick(raw, FIELD.resource)) ?? resourcePages(pick(raw, FIELD.lifeTime)),
+    volumeMl: volumeMl(pick(raw, FIELD.lifeTime)),
+    /* Строка поставщика сохраняется как есть: по ней видно, что именно
+       разобрано в resource, и что осталось неразобранным. */
+    lifeTime: asText(pick(raw, FIELD.lifeTime)),
     /* Описание поставщика хранится отдельно и никогда не смешивается с
        нормализованным и редакционным текстом — иначе после синка нельзя
        понять, где чей текст. */
@@ -266,13 +345,37 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
     compatibilityText: asText(pick(raw, FIELD.compatibility)),
     photos,
     photosOriginal: photosOriginal.some((u, i) => u !== photos[i]) ? photosOriginal : undefined,
+    /*
+      Габариты транспортной упаковки. Единицы измерения поставщик НЕ
+      указывает, и вычислить их по выгрузке не получается: сверка
+      GrossVolume с произведением GrossWidth × GrossHeight × GrossDepth
+      сходится лишь у 815 позиций из 878, где заполнены все четыре поля,
+      а у остальных расходится в разы. Поэтому числа хранятся и
+      показываются без единицы: подпись «см» при 0,38 × 0,45 × 0,57 —
+      это утверждение о размере, которого никто не подтверждал.
+    */
     dimensions: {
       width: asNumber(pick(raw, FIELD.width)),
       height: asNumber(pick(raw, FIELD.height)),
       depth: asNumber(pick(raw, FIELD.depth)),
     },
+    /* Габариты и вес одной штуки — отдельно от упаковки. */
+    grossDimensions: {
+      width: asNumber(pick(raw, FIELD.grossWidth)),
+      height: asNumber(pick(raw, FIELD.grossHeight)),
+      depth: asNumber(pick(raw, FIELD.grossDepth)),
+    },
+    grossWeight: asNumber(pick(raw, FIELD.grossWeight)),
     weight: asNumber(pick(raw, FIELD.weight)),
     inPackage: asCount(pick(raw, FIELD.inPackage)),
+    /* Повреждённая упаковка. Признак снимается на нормализации, а не на
+       публикации: он приходит от поставщика, и место ему рядом с
+       остальными его фактами. */
+    packageDamaged: isDamagedPackage({
+      name: pick(raw, FIELD.name),
+      description: pick(raw, FIELD.description),
+      compatibility: pick(raw, FIELD.compatibility),
+    }) || undefined,
     /* Рублёвая цена — единственная, которую можно показать покупателю.
        Валютная сохраняется отдельно и в рубли не пересчитывается: курс
        поставщика — его дело, а придуманный курс на витрине был бы
@@ -303,10 +406,13 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
   for (const [k, v] of Object.entries(item)) {
     if (v === undefined) delete item[k];
   }
-  for (const k of Object.keys(item.dimensions)) {
-    if (item.dimensions[k] === undefined) delete item.dimensions[k];
+  for (const key of ['dimensions', 'grossDimensions']) {
+    if (!item[key]) continue;
+    for (const k of Object.keys(item[key])) {
+      if (item[key][k] === undefined) delete item[key][k];
+    }
+    if (!Object.keys(item[key]).length) delete item[key];
   }
-  if (!Object.keys(item.dimensions).length) delete item.dimensions;
   for (const k of Object.keys(item.stock)) {
     if (item.stock[k] === undefined) delete item.stock[k];
   }

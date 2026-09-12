@@ -10,6 +10,7 @@
     /                            seo-pages/home.html
     неизвестный адрес            seo-pages/404.html со статусом 404
     POST /api/order              приём заказа (в разработке пишем в файл)
+    POST /api/review             отзыв на модерацию (пишем в var/reviews)
 
   Запуск: node tools/serve.mjs [порт]
 */
@@ -21,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.argv[2] || 8080);
 const ORDERS = path.join(ROOT, 'var/orders');
+const REVIEWS = path.join(ROOT, 'var/reviews');
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -53,6 +55,41 @@ const server = http.createServer((req, res) => {
       fs.writeFileSync(path.join(ORDERS, number + '.json'), JSON.stringify({ number, createdAt: new Date().toISOString(), ...order }, null, 2));
       console.log(`заказ №${number}: ${order.items?.length || 0} поз., ${order.total} ₽`);
       send(res, 200, JSON.stringify({ ok: true, number }), TYPES['.json']);
+    });
+    return;
+  }
+
+  /*
+    Отзыв. Повторяет поведение боевого api/index.php: запись ложится в
+    очередь модерации со статусом pending и никогда не публикуется сама.
+    Здесь это нужно, чтобы путь «форма → сервер → очередь» проверялся
+    локально целиком, а не только на боевом хостинге.
+  */
+  if (req.method === 'POST' && pathname === '/api/review') {
+    let rbody = '';
+    req.on('data', (c) => { rbody += c; if (rbody.length > 1e5) req.destroy(); });
+    req.on('end', () => {
+      let rev;
+      try { rev = JSON.parse(rbody); } catch { return send(res, 400, JSON.stringify({ ok: false, error: 'Некорректный запрос' }), TYPES['.json']); }
+      const text = String(rev.text ?? '').trim();
+      const name = String(rev.name ?? '').trim();
+      const product = String(rev.product ?? '').trim();
+      if (!product || !name || text.length < 20) {
+        return send(res, 422, JSON.stringify({ ok: false, error: 'Нужны товар, имя и текст отзыва' }), TYPES['.json']);
+      }
+      fs.mkdirSync(REVIEWS, { recursive: true });
+      const key = Buffer.from(product + '\0' + text).toString('base64url').slice(0, 22);
+      const file = path.join(REVIEWS, `${product.replace(/[^A-Za-z0-9_-]+/g, '-')}-${key}.json`);
+      if (fs.existsSync(file)) return send(res, 200, JSON.stringify({ ok: true, status: 'pending', duplicate: true }), TYPES['.json']);
+      fs.writeFileSync(file, JSON.stringify({
+        createdAt: new Date().toISOString(),
+        /* Статус ставит сервер: поле из запроса игнорируется целиком. */
+        status: 'pending', verified: false,
+        product, name, rate: Number(rev.rate) || null,
+        printer: String(rev.printer ?? '').trim(), text,
+      }, null, 2));
+      console.log(`отзыв на модерации: ${product} — ${name}`);
+      send(res, 200, JSON.stringify({ ok: true, status: 'pending' }), TYPES['.json']);
     });
     return;
   }
