@@ -232,7 +232,7 @@
           return { item: hydrate(row), label: (f.colors || [])[i] || '' };
         }).filter(function (x) { return !!x.item; });
         return {
-          id: id, label: f.label,
+          id: id, label: f.label, series: f.series || '',
           colors: pairs.map(function (x) { return x.label; }),
           items: pairs.map(function (x) { return x.item; }),
         };

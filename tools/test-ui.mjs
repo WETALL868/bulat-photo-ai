@@ -54,31 +54,6 @@ for (const device of [
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForSelector('#ptabs', { timeout: 15000 });
 
-  /* ---------- выбор цвета ---------- */
-  const variants = page.locator('.cpick-i');
-  const n = await variants.count();
-  check(`${device.name}: переключатель цвета показывает 4 варианта`, n === 4, `найдено ${n}`);
-  if (n) {
-    const current = page.locator('.cpick-i.on');
-    check(`${device.name}: выбранный цвет выделен`, await current.count() === 1);
-    check(`${device.name}: у выбранного проставлен aria-current`,
-      await current.first().getAttribute('aria-current') === 'page');
-    const hrefs = await variants.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
-    check(`${device.name}: у каждого цвета свой адрес`, new Set(hrefs).size === n);
-    const prices = await page.locator('.cpick-p').evaluateAll((els) => els.map((e) => e.textContent.trim()));
-    check(`${device.name}: у каждого цвета своя цена`, prices.every((t) => /\d/.test(t)), prices.join(' | '));
-    const imgs = await variants.evaluateAll((els) => els.map((e) => !!e.querySelector('img, .atimg')));
-    check(`${device.name}: у каждого цвета своё фото`, imgs.every(Boolean));
-    /* Переход на другой цвет открывает его карточку. */
-    const other = variants.filter({ hasNot: page.locator('.cpick-i.on') }).first();
-    const otherHref = await other.getAttribute('href');
-    await other.click();
-    await page.waitForURL('**' + otherHref, { timeout: 10000 }).catch(() => {});
-    check(`${device.name}: нажатие на цвет открывает его карточку`, page.url().endsWith(otherHref));
-    await page.goBack({ waitUntil: 'networkidle' });
-    await page.waitForSelector('#ptabs');
-  }
-
   /* ---------- «Все характеристики» ---------- */
   const panelOpen = () => page.evaluate(() => {
     const on = document.querySelector('#ptabs button.on');
@@ -120,6 +95,113 @@ for (const device of [
   st = await panelOpen();
   check(`${device.name}: кнопка вкладки «Отзывы» работает`, st.tab === 'reviews');
   check(`${device.name}: вкладка отзывов попала в адрес`, page.url().includes('tab=reviews'));
+
+  /* ---------- строка поиска и возврат домой ---------- */
+  /*
+    Найденный дефект: набрал «300972», открыл выдачу, нажал логотип —
+    главная открылась, а в поле поиска по-прежнему стоит «300972».
+    Дальше человек уходит в каталог с этим текстом в поле и не понимает,
+    почему поиск «не сработал».
+  */
+  const boxValue = () => page.evaluate(() => {
+    const el = document.querySelector('#search-form input[name=q]');
+    return el ? el.value : null;
+  });
+  await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await page.fill('#search-form input[name=q]', '300972');
+  await page.press('#search-form input[name=q]', 'Enter');
+  await page.waitForURL('**/search?q=300972', { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(900);
+  check(`${device.name}: поиск открыл выдачу`, page.url().includes('q=300972'), page.url());
+  check(`${device.name}: в выдаче поле показывает запрос`, (await boxValue()) === '300972', String(await boxValue()));
+
+  await page.locator('.logo, a.logo, .hdr a[href="/"]').first().click();
+  await page.waitForTimeout(900);
+  check(`${device.name}: логотип открывает главную`, new URL(page.url()).pathname === '/', page.url());
+  check(`${device.name}: строка поиска очистилась`, (await boxValue()) === '', `осталось «${await boxValue()}»`);
+
+  /* Назад — снова выдача, и запрос снова в поле. */
+  await page.goBack({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(700);
+  check(`${device.name}: «назад» вернуло запрос в поле`, (await boxValue()) === '300972', String(await boxValue()));
+  await page.goForward({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(700);
+  check(`${device.name}: «вперёд» снова очистило поле`, (await boxValue()) === '', String(await boxValue()));
+
+  /* Переход в раздел каталога устаревший запрос тоже не оставляет. */
+  await page.goto(`${BASE}/search?q=300972`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(700);
+  await page.goto(`${BASE}/catalog/laser`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(700);
+  check(`${device.name}: в разделе каталога поле пустое`, (await boxValue()) === '', String(await boxValue()));
+
+  /* Служебной отметки об обновлении цен на витрине больше нет. */
+  for (const where of ['/', '/search?q=300972', '/catalog/laser']) {
+    await page.goto(`${BASE}${where}`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(500);
+    const txt = await page.locator('#app').innerText();
+    check(`${device.name}: нет отметки об обновлении цен (${where})`, !/Цены и наличие обновлены/i.test(txt));
+  }
+
+  /* ---------- цвета серии: один блок, свои кнопки ---------- */
+  await page.goto(`${BASE}/product/hb-tk-8115bk`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.vars');
+  const vars = await page.evaluate(() => ({
+    top: document.querySelectorAll('.cpick').length,
+    blocks: document.querySelectorAll('.vars').length,
+    tiles: document.querySelectorAll('.var').length,
+    buttons: document.querySelectorAll('.var [data-add]').length,
+    current: document.querySelectorAll('.var.on').length,
+    text: document.querySelector('.vars').innerText,
+  }));
+  check(`${device.name}: верхнего дубликата цветов нет`, vars.top === 0, `найдено ${vars.top}`);
+  check(`${device.name}: блок цветов ровно один`, vars.blocks === 1, `найдено ${vars.blocks}`);
+  check(`${device.name}: четыре плитки цветов`, vars.tiles === 4, `найдено ${vars.tiles}`);
+  check(`${device.name}: у каждой плитки своя кнопка в корзину`, vars.buttons === 4, `найдено ${vars.buttons}`);
+  check(`${device.name}: текущий цвет отмечен`, vars.current === 1);
+  check(`${device.name}: остатков в штуках в плитках нет`, !/\d+\s*шт\.?(?!\/)/.test(vars.text));
+
+  /* Кнопка плитки кладёт в корзину именно свой цвет. */
+  const cartN = () => page.evaluate(() => Number(document.getElementById('cart-n').textContent) || 0);
+  const before = await cartN();
+  const tileBtn = page.locator('.var:not(.on) [data-add]').first();
+  const tileId = await tileBtn.getAttribute('data-add');
+  await tileBtn.click();
+  await page.waitForTimeout(400);
+  check(`${device.name}: кнопка плитки добавила товар`, (await cartN()) === before + 1, `было ${before}, стало ${await cartN()}`);
+  const inCart = await page.evaluate(() => { try { return JSON.parse(localStorage.getItem('hb-shop')).cart; } catch (e) { return {}; } });
+  check(`${device.name}: в корзину попал именно этот цвет`, !!inCart[tileId], `${tileId} → ${JSON.stringify(inCart)}`);
+
+  /* Основная кнопка и липкая панель продолжают работать. */
+  const mainBefore = await cartN();
+  await page.locator('.buy [data-add]').first().click();
+  await page.waitForTimeout(400);
+  check(`${device.name}: основная кнопка «В корзину» работает`, (await cartN()) > mainBefore);
+  await page.evaluate(() => window.scrollTo(0, 1800));
+  await page.waitForTimeout(700);
+  const barOn = await page.evaluate(() => {
+    const b = document.getElementById('buybar');
+    return !!b && getComputedStyle(b).visibility !== 'hidden';
+  });
+  check(`${device.name}: липкая панель покупки появляется`, barOn);
+
+  /* ---------- характеристики без складских количеств ---------- */
+  await page.goto(`${BASE}/product/hb-tk-8115bk?tab=specs`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-panel="specs"]');
+  const specText = await page.locator('[data-panel="specs"]').innerText();
+  check(`${device.name}: в характеристиках нет остатков со склада`,
+    !/на складе, шт|в пути, шт|центральном складе/i.test(specText));
+  check(`${device.name}: полезные характеристики на месте`,
+    /Вес одной штуки/.test(specText) && /Вес упаковки/.test(specText) && /Ресурс/.test(specText));
+
+  /* Все три вкладки переключаются и открывают именно себя. */
+  for (const [tab, marker] of [['desc', 'desc'], ['specs', 'specs'], ['reviews', 'reviews']]) {
+    await page.locator(`#ptabs button[data-tab="${tab}"]`).click();
+    await page.waitForTimeout(250);
+    const open = await page.evaluate(() => [...document.querySelectorAll('[data-panel]')]
+      .filter((el) => !el.hidden).map((el) => el.dataset.panel));
+    check(`${device.name}: вкладка ${tab} открывает свою панель`, open.length === 1 && open[0] === marker, JSON.stringify(open));
+  }
 
   /* ---------- код товара и поиск по нему ---------- */
   /*

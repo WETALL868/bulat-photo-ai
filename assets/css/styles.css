@@ -598,29 +598,60 @@ a.line-c:hover{border-color:var(--ink)}
 .biz-note:hover{background:var(--yellow)}
 
 /* Комплект по цветам: одна серия картриджей, которую берут целиком. */
-.kit{margin-top:44px;border:1px solid var(--line);border-radius:20px;padding:24px;background:var(--surface)}
-.kit-h h2{font-size:22px}
-.kit-h p{font-size:14px;color:var(--muted);margin-top:6px;max-width:70ch}
-.kit-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin:18px 0}
-.kit-i{display:grid;grid-template-columns:84px minmax(0,1fr);grid-template-areas:"img c" "img pr" "img av";gap:2px 12px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;position:relative}
-.kit-i:hover{border-color:var(--ink)}
-.kit-i.on{border-color:var(--yellow2);box-shadow:inset 0 0 0 1px var(--yellow2)}
-.kit-i.out{opacity:.72}
-.kit-img{grid-area:img;width:84px;height:84px;display:flex;align-items:center;justify-content:center}
-.kit-img img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
-.kit-c{grid-area:c;min-width:0}
-.kit-c b{display:block;font-family:var(--head);font-weight:700;font-size:15px}
-.kit-c span{font-size:12px;color:var(--muted)}
-.kit-pr{grid-area:pr;font-family:var(--head);font-weight:800;font-size:16px;letter-spacing:-.01em}
-.kit-i .avail{grid-area:av;font-size:12px}
-.kit-here{position:absolute;right:10px;top:10px;font-size:11px;color:var(--muted2)}
-.kit-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.kit-sum{display:flex;align-items:baseline;gap:10px;font-size:14px;color:var(--muted)}
-.kit-sum b{font-family:var(--head);font-weight:800;font-size:26px;letter-spacing:-.02em;color:var(--ink)}
-.kit-note{display:flex;gap:10px;align-items:flex-start;margin-top:16px;padding:12px 14px;border-radius:12px;background:#fff;border:1px solid var(--line2);font-size:13px;line-height:1.45;color:var(--ink2)}
-.kit-note svg{color:var(--red);flex:none;margin-top:2px}
-.kit-all{margin-top:10px;font-size:13px;color:var(--ink2);border-bottom:1px dashed var(--muted2);align-self:flex-start;padding:0}
-.kit-all:hover{color:var(--ink)}
+/*
+  Цвета серии — один блок под карточкой.
+
+  Светлая цельная подложка отделяет набор от белой карточки, плитки внутри
+  белые: так видно, что это самостоятельные товары, а не части одной
+  карточки. У плитки две части: верх — ссылка на товар, низ — цена,
+  статус и своя кнопка в корзину.
+*/
+.vars{margin-top:44px;border:1px solid var(--line);border-radius:20px;padding:24px;background:var(--surface)}
+.vars-h h2{font-size:22px;letter-spacing:-.02em}
+.vars-h p{font-size:14px;color:var(--muted);margin-top:6px;max-width:78ch}
+.vars-l{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-top:18px}
+.var{position:relative;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);
+  border-radius:14px;padding:14px;transition:border-color .15s,box-shadow .15s}
+.var:hover{border-color:var(--ink2)}
+/* Текущий цвет отмечен рамкой и подложкой: одной рамки мало тем, кто
+   плохо различает оттенки границ. */
+.var.on{border-color:var(--yellow2);background:#fffdf3;box-shadow:inset 0 0 0 1px var(--yellow2)}
+.var.out{opacity:.82}
+.var-here{position:absolute;top:10px;right:10px;font-size:10.5px;font-weight:700;letter-spacing:.03em;
+  text-transform:uppercase;color:var(--ink2);background:var(--yellow,#ffd84d);border-radius:999px;padding:2px 8px}
+.var-top{display:block;text-align:center}
+.var-img{display:flex;align-items:center;justify-content:center;height:96px;margin-bottom:10px;overflow:hidden}
+.var-img img{max-width:100%;max-height:96px;width:auto;height:auto;object-fit:contain}
+.var-img .hb-imgfail::before{font-size:11px}
+.var-c b{display:block;font-family:var(--head);font-weight:700;font-size:15px;line-height:1.25}
+.var-c span{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.var-b{margin-top:auto;padding-top:12px;text-align:center}
+.var-p{font-family:var(--head);font-weight:800;font-size:19px;letter-spacing:-.02em}
+.var-s{font-size:12px;color:var(--green,#137333);display:flex;align-items:center;justify-content:center;gap:6px;margin:4px 0 10px}
+.var-s i{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.var-s.out{color:var(--muted)}
+.var-add{width:100%;justify-content:center;font-size:14px;padding:9px 12px}
+.vars-note{display:flex;gap:8px;align-items:flex-start;margin-top:14px;font-size:13px;color:var(--ink2)}
+.vars-note svg{color:var(--red);flex:none;margin-top:2px}
+.vars-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.vars-sum{display:flex;align-items:baseline;gap:10px;font-size:14px;color:var(--muted)}
+.vars-sum b{font-family:var(--head);font-weight:800;font-size:24px;letter-spacing:-.02em;color:var(--ink)}
+/* На телефоне четыре плитки в ряд не встают — две в ряд читаются лучше
+   длинного списка, а фото остаётся достаточно крупным, чтобы отличить
+   цвет по этикетке. */
+@media (max-width:640px){
+  .vars{padding:16px;border-radius:16px}
+  .vars-l{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .var{padding:10px}
+  .var-img{height:72px}
+  .var-img img{max-height:72px}
+  .var-c b{font-size:13.5px}
+  .var-p{font-size:17px}
+  .vars-foot{flex-direction:column;align-items:stretch}
+  .vars-foot .btn{justify-content:center}
+}
 
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-top:56px;overflow-x:auto;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
@@ -998,9 +1029,7 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 .navline.on.done{width:100%;opacity:0;transition:width .16s ease,opacity .22s ease .1s}
 
 /* Выбранный цвет в комплекте виден сразу, ещё до отрисовки новой карточки. */
-.kit-i.picking{border-color:var(--yellow2);box-shadow:0 0 0 2px var(--ytint)}
-.kit-i.on{position:relative}
-.kit-i.on::after{content:"";position:absolute;inset:-1px;border:2px solid var(--yellow);border-radius:14px;pointer-events:none}
+.var.picking{border-color:var(--yellow2);box-shadow:0 0 0 2px var(--ytint)}
 
 @media (prefers-reduced-motion:reduce){
   .nav-out,.swap-out{opacity:1;transform:none;transition:none}
@@ -1541,12 +1570,8 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .desc p{font-size:15px}
   .spec-t .sh{padding:14px 16px;font-size:15px}
   .spec-t .sr,.spec-full .sr{padding:10px 16px;font-size:14px}
-  .kit{padding:16px;border-radius:16px;margin-top:32px}
-  .kit-h h2{font-size:19px}
-  .kit-list{grid-template-columns:1fr;gap:8px;margin:14px 0}
-  .kit-foot{flex-direction:column;align-items:stretch;gap:10px}
-  .kit-foot .btn{width:100%}
-  .kit-sum b{font-size:22px}
+  .vars{margin-top:32px}
+  .vars-h h2{font-size:19px}
   .biz-note{padding:12px 14px}
   .rev{padding:16px}
   .rev .pm{grid-template-columns:1fr}
@@ -1817,48 +1842,6 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
    кнопки покупки: цвет выбирают раньше, чем количество. На телефоне
    колонки складываются в один столбец, и порядок сохраняется сам.
 */
-.cpick{border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:20px;background:var(--surface)}
-.cpick h3{font-size:14px;font-weight:600;color:var(--muted);margin-bottom:12px}
-.cpick h3 b{font-family:var(--head);font-weight:800;font-size:16px;color:var(--ink)}
-.cpick-l{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px}
-.cpick-i{display:grid;grid-template-columns:44px minmax(0,1fr);grid-template-areas:"img t" "img p" "img s";
-  gap:1px 10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;
-  padding:8px 10px;position:relative;transition:border-color .15s}
-.cpick-i:hover{border-color:var(--ink)}
-.cpick-i:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-/* Выбранный цвет отмечен и рамкой, и подложкой: одной рамки мало тем,
-   кто плохо различает оттенки границ. aria-current несёт то же самое для
-   экранного диктора. */
-.cpick-i.on{border-color:var(--yellow2);background:#fffdf3;box-shadow:inset 0 0 0 1px var(--yellow2)}
-.cpick-i.out{opacity:.75}
-.cpick-img{grid-area:img;width:44px;height:44px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-/* Подпись «фото не загрузилось» в ячейке 48×48 не помещается целиком —
-   в переключателе достаточно самого пустого места, текст объясняет себя
-   в галерее и в карточке каталога. */
-.cpick-img.hb-imgfail::before{content:"нет фото";font-size:10px}
-.cpick-img img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
-.cpick-t{grid-area:t;min-width:0}
-.cpick-t b{display:block;font-family:var(--head);font-weight:700;font-size:13.5px;line-height:1.25}
-.cpick-t span{display:block;font-size:10.5px;letter-spacing:-.01em;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cpick-p{grid-area:p;font-family:var(--head);font-weight:800;font-size:14px;letter-spacing:-.01em}
-.cpick-s{grid-area:s;font-size:11px;color:var(--green,#137333);display:flex;align-items:center;gap:5px}
-.cpick-s i{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
-.cpick-s.out{color:var(--muted)}
-/*
-  На телефоне плитками цвет не выбирают: в колонку шириной с ладонь
-  влезают две плитки, и в каждой артикул обрезается многоточием, а «В
-  наличии» переносится на две строки. Поэтому ниже 520 px это список
-  строк — картинка, название с артикулом, наличие и цена справа.
-*/
-@media (max-width:520px){
-  .cpick-l{grid-template-columns:1fr;gap:6px}
-  .cpick-i{grid-template-columns:44px minmax(0,1fr) auto;grid-template-areas:"img t p" "img s p";
-    column-gap:12px;row-gap:2px;padding:8px 12px}
-  .cpick-t b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .cpick-p{grid-area:p;align-self:center;text-align:right;white-space:nowrap;font-size:15px}
-  .cpick-s{white-space:nowrap}
-}
-
 /* Отзывов нет — так и написано. Пустые звёзды рядом с нулём читаются как
    «оценили на ноль», поэтому в этом состоянии звёзд нет вовсе. */
 .rate-none a,.crate-none a{color:var(--muted);border-bottom:1px dashed var(--muted2)}
@@ -1940,4 +1923,4 @@ a.mphone .ic *{pointer-events:none!important}
 .item .img .atimg{width:100%;height:auto}
 .gmain.has-atlas{cursor:default}
 .gmain .g-atlas-img{width:min(100%,520px);height:auto;flex:0 0 auto}
-.thumb .atimg,.kit-img .atimg,.mini .img .atimg,.coi .atimg,.cmp .atimg{width:100%;height:auto}
+.thumb .atimg,.var-img .atimg,.mini .img .atimg,.coi .atimg,.cmp .atimg{width:100%;height:auto}

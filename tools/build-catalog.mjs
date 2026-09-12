@@ -28,7 +28,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { contacts, legal, shop, messengers} from '../catalog-source/site.config.mjs';
 import { colorKey, colorTitle, colorRank } from '../vtt/src/colors.mjs';
-import { modelsFromName } from '../vtt/src/publish.mjs';
+import { modelsFromName, parseSupplierNote } from '../vtt/src/publish.mjs';
 import { seriesKey, famKey, FAM_MAX, FAM_MIN_SERIES, variantLabel } from '../vtt/src/family.mjs';
 import { ItemRegistry, stableKey } from './item-registry.mjs';
 
@@ -617,20 +617,29 @@ function vttSpecs(p) {
   const rows = [];
   const add = (k, v) => { if (v !== undefined && v !== null && v !== '' && v !== 0) rows.push([k, String(v)]); };
   const nf = (n) => Number(n).toLocaleString('ru-RU');
+  const note = parseSupplierNote(p.compatText);
+
   add('Артикул', p.code);
   add('Оригинальный номер', p.originalNumber !== p.code ? p.originalNumber : '');
   add('Тип', p.type);
   add('Марка', p.supplierBrand);
   add('Для техники', p.compatibleBrand);
+  /* Полный перечень моделей живёт здесь, а не в описании: у ролика он
+     занимает триста знаков, и в тексте его читать невозможно. Строка
+     поставщика приводится дословно — резать её на модели нельзя. */
+  add('Совместимость по данным поставщика', note.compat);
+  add('Особенности', note.notes.length || note.unknown.length
+    ? [...note.notes, ...note.unknown].join(' ').replace(/\s+/g, ' ').trim() : '');
   add('Ресурс, страниц', p.res ? nf(p.res) : '');
   add('Объём, мл', p.volumeMl ? nf(p.volumeMl) : '');
   /* Строка поставщика показывается, только если из неё не вышло числа:
      иначе рядом с «6 000 страниц» стояло бы «6K» — то же самое дважды. */
   add('Ресурс по выгрузке', !p.res && !p.volumeMl ? p.lifeTime : '');
   add('Цвет', p.colorTitle || p.color);
-  add('Примечание поставщика', p.compatText);
   add('Штрихкод', p.barcode);
   add('В упаковке, шт.', p.inPackage > 1 ? nf(p.inPackage) : '');
+  /* Вес штуки и вес упаковки — разные поля выгрузки (Gross* против
+     Width/Height/Depth/Weight) и разные величины. Сливать их нельзя. */
   add('Вес одной штуки, кг', p.grossWeight ? nf(p.grossWeight) : '');
   add('Вес упаковки, кг', p.weight ? nf(p.weight) : '');
   /*
@@ -638,8 +647,7 @@ function vttSpecs(p) {
     есть Width/Height/Depth, но нигде не сказано, в чём они выражены, а
     сверка GrossVolume с произведением сторон сходится не у всех
     позиций. Подписать «см» под 0,38 × 0,45 × 0,57 значит заявить размер
-    спичечного коробка для коробки с шестью картриджами. Числа показаны
-    как есть, с честной оговоркой в подписи.
+    спичечного коробка для коробки с шестью картриджами.
   */
   const dims = (d) => (d && (d.width || d.height || d.depth)
     ? [d.width, d.height, d.depth].filter((v) => v !== undefined && v !== null).map(nf).join(' × ')
@@ -647,13 +655,17 @@ function vttSpecs(p) {
   add('Габариты одной штуки (единицы в выгрузке не указаны)', dims(p.grossDimensions));
   add('Габариты упаковки (единицы в выгрузке не указаны)', dims(p.dimensions));
   add('Раздел поставщика', (p.catPath ?? []).join(' / ') || p.vttCategory);
-  if (p.stockDetail) {
-    /* Три склада показываются по отдельности и никогда не суммируются:
-       это разные сроки поставки, а не одно число. */
-    add('Доступно на складе, шт.', p.stockDetail.available);
-    add('В пути, шт.', p.stockDetail.transit);
-    add('На центральном складе, шт.', p.stockDetail.mainOffice);
-  }
+  /*
+    Складских количеств здесь нет.
+
+    Раньше карточка публиковала «Доступно на складе, шт.: 500» и «На
+    центральном складе, шт.: 500». Покупателю это не помогает выбрать, а
+    магазину показывать свои остатки в штуках незачем — их видят и
+    конкуренты, и они устаревают между выгрузками. Достаточно статуса
+    «В наличии», который стоит рядом с ценой. Сами числа никуда не
+    делись: они лежат в сторе поставщика и используются для расчётов,
+    просто не публикуются.
+  */
   return rows;
 }
 
@@ -680,7 +692,8 @@ for (let i = 0; i < products.length; i += CHUNK_SIZE) {
       ...(p.catPath?.length ? { vttCatPath: p.catPath } : (p.vttCategory ? { vttCatPath: [p.vttCategory] } : {})),
       ...(p.supplierDescription ? { supplierDesc: p.supplierDescription } : {}),
       ...(p.originalNumber ? { originalNumber: p.originalNumber } : {}),
-      ...(p.stockDetail ? { stockDetail: p.stockDetail } : {}),
+      /* stockDetail в публикуемые детали не кладётся: точные остатки —
+         внутренние данные. Наличие витрина берёт из live-файла флагом. */
     };
   }
   chunks.push(part);
@@ -730,6 +743,30 @@ function famLabel(p) {
     .trim();
 }
 
+/*
+  Название серии для заголовка блока цветов: «Серия TK-8115».
+
+  Берётся не из головы, а из самих артикулов — общим началом. У
+  HB-TK-8115BK / HB-TK-8115C / HB-TK-8115M / HB-TK-8115Y это «HB-TK-8115»,
+  и после отсечения марки остаётся «TK-8115». Общее начало обрезается по
+  границе разделителя: «HB-TK-811» — не серия, а обрубок.
+
+  Если общего начала не нашлось (у цветов серии бывают совсем разные
+  артикулы, как у HP CF410A/411A/412A), подписи серии просто не будет.
+*/
+function seriesName(codes) {
+  if (codes.length < 2) return '';
+  let prefix = codes[0];
+  for (const c of codes.slice(1)) {
+    let i = 0;
+    while (i < prefix.length && i < c.length && prefix[i].toUpperCase() === c[i].toUpperCase()) i += 1;
+    prefix = prefix.slice(0, i);
+  }
+  prefix = prefix.replace(/[^0-9A-Za-zА-Яа-я]+$/, '');
+  prefix = prefix.replace(/^(?:HB|N|HiBl|CN)[-\s]+/i, '');
+  return prefix.length >= 3 && /\d/.test(prefix) ? prefix : '';
+}
+
 let famSkippedBig = 0;
 [...famBuckets.entries()]
   .filter(([, list]) => {
@@ -775,6 +812,7 @@ let famSkippedBig = 0;
          иначе «Hi-Black» превращается в «Hi». */
       label: famLabel(first),
       colors: finalLabels,
+      series: seriesName(sorted.map((i) => products[i].code || '')),
       rows: sorted,
     };
     /* Заимствованный товар остаётся в своей серии: его карточка показывает

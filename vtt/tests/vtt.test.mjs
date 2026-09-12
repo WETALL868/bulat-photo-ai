@@ -1527,8 +1527,12 @@ test('описание собирается из фактов, не повтор
   const d = buildDescription(item);
   assert.ok(d.text.includes('HB-TK-8115C'));
   assert.ok(d.text.includes(`${Number(6000).toLocaleString('ru-RU')} страниц`), 'ресурс из ItemLifeTime не попал в описание');
-  assert.ok(d.text.includes('голубой (C)'), 'цвет не назван по-русски');
+  /* Цвет в тексте — прилагательным и без кода: «Голубой (C) тонер-картридж»
+     читается как строка из накладной. Код остался в характеристиках. */
+  assert.match(d.text, /^Голубой тонер-картридж Hi-Black HB-TK-8115C/, 'цвет не назван по-русски');
   assert.ok(d.text.includes('Kyocera Ecosys M8124cidn/M8130cidn'), 'совместимость из названия потеряна');
+  /* Габариты, штрихкод и упаковка переехали в характеристики. */
+  assert.ok(!d.text.includes('4690665028417') && !d.text.includes('В упаковке'));
   /*
     Габаритов в тексте нет, и «см» тем более: единицы измерения поставщик
     не указывает, а 0,38 × 0,45 × 0,57 см — это спичечный коробок вместо
@@ -1538,6 +1542,7 @@ test('описание собирается из фактов, не повтор
   assert.ok(!d.text.includes('0,38'), 'габариты без единиц не место в тексте');
   assert.ok(d.basedOn.includes('resource') && d.basedOn.includes('color'));
   assert.ok(!d.basedOn.includes('dimensions'));
+  assert.ok(!d.text.includes('Штрихкод'), 'штрихкод остался в тексте описания');
   /* Цены и остатка в постоянном тексте нет: они меняются каждой выгрузкой. */
   assert.ok(!d.text.includes(Number(1273).toLocaleString('ru-RU')) && !d.text.includes('₽'));
   assert.ok(!/\b500\b/.test(d.text));
@@ -1702,4 +1707,113 @@ test('адреса и коды товаров совпадают с предыд
     const hits = (search[String(no)] ?? []).map((i) => rows[i][col.id]);
     assert.deepEqual(hits, [id], `поиск по коду ${no} не находит ${id}`);
   }
+});
+
+/* ===================================================================== */
+/*  Описания для людей, характеристики для метаданных                    */
+/* ===================================================================== */
+
+test('примечание поставщика делится на пометки и перечень моделей', async () => {
+  const { parseSupplierNote } = await import('../src/publish.mjs');
+
+  const a = parseSupplierNote('с чипом, без бункера отработки тонера');
+  assert.deepEqual(a.notes, ['Поставляется с чипом.', 'Бункер для отработанного тонера в комплект не входит.']);
+  assert.equal(a.compat, '', 'пометки не должны попадать в совместимость');
+
+  const b = parseSupplierNote('с чипом, HP Color Laser Jet M377dn');
+  assert.deepEqual(b.notes, ['Поставляется с чипом.']);
+  assert.equal(b.compat, 'HP Color Laser Jet M377dn', 'перечень моделей обязан сохраниться дословно');
+
+  /* Запятая внутри скобок — не разделитель: «(памперс, абсорбер)» это одно
+     название, и разрезанное пополам оно превращается в обрывок. */
+  const c = parseSupplierNote('1577649 Поглотитель чернил (памперс, абсорбер) для аппаратов Epson L300');
+  assert.equal(c.unknown.length, 0);
+  assert.ok(c.compat.includes('(памперс, абсорбер)'), `скобка разорвана: ${c.compat}`);
+
+  assert.deepEqual(parseSupplierNote(''), { notes: [], compat: '', unknown: [] });
+});
+
+test('подлежащее берётся из названия и сохраняет отличие от соседа', async () => {
+  const { productSubject } = await import('../src/publish.mjs');
+
+  /* Артикул в скобках убирается при точном совпадении с кодом. */
+  assert.equal(
+    productSubject({ name: 'Тонер-картридж Hi-Black (HB-TK-8115BK) для Kyocera Ecosys M8124cidn/M8130cidn, Bk,12K', brand: 'Hi-Black' }, 'HB-TK-8115BK'),
+    'Тонер-картридж',
+  );
+  /* А «(T2A)» — модель картриджа Deli, а не повтор артикула: остаётся.
+     «многоразовый» — единственное, чем эта позиция отличается от соседней,
+     и выбросить его значит выдать двум товарам один текст. */
+  const chip = productSubject({ name: 'Чип Hi-Black к картриджу Deli P2000/M2000 (T2A), Bk, 2K многоразовый', brand: 'Hi-Black' }, 'HB-CH-Deli-T2A');
+  assert.ok(chip.includes('(T2A)'), `модель картриджа потеряна: ${chip}`);
+  assert.ok(chip.includes('многоразовый'), `отличие потеряно: ${chip}`);
+  assert.ok(!/\bBk\b|2K/.test(chip), `цвет и ресурс должны уйти в свои поля: ${chip}`);
+});
+
+test('тип расходника — в единственном числе и по названию, а не по разделу', async () => {
+  const { typeOf } = await import('../src/publish.mjs');
+  assert.equal(typeOf({ name: '0609-001409 Сканирующая линейка Hi-Black Samsung M2020', category: 'Блоки лазера, сканера, Сканирующие линейки' }), 'Сканирующая линейка');
+  assert.equal(typeOf({ name: 'Ремкомплект (Maintenance Kit) Hi-Black для XEROX Phaser 3610DN', category: 'Ремкомплекты, Комплекты обслуживания' }), 'Ремкомплект');
+  assert.equal(typeOf({ name: '1627961 Поглотитель чернил (памперс, абсорбер) Hi-Black для Epson', category: 'Чернила' }), 'Поглотитель чернил',
+    'поглотитель чернил — не чернила');
+  assert.equal(typeOf({ name: 'Ракель Hi-Black для Kyocera P2235', category: 'Ракели' }), 'Ракель');
+  assert.equal(typeOf({ name: 'Тонер-картридж Hi-Black (HB-TK-8115BK)', category: 'Тонер-картриджи' }), 'Тонер-картридж');
+});
+
+test('описание читается как текст, а не как выгрузка', async () => {
+  const { buildDescription } = await import('../src/publish.mjs');
+  const item = normalizeItem({
+    Id: '4100603160', Name: 'Тонер-картридж Hi-Black (HB-TK-8115BK) для Kyocera Ecosys M8124cidn/M8130cidn, Bk,12K',
+    Brand: 'Hi-Black', Vendor: 'Kyocera-Mita', NameAlias: 'HB-TK-8115BK', Group: 'Тонер-картриджи',
+    RootGroup: 'Картриджи для лазерной печати', PriceLocal: '1401.07', ColorName: 'Bk', ItemLifeTime: '12K',
+    Compatibility: 'с чипом, без бункера отработки тонера', Barcode: '4690665028400',
+    NumberInPackage: '6.00', Weight: '6.00', GrossWeight: '0.91', AvailableQuantity: '500.00',
+  });
+  const text = buildDescription(item).text;
+
+  assert.match(text, /^Чёрный тонер-картридж Hi-Black HB-TK-8115BK для Kyocera Ecosys M8124cidn\/M8130cidn\./);
+  assert.ok(text.includes('Поставляется с чипом.'));
+  assert.ok(text.includes('Бункер для отработанного тонера в комплект не входит.'));
+
+  /* Служебных подписей в тексте быть не должно — им место в характеристиках. */
+  for (const label of ['Раздел поставщика', 'Штрихкод', 'Примечание поставщика', 'В упаковке', 'Вес ']) {
+    assert.ok(!text.includes(label), `в описании осталась служебная подпись «${label}»`);
+  }
+  /* Складских количеств в публичном тексте нет. */
+  assert.ok(!/\b500\b/.test(text), 'в описание попал остаток на складе');
+  /* И ничего придуманного: процентов заполнения поставщик не указывал. */
+  assert.ok(!/5\s*%|ISO|без полос|не осыпается/i.test(text), 'в описании появилось выдуманное свойство');
+});
+
+test('в карточку не уходят складские количества', async () => {
+  const root = process.cwd();
+  const dir = path.join(root, 'data/catalog/chunks');
+  if (!fs.existsSync(dir)) return; // каталог не собран
+  let checked = 0;
+  for (const f of fs.readdirSync(dir).slice(0, 6)) {
+    const chunk = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    for (const [id, d] of Object.entries(chunk)) {
+      assert.ok(!('stockDetail' in d), `${id}: точные остатки уехали в публикуемые детали`);
+      for (const [k] of d.specs ?? []) {
+        assert.ok(!/на складе, шт|в пути, шт|центральном складе/i.test(k),
+          `${id}: в характеристиках осталась строка «${k}»`);
+      }
+      checked += 1;
+    }
+  }
+  assert.ok(checked > 100, 'проверять было нечего');
+});
+
+test('отзывов поставщик не отдаёт: в контракте их нет вовсе', async () => {
+  /*
+    Проверяемый факт вместо утверждения. Если у VTT когда-нибудь появится
+    операция про отзывы, тест упадёт — и это будет поводом их подключить,
+    а не оставлять честный ноль.
+  */
+  const wsdl = fs.readFileSync(path.join(process.cwd(), 'vtt/wsdl/Portal.wsdl'), 'utf8');
+  assert.equal(/review|feedback|отзыв|rating|comment/i.test(wsdl), false,
+    'в контракте появилось что-то про отзывы — проверить и подключить источник');
+  const ops = [...wsdl.matchAll(/<wsdl:operation name="(\w+)"/g)].map((m) => m[1]);
+  assert.ok(ops.length > 10, 'операции из контракта не разобрались');
+  assert.ok(ops.every((o) => !/review|rating/i.test(o)), 'операция про отзывы не учтена');
 });

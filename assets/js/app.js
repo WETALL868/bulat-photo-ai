@@ -369,12 +369,16 @@
       C.site.laserBrands.map(function (b) { return '<option value="' + b + '">' + esc(C.brandName(b)) + '</option>'; }).join('') +
       '</select><div class="finp"><input type="text" name="q" placeholder="Модель, например M2135dn" aria-label="Модель принтера"' + (autofocus ? ' autofocus' : '') + '></div><button class="btn btn-y" type="submit">Подобрать</button></form>';
   }
-  /* Отметка, когда последний раз обновлялись цены. Для магазина, где цены
-     приходят из внешней системы, это честная и полезная информация. */
-  function priceStamp() {
-    if (!C.live || !C.live.updatedAtMoscow) return '';
-    return '<div class="stamp">' + ic('refresh', 14) + 'Цены и наличие обновлены ' + esc(C.live.updatedAtMoscow) + '</div>';
-  }
+  /*
+    Отметки «Цены и наличие обновлены …» на витрине больше нет.
+
+    Покупателю она ничего не решает: он и так видит цену и наличие, а
+    дата с временем рядом с товаром читается как оговорка — «данные,
+    возможно, устарели». Сама дата никуда не делась: она лежит в
+    live/catalog-live.json и нужна для служебных проверок, просто не
+    показывается публично.
+  */
+  function priceStamp() { return ''; }
 
   /* ---------------------------------------------------------- страницы */
 
@@ -630,7 +634,7 @@
            раньше количества, а на телефоне колонки складываются так, что
            этот блок оказывается сразу под фотографией — до цены и до
            кнопки, а не после них. */
-        '<div class="buy">' + colorPicker(fam, p) + '<div class="prow">' + priceBlock(p) + '<span class="per">за 1 шт.</span></div>' +
+        '<div class="buy"><div class="prow">' + priceBlock(p) + '<span class="per">за 1 шт.</span></div>' +
         (p.old && p.old > p.price ? '<div class="saveline">' + ic('percent', 16) + 'Скидка ' + fmt(p.old - p.price) + ' ₽ от прежней цены</div>' : '') +
         (p.stock ? '<div class="avail"><i></i>В наличии на складе в Москве</div><div class="stock">Дату отгрузки подтверждает менеджер</div>' : '<div class="avail out"><i></i>Под заказ</div><div class="stock">Привезём со склада поставщика за 3–5 дней</div>') +
         (noPrice(p)
@@ -653,7 +657,7 @@
                 : '<span class="maxnote">' + maxPending() + '</span>') +
               '</div>' + (maxOn() ? ic('external', 16, 'ic ext') : ''))
           : '<a class="ask" href="' + link.page('contacts') + '">' + ic('chat', 22) + '<div><b>Задать вопрос о товаре</b><span>Ответим в чате или по телефону</span></div></a>') + '</div></div>' +
-        kitBlock(fam, p) +
+        variantsBlock(fam, p) +
         /* Роли вкладок проставлены явно: по ним экранный диктор
            объявляет, какая панель открыта, а `aria-controls` связывает
            кнопку с её содержимым. */
@@ -771,83 +775,72 @@
   }
 
   /*
-    Комплект по цветам.
+    Цвета серии.
 
-    Один картридж выпускается в нескольких цветах, и покупателю почти всегда
-    нужен не один, а весь набор. Показываем цвета серии рядом и даём положить
-    их в корзину одной кнопкой.
+    Блок один и стоит сразу под карточкой. Раньше их было два: переключатель
+    в колонке покупки и «Комплект из 4 цветов» ниже — одни и те же четыре
+    товара дважды на одном экране.
 
-    Если часть цветов кончилась, кнопка кладёт только то, что есть, и об этом
-    прямо написано: молча добавить неполный комплект — худшее, что можно
-    сделать с таким заказом.
+    Каждый цвет — отдельный товар со своей ценой, своим наличием и своим
+    адресом, поэтому у плитки две самостоятельные части: ссылка на карточку
+    (фото, цвет, артикул) и кнопка, которая кладёт в корзину именно этот
+    цвет. Кнопка не внутри ссылки намеренно: вложенная в ссылку кнопка
+    ведёт себя непредсказуемо и с клавиатуры, и на телефоне.
+
+    Остатков в штуках здесь нет. Покупателю хватает «в наличии» или «под
+    заказ», а числа со склада — внутренние данные, которые к тому же
+    устаревают между выгрузками.
+
+    Покупка всего набора осталась, но только когда она честная: если
+    какого-то цвета нет, кнопка прямо говорит, сколько из скольких положит.
   */
-  /*
-    Выбор цвета.
-
-    Цвета одной серии — это не «похожие товары», а четыре кнопки одного
-    выбора: покупатель пришёл за картриджем к своему аппарату и должен
-    сразу видеть, какие цвета есть, сколько каждый стоит и есть ли он на
-    складе. Раньше выбора на карточке не было вовсе: сборщик разводил
-    цвета одной серии по разным семействам из-за разного ресурса —
-    у чёрного 12 000 страниц, у цветных 6 000.
-
-    Каждый вариант — настоящая ссылка на свою карточку, со своей ценой,
-    своим остатком и своим фото. Выбранный помечен и классом, и
-    `aria-current`: подсветка без разметки существует только для
-    зрячего пользователя мыши.
-
-    Подпись берётся из семейства: там цвет уже назван по-русски, а при
-    двух одинаковых цветах в серии к названию добавлено то, чем они
-    различаются, — ресурс, объём или артикул.
-  */
-  function colorPicker(fam, current) {
+  function variantsBlock(fam, current) {
     if (!fam || !fam.items || fam.items.length < 2) return '';
     var labels = fam.colors || [];
-    var here = fam.items.map(function (x) { return x.id; }).indexOf(current.id);
-    var title = here >= 0 ? (labels[here] || current.color) : (current.color || '');
-    return '<section class="cpick"><h3 id="cpick-h">Цвет' + (title ? ': <b>' + esc(title) + '</b>' : '') + '</h3>' +
-      '<div class="cpick-l" role="list" aria-labelledby="cpick-h">' + fam.items.map(function (x, i) {
-        var on = x.id === current.id;
-        return '<a class="cpick-i' + (on ? ' on' : '') + (x.stock ? '' : ' out') + '" role="listitem"' +
-          ' href="' + link.product(x) + '"' + (on ? ' aria-current="page"' : '') +
-          ' title="' + esc((labels[i] || x.color || '') + ' · ' + x.code) + '">' +
-          '<span class="cpick-img">' + imgHtml(x, { alt: '' }) + '</span>' +
-          '<span class="cpick-t"><b>' + esc(labels[i] || x.color || 'Цвет') + '</b><span>' + esc(x.code) + '</span></span>' +
-          '<span class="cpick-p">' + (x.price > 0 ? fmt(x.price) + ' ₽' : 'по запросу') + '</span>' +
-          '<span class="cpick-s' + (x.stock ? '' : ' out') + '"><i></i>' + (x.stock ? 'В наличии' : 'Под заказ') + '</span>' +
-          '</a>';
-      }).join('') + '</div></section>';
-  }
-
-  function kitBlock(fam, current) {
-    if (!fam || fam.items.length < 2) return '';
     var inStock = fam.items.filter(function (x) { return x.stock; });
-    var missing = fam.items.filter(function (x) { return !x.stock; });
-    var sumAll = fam.items.reduce(function (a, x) { return a + x.price; }, 0);
-    var sumStock = inStock.reduce(function (a, x) { return a + x.price; }, 0);
-    var items = fam.items.map(function (x) {
+    var priced = fam.items.filter(function (x) { return x.price > 0; });
+    var sumAll = priced.reduce(function (a, x) { return a + x.price; }, 0);
+    var sumStock = inStock.filter(function (x) { return x.price > 0; }).reduce(function (a, x) { return a + x.price; }, 0);
+
+    var tiles = fam.items.map(function (x, i) {
       var here = x.id === current.id;
-      return '<a class="kit-i' + (here ? ' on' : '') + (x.stock ? '' : ' out') + '" href="' + link.product(x) + '">' +
-        '<span class="kit-img">' + imgHtml(x, {}) + '</span>' +
-        '<span class="kit-c"><b>' + esc(x.color || 'Цвет') + '</b><span>' + esc(x.code) + '</span></span>' +
-        '<span class="kit-pr">' + fmt(x.price) + ' ₽</span>' +
-        (x.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Под заказ</span>') +
-        (here ? '<span class="kit-here">эта страница</span>' : '') + '</a>';
+      return '<article class="var' + (here ? ' on' : '') + (x.stock ? '' : ' out') + '">' +
+        (here ? '<span class="var-here">Вы смотрите</span>' : '') +
+        '<a class="var-top" href="' + link.product(x) + '"' + (here ? ' aria-current="page"' : '') + '>' +
+          '<span class="var-img">' + imgHtml(x, { alt: '' }) + '</span>' +
+          '<span class="var-c"><b>' + esc(labels[i] || x.color || 'Цвет') + '</b><span>' + esc(x.code) + '</span></span>' +
+        '</a>' +
+        '<div class="var-b">' +
+          '<div class="var-p">' + (x.price > 0 ? fmt(x.price) + ' ₽' : 'Цена по запросу') + '</div>' +
+          '<div class="var-s' + (x.stock ? '' : ' out') + '"><i></i>' + (x.stock ? 'В наличии' : 'Под заказ') + '</div>' +
+          (x.price > 0
+            ? '<button class="btn btn-y var-add" type="button" data-add="' + x.id + '"' +
+              ' aria-label="Добавить в корзину: ' + esc(x.name) + '">' + ic('cart', 16) + 'В корзину</button>'
+            : '<a class="btn btn-o var-add" href="' + link.page('contacts') + '">Запросить цену</a>') +
+        '</div></article>';
     }).join('');
+
+    var missing = fam.items.filter(function (x) { return !x.stock; });
     var note = missing.length
-      ? '<div class="kit-note">' + ic('info', 16) + '<div>' + (missing.length === 1 ? 'Цвета «' + esc(missing[0].color) + '» сейчас нет на складе.' : 'Части цветов сейчас нет на складе: ' + missing.map(function (x) { return esc(x.color); }).join(', ') + '.') +
-        ' Кнопка добавит ' + inStock.length + ' из ' + fam.items.length + ', что есть в наличии. Недостающее привезём под заказ за 3–5 дней — добавьте отдельно кнопкой ниже.</div></div>'
+      ? '<p class="vars-note">' + ic('info', 16) + (missing.length === 1
+          ? 'Одного цвета сейчас нет на складе — привезём под заказ за 3–5 дней.'
+          : missing.length + ' ' + plural(missing.length, 'цвета', 'цветов', 'цветов') + ' сейчас нет на складе — привезём под заказ за 3–5 дней.') + '</p>'
       : '';
-    var extra = missing.length
-      ? '<button class="kit-all" type="button" data-kit-all="' + fam.id + '">Добавить все ' + fam.items.length + ' ' + plural(fam.items.length, 'цвет', 'цвета', 'цветов') + ', включая под заказ — ' + fmt(sumAll) + ' ₽</button>'
+    /* Кнопка на весь набор появляется, только когда у всех цветов есть
+       цена: иначе «весь комплект за N ₽» — сумма не за то, что положат. */
+    var kit = priced.length === fam.items.length && inStock.length
+      ? '<div class="vars-foot"><div class="vars-sum">' +
+          (missing.length ? 'В наличии ' + inStock.length + ' из ' + fam.items.length : 'Весь набор') +
+          '<b>' + fmt(missing.length ? sumStock : sumAll) + ' ₽</b></div>' +
+          '<button class="btn btn-k" type="button" data-kit="' + fam.id + '">' + ic('cart', 18) +
+          (missing.length ? 'Добавить ' + inStock.length + ' из ' + fam.items.length : 'Весь набор в корзину') + '</button></div>'
       : '';
-    return '<section class="kit"><div class="kit-h"><h2>Комплект из ' + fam.items.length + ' ' + plural(fam.items.length, 'цвета', 'цветов', 'цветов') + '</h2>' +
-      '<p>' + esc(String(fam.label).replace(/\.$/, '')) + '. Цвета одной серии — можно взять сразу весь набор.</p></div>' +
-      '<div class="kit-list">' + items + '</div>' +
-      '<div class="kit-foot"><div class="kit-sum">' + (missing.length ? 'В наличии ' + inStock.length + ' из ' + fam.items.length : 'Комплект целиком') +
-      '<b>' + fmt(missing.length ? sumStock : sumAll) + ' ₽</b></div>' +
-      (inStock.length ? '<button class="btn btn-y btn-lg" type="button" data-kit="' + fam.id + '">' + ic('cart', 20) + (missing.length ? 'Добавить ' + inStock.length + ' из ' + fam.items.length : 'Весь комплект в корзину') + '</button>' : '') +
-      '</div>' + note + extra + '</section>';
+
+    return '<section class="vars" id="vars"><div class="vars-h">' +
+      '<h2>Все цвета рядом</h2>' +
+      '<p>' + (fam.series ? 'Серия ' + esc(fam.series) + '. ' : '') +
+      esc(String(fam.label || '').replace(/\.$/, '')) + '. Каждый цвет продаётся отдельно.</p></div>' +
+      '<div class="vars-l">' + tiles + '</div>' + note + kit + '</section>';
   }
 
   function printerKey(brand, model) {
@@ -1106,6 +1099,30 @@
   }
 
   var lastKey = null, lastPath = null;
+  /*
+    Строка поиска следует за адресом.
+
+    Раньше она жила своей жизнью: набрал «300972», открыл выдачу, нажал
+    логотип — главная открылась, а в поле по-прежнему «300972». Дальше
+    хуже: с этим текстом в поле человек уходил в каталог, видел там весь
+    ассортимент и не понимал, почему поиск «не сработал».
+
+    Правило простое: поле показывает запрос ровно тогда, когда он есть в
+    адресе. На странице поиска — сам запрос, везде остальное — пусто. Это
+    же правило само собой закрывает «назад» и «вперёд»: они проходят
+    через ту же отрисовку.
+
+    Поле не трогается, пока в нём стоит курсор: перебивать текст под
+    руками у человека нельзя. Такое бывает, когда страница перерисовалась
+    не от навигации, а сама по себе.
+  */
+  function syncSearchBox(r) {
+    var el = document.querySelector('#search-form input[name=q]');
+    if (!el || document.activeElement === el) return;
+    var want = r.route === 'catalog' && r.query && r.query.q ? r.query.q : '';
+    if (el.value !== want) el.value = want;
+  }
+
   function render() {
     var r = parse(), fn = routes[r.route] || notfound;
     var key = r.route + ':' + (r.slug || r.id || r.key || '');
@@ -1165,6 +1182,7 @@
         if (t) setTimeout(function () { t.scrollIntoView({ block: 'start' }); }, 30);
       }
       lastKey = key; lastPath = r.route;
+      syncSearchBox(r);
       updateHeader();
       initSlider();
       initBuybar();
@@ -1272,12 +1290,12 @@
     if (navBusy) return;                       // пока идёт переход, второй клик не нужен
     /* Ссылка на другой цвет той же серии — это смена варианта, а не переход
        на новую страницу: прокрутка остаётся на месте, подсветка сразу. */
-    var kit = a.closest('.kit-i');
-    if (kit && !kit.classList.contains('on')) {
+    var tile = a.closest('.var');
+    if (tile && !tile.classList.contains('on')) {
       navMode = 'variant';
-      var list = kit.parentNode;
-      if (list) list.querySelectorAll('.kit-i').forEach(function (n) { n.classList.remove('on', 'picking'); });
-      kit.classList.add('picking');
+      var list = tile.parentNode;
+      if (list) list.querySelectorAll('.var').forEach(function (n) { n.classList.remove('on', 'picking'); });
+      tile.classList.add('picking');
     }
     if (!OFFLINE && href === location.pathname + location.search) return;
     go(href);

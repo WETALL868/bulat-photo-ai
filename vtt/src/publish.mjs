@@ -18,25 +18,73 @@
   здесь не появляется: выдуманная строка в карточке дороже пустого места.
 */
 import { slugify, REQUIRED_FOR_CARD, isDamagedPackage } from './normalize.mjs';
-import { colorTitle, colorPhrase } from './colors.mjs';
+import { colorTitle, colorPhrase, colorWord } from './colors.mjs';
 
-export const DESCRIPTION_VERSION = 2;
+export const DESCRIPTION_VERSION = 3;
 
 /* Тип расходника выводится из категории и названия — но только если он там
    действительно назван. Ничего не додумывается по «похожести». */
+/*
+  Порядок важен: сначала точные названия деталей, потом общие. «Поглотитель
+  чернил» обязан опознаться поглотителем, а не чернилами, а «ремкомплект» —
+  ремкомплектом, а не роликом из своего состава.
+
+  Правила написаны под то, как вещь названа в выгрузке, и дают
+  единственное число: раздел поставщика называется «Ракели», а в карточке
+  должно стоять «ракель». Без этих правил в текст попадало «Блоки лазера,
+  сканера, Сканирующие линейки Hi-Black 0609001409» — название раздела
+  вместо названия вещи.
+*/
 const TYPE_RULES = [
+  [/поглотител\p{L}*\s+чернил|абсорбер|памперс/iu, 'Поглотитель чернил'],
+  [/ремкомплект|maintenance\s*kit|комплект\p{L}*\s+обслуживания/iu, 'Ремкомплект'],
+  [/заправочн\p{L}*\s+комплект/iu, 'Заправочный комплект'],
+  [/дозирующ\p{L}*\s+лезви|doctor\s*blade/iu, 'Дозирующее лезвие'],
+  [/ракел/iu, 'Ракель'],
+  [/магнитн\p{L}*\s+вал/iu, 'Магнитный вал'],
+  [/(?:вал\s+резинов|резинов\p{L}*\s+вал)/iu, 'Резиновый вал'],
+  [/(?:вал\s+тефлонов|тефлонов\p{L}*\s+вал)/iu, 'Тефлоновый вал'],
+  [/сканирующ\p{L}*\s+линейк/iu, 'Сканирующая линейка'],
+  [/блок\p{L}*\s+проявки/iu, 'Блок проявки'],
+  [/узел\s+закреплени|термоузел|термоблок|печк\p{L}*\s+в\s+сборе|fuser/iu, 'Узел закрепления'],
+  [/тормозн\p{L}*\s+площадк/iu, 'Тормозная площадка'],
+  [/девелопер|стартер/iu, 'Девелопер'],
+  [/пл[её]нк\p{L}*\s+для\s+ламинировани/iu, 'Плёнка для ламинирования'],
+  [/лент\p{L}*\s+переноса|комплект\p{L}*\s+переноса/iu, 'Лента переноса'],
+  [/рем(?:ень|ни)|лент\p{L}*\s+позиционировани/iu, 'Ремень'],
+  [/сепаратор|пал\p{L}*\s+отделени/iu, 'Сепаратор'],
+  [/шестерн/iu, 'Шестерня'],
+  [/подшипник/iu, 'Подшипник'],
+  [/втулк|бушинг/iu, 'Втулка'],
+  [/шарнир/iu, 'Шарнир'],
+  [/кронштейн/iu, 'Кронштейн'],
+  [/держател/iu, 'Держатель'],
+  [/шлейф/iu, 'Шлейф'],
+  [/редуктор|привод|узел\s+привода/iu, 'Редуктор'],
+  [/плат[аы]\s|плата\s+форматировани|контроллер/iu, 'Плата'],
+  [/смазк|тальк/iu, 'Смазка'],
+  [/салфетк/iu, 'Салфетка'],
+  [/масло/iu, 'Масло'],
+  [/очистител|средств\p{L}*\s+для\s+очистки/iu, 'Очиститель'],
+  [/шнек|шпиндел/iu, 'Шнек'],
+  [/лоток|кассет/iu, 'Лоток'],
+  [/пакет/iu, 'Пакет'],
+  [/чип(?![\p{L}])/iu, 'Чип'],
   [/тонер-?картридж|тонер\s*картридж/i, 'Тонер-картридж'],
   [/картридж/i, 'Картридж'],
   [/тонер/i, 'Тонер'],
   [/чернил/i, 'Чернила'],
-  [/фотобараб|драм|drum/i, 'Фотобарабан'],
+  [/фотобараб|драм|drum|барабан/i, 'Фотобарабан'],
   [/термоплён|термоплен|термопленк/i, 'Термоплёнка'],
   [/ролик/i, 'Ролик'],
   [/бумаг/i, 'Бумага'],
 ];
 export function typeOf(item) {
-  const hay = `${item.category ?? ''} ${item.name ?? ''}`;
-  for (const [re, label] of TYPE_RULES) if (re.test(hay)) return label;
+  /* Сначала название: там вещь названа так, как её называют. Раздел
+     поставщика — запасной источник и почти всегда во множественном
+     числе, поэтому идёт вторым. */
+  for (const [re, label] of TYPE_RULES) if (re.test(String(item.name ?? ''))) return label;
+  for (const [re, label] of TYPE_RULES) if (re.test(String(item.category ?? ''))) return label;
   return item.category ?? null;
 }
 
@@ -77,111 +125,268 @@ export function modelsOf(item) {
   строку и в описании этого предложения просто нет.
 */
 const FOR_RE = /(^|[^\p{L}\p{N}])для\s+/iu;
-const TAIL_TOKENS = /^(?:[a-zа-яё]{1,4}|\d+(?:[.,]\d+)?\s*[kк]|\d+(?:[.,]\d+)?\s*(?:мл|л|г|кг|шт)\.?|с\s+чипом|без\s+чипа|б\/ч|\d+(?:[.,]\d+)?)$/iu;
+const RES_TOKEN = /(^|[^0-9\p{L}])\d+(?:[.,]\d+)?\s*[kк](?![0-9\p{L}])/giu;
+const TAIL_TOKENS = /^(?:[a-zа-яё]{1,4}|\d+(?:[.,]\d+)?\s*[kк](?:\s*\/\s*\d+(?:[.,]\d+)?\s*[kк])*|\d+(?:[.,]\d+)?\s*(?:мл|л|г|кг|шт)\.?|с\s+чипом|без\s+чипа|б\/ч|\d+(?:[.,]\d+)?)$/iu;
 
-export function modelsFromName(name) {
+/* Слова цвета в хвосте названия: «Tricolor», «Black», «Пурпурный». */
+const TAIL_COLOR = /^(?:tri-?color|black|cyan|magenta|yellow|photo\s*\w*|light\s*\w*|bk|c|m|y|lc|lm|pbk|mbk|gy|col(?:or|our)?|\d\s*-?\s*col|ч[её]рн\p{L}*|голуб\p{L}*|пурпурн\p{L}*|ж[её]лт\p{L}*|цветн\p{L}*|сер\p{L}*)$/iu;
+
+export function modelsFromName(name, code) {
   const text = String(name ?? '');
   const m = FOR_RE.exec(text);
   if (!m) return '';
   let rest = text.slice(m.index + m[0].length).trim();
   rest = rest.replace(/\([^)]*\)\s*$/u, '').trim();
   const parts = rest.split(',').map((s) => s.trim()).filter(Boolean);
-  while (parts.length > 1 && TAIL_TOKENS.test(parts[parts.length - 1])) parts.pop();
+  /* Хвост названия — это цвет, ресурс, объём и повтор артикула, а не
+     модели. «для HP DJ 2130, №123XL, Tricolor» — подходит он к HP DJ
+     2130, остальное сказано в других полях карточки. */
+  const shape = (v) => String(v || '').toUpperCase().replace(/[^0-9A-ZА-Я]/g, '');
+  const codeShape = shape(code);
+  const isTail = (v) => TAIL_TOKENS.test(v) || TAIL_COLOR.test(v)
+    || (codeShape && shape(v) && (shape(v) === codeShape || codeShape.includes(shape(v))));
+  while (parts.length > 1 && isTail(parts[parts.length - 1])) parts.pop();
   const out = parts.join(', ').replace(/[\s.,;-]+$/u, '').trim();
   return out.length >= 3 && out.length <= 140 ? out : '';
 }
 
 /*
+  Примечания поставщика.
+
+  В поле Compatibility у VTT лежит всё сразу: и список моделей на триста
+  знаков, и короткая пометка вроде «с чипом», и то и другое через
+  запятую. Раньше эта строка выводилась в карточку как есть, под подписью
+  «Примечание поставщика» — покупатель читал служебную телеграмму.
+
+  Разбираем её на две части. Известные короткие пометки переводим в
+  нормальную фразу по закрытой таблице: это перевод того, что написано, а
+  не догадка. Всё остальное считается перечнем совместимости и остаётся
+  дословным — резать чужой список моделей на части нельзя.
+*/
+const NOTE_PHRASES = [
+  [/^с\s*чипом$/i, 'Поставляется с чипом.'],
+  [/^без\s*чипа$/i, 'Чип в комплект не входит.'],
+  [/^восстановленн\p{L}*$/iu, 'Восстановленный: поставщик отмечает, что изделие прошло восстановление.'],
+  [/^без\s+бункера\s+(?:отработки\s+тонера|для\s+отработанного\s+тонера)$/i,
+    'Бункер для отработанного тонера в комплект не входит.'],
+  [/^прошивку\s+не\s+обновлять$/i, 'Поставщик предупреждает: прошивку аппарата обновлять не следует.'],
+  [/^без\s+батарейки$/i, 'Батарейка в комплект не входит.'],
+  [/^техническая\s+коробка$/i, 'Поставляется в технической упаковке.'],
+  [/^на\s+водной\s+основе$/i, 'Чернила на водной основе.'],
+  [/^dye\s+inks?$/i, 'Водорастворимые чернила (dye).'],
+  [/^pigment$/i, 'Пигментные чернила.'],
+  [/^рекомендуется\s+использовать\s+чернила\s+на\s+водной\s+основе$/i,
+    'Поставщик рекомендует использовать чернила на водной основе.'],
+];
+
+/* Похоже ли на перечень моделей: марка техники, косые черты, цифры. */
+const LOOKS_LIKE_MODELS = /[/]|\b(hp|canon|epson|kyocera|brother|samsung|xerox|ricoh|oki|lexmark|panasonic|sharp|toshiba|konica|pantum|lj|clj|mfp|dj)\b/i;
+
+export function parseSupplierNote(text) {
+  const raw = String(text ?? '').trim();
+  if (!raw) return { notes: [], compat: '', unknown: [] };
+  const notes = [];
+  const unknown = [];
+  const rest = [];
+  /* Запятая внутри скобок не разделитель: «(памперс, абсорбер)» — это
+     одно название, и разрезанное пополам оно превращается в обрывок. */
+  const parts = [];
+  let depth = 0, buf = '';
+  for (const ch of raw) {
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (ch === ',' && depth === 0) { parts.push(buf); buf = ''; continue; }
+    buf += ch;
+  }
+  parts.push(buf);
+  for (const part of parts.map((s) => s.trim()).filter(Boolean)) {
+    const hit = NOTE_PHRASES.find(([re]) => re.test(part));
+    if (hit) { notes.push(hit[1]); continue; }
+    /* Короткий кусок без признаков модели — пометка, которой нет в
+       таблице. Показываем дословно и в кавычках: своими словами
+       пересказывать чужую оговорку нельзя. */
+    /* Короткий кусок без признаков модели и без артикулов — пометка,
+       которой нет в таблице. Всё, что длиннее или содержит коды, —
+       перечень совместимости: пересказывать его нельзя. */
+    if (part.length <= 40 && !LOOKS_LIKE_MODELS.test(part) && !/\d{3,}/.test(part)) { unknown.push(part); continue; }
+    rest.push(part);
+  }
+  return { notes, compat: rest.join(', '), unknown };
+}
+
+/*
+  Как вещь называется.
+
+  Собирать первое предложение из типа, марки и артикула оказалось мало.
+  У VTT один и тот же артикул встречается у разных вещей: A00J563600 — это
+  и «Ролик захвата бумаги», и «Насадка (резинка) на ролик захвата бумаги»,
+  а HB-CH-Deli-T2A — чип одноразовый и чип многоразовый. Разница написана
+  в названии, и если её выбросить, две карточки получают одинаковый текст.
+
+  Поэтому подлежащее берётся из самого названия: часть до «для», без
+  марки, без артикула в скобках и без хвоста из цвета и ресурса. Всё, что
+  отличает вещь от соседней, в этой части и написано.
+
+  Артикул в скобках убирается только при точном совпадении с кодом
+  позиции. «(T2A)» у чипа — это модель картриджа Deli, а не повтор
+  артикула HB-CH-Deli-T2A, и терять её нельзя.
+*/
+const shapeOf = (v) => String(v || '').toUpperCase().replace(/[^0-9A-ZА-Я]/g, '');
+
+export function productSubject(item, code) {
+  const text = String(item?.name ?? '');
+  const m = FOR_RE.exec(text);
+  let head = (m ? text.slice(0, m.index) : text).trim();
+
+  const codeShape = shapeOf(code);
+  head = head.replace(/\(([^)]*)\)/g, (whole, inner) => {
+    const inside = shapeOf(inner);
+    if (!codeShape || !inside) return whole;
+    return inside === codeShape || codeShape.replace(/^HB/, '') === inside ? ' ' : whole;
+  });
+  if (code) head = head.split(code).join(' ');
+  if (item?.brand) head = head.split(item.brand).join(' ');
+
+  /* Хвост по запятым: цвет и ресурс уже сказаны отдельными полями, а вот
+     «многоразовый» рядом с «2K» — то самое отличие, ради которого всё и
+     затевалось. Поэтому часть не выбрасывается целиком: из неё вынимаются
+     цвет и ресурс, а остаток сохраняется. */
+  const parts = head.split(',').map((x) => x.trim()).filter(Boolean);
+  const kept = [];
+  for (let i = 0; i < parts.length; i++) {
+    let part = parts[i];
+    if (i > 0) {
+      part = part.replace(RES_TOKEN, ' ').replace(/(^|[^0-9\p{L}])\d+(?:[.,]\d+)?\s*(?:мл|л|г|кг)(?![0-9\p{L}])/giu, ' ');
+      if (TAIL_COLOR.test(part.trim())) part = '';
+    }
+    part = part.replace(/\s{2,}/g, ' ').trim().replace(/^[-–—\s]+|[-–—\s]+$/g, '');
+    if (part) kept.push(part);
+  }
+  return kept.join(', ').replace(/\s{2,}/g, ' ').trim();
+}
+
+/*
   Описание карточки.
 
-  Собирается только из полей, которые поставщик действительно прислал.
-  Ни гарантий, ни «печатает без полос», ни цены и остатка: цена и остаток
-  меняются каждой выгрузкой, и зашитые в текст они устареют молча.
+  Пишется для покупателя, а не для выгрузки. Раньше здесь собиралась одна
+  машинная строка с подписями «Поставщик указывает…», «Примечание
+  поставщика», «Раздел поставщика», штрихкодом и весом упаковки — читать
+  это невозможно, а половина содержимого место имеет в характеристиках, а
+  не в тексте.
 
-  Габаритов в тексте нет намеренно. В выгрузке есть Width/Height/Depth,
-  но единицы не указаны нигде, а сверка GrossVolume с произведением
-  сторон сходится лишь у части позиций — значит, «0,38 × 0,45 × 0,57 см»
-  было бы утверждением о размере, которого никто не подтверждал. Числа
-  остаются в характеристиках без единицы и с оговоркой.
+  Теперь в тексте остаётся то, что помогает выбрать: что это за вещь,
+  какого цвета, к чему подходит, на сколько хватает и чем отличается.
+  Штрихкод, габариты, вес, количество в упаковке и раздел поставщика
+  переехали в характеристики — там им и место.
 
-  Текст детерминирован: те же данные дают тот же текст, поэтому diff
-  показывает изменения у поставщика, а не перестановку слов.
+  Ни одного придуманного достоинства. «Чёткий текст», «не осыпается»,
+  «ISO 19752» — этого в выгрузке нет, значит этого не будет и в карточке.
+  Даже проценты заполнения к ресурсу не дописываются: поставщик их не
+  указал.
+
+  Текст детерминирован и складывается только из тех предложений, факты
+  для которых есть. Поэтому у ролика, чернил и тонер-картриджа получается
+  не один шаблон с подменённым артикулом, а разные тексты.
 */
 export function buildDescription(item) {
-  const facts = [];
   const used = {};
   const type = typeOf(item);
   const code = item.vendorCode ?? '';
+  const colorText = colorWord(item.color);
+  const brand = item.brand ?? '';
 
-  /* Первое предложение — что это за вещь. Порядок слов зависит от того,
-     какие поля есть, поэтому у позиции без марки техники получается не
-     та же фраза с подменённым артикулом, а другая фраза. */
-  if (code && type) {
-    const brand = item.brand ? ` ${item.brand}` : '';
-    const forBrand = item.compatibleBrand ? ` для техники ${item.compatibleBrand}` : '';
-    facts.push(`${code} — ${type.toLowerCase()}${brand}${forBrand}.`);
-    used.type = 1; used.vendorCode = 1;
-    if (item.brand) used.brand = 1;
-    if (item.compatibleBrand) used.compatibleBrand = 1;
-  } else if (type) {
-    facts.push(`${type}${item.brand ? ` ${item.brand}` : ''}.`);
+  /*
+    Первое предложение — что это. Цвет и тип идут в него же: «Чёрный
+    тонер-картридж Hi-Black HB-TK-8115BK» читается как одна вещь, а
+    «Цвет: чёрный» отдельной строкой — как графа анкеты.
+  */
+  /* Подлежащее — из названия поставщика; типа хватает только там, где
+     название ничего сверх него не содержит. */
+  const subject = productSubject(item, code) || (type ? String(type) : '');
+  /* Уточнение после запятой («многоразовый») отделяется от основы: марка и
+     артикул должны встать сразу за основой, иначе выходит «чип к картриджу
+     Deli, многоразовый Hi-Black HB-CH-Deli-T2A». */
+  const comma = subject.indexOf(',');
+  const subjectHead = comma > 0 ? subject.slice(0, comma).trim() : subject;
+  const subjectTail = comma > 0 ? subject.slice(comma + 1).trim() : '';
+
+  const head = [];
+  if (subjectHead) {
+    const lead = colorText && !TAIL_COLOR.test(subjectHead) && !subjectHead.toLowerCase().includes(colorText)
+      ? `${colorText[0].toUpperCase()}${colorText.slice(1)} ${subjectHead[0].toLowerCase()}${subjectHead.slice(1)}`
+      : `${subjectHead[0].toUpperCase()}${subjectHead.slice(1)}`;
+    head.push(lead);
     used.type = 1;
+    if (colorText && lead !== subjectHead) used.color = 1;
   }
+  if (brand) { head.push(brand); used.brand = 1; }
+  if (code) { head.push(code); used.vendorCode = 1; }
 
+  const note = parseSupplierNote(item.compatibilityText);
   const models = modelsOf(item);
-  if (models.length) {
-    const list = models.slice(0, 12).join(', ');
-    const more = models.length > 12 ? ` и ещё ${models.length - 12} моделей` : '';
-    facts.push(`Совместимость по данным поставщика: ${list}${more}.`);
-    used.compatibility = 1;
-  } else {
-    const fromName = modelsFromName(item.name);
-    if (fromName) {
-      facts.push(`Поставщик указывает совместимость: ${fromName}.`);
-      used.compatibilityFromName = 1;
-    }
+  const fromName = modelsFromName(item.name, code);
+  /* К чему подходит: сначала структурный список, потом название, потом
+     остаток примечания. Дублировать одно и то же тремя способами не
+     нужно — берём первый непустой источник. */
+  let fits = '';
+  if (models.length) { fits = models.slice(0, 12).join(', '); used.compatibility = 1; }
+  else if (fromName) { fits = fromName; used.compatibilityFromName = 1; }
+
+  const facts = [];
+  if (head.length) {
+    /* Если техника известна, она заканчивает первое предложение — так оно
+       сразу отвечает на главный вопрос «подойдёт ли мне».
+
+       Марка техники добавляется только тогда, когда название её ещё не
+       назвало: «чип к картриджу Deli P2000/M2000 для техники Deli» — это
+       одно и то же, сказанное дважды. */
+    const brandSaid = item.compatibleBrand
+      && subject.toLowerCase().includes(String(item.compatibleBrand).toLowerCase().split(/[\s-]/)[0]);
+    const forWhat = fits
+      ? ` для ${fits}`
+      : (item.compatibleBrand && !brandSaid ? ` для техники ${item.compatibleBrand}` : '');
+    if (!fits && forWhat) used.compatibleBrand = 1;
+    facts.push(`${head.join(' ')}${forWhat}${subjectTail ? `, ${subjectTail}` : ''}.`);
+  } else if (fits) {
+    facts.push(`Подходит к ${fits}.`);
   }
 
-  const colorText = colorPhrase(item.color);
-  const resource = item.resource ? `заявленный ресурс — ${fmt(item.resource)} страниц` : '';
-  const volume = item.volumeMl ? `объём — ${fmt(item.volumeMl)} мл` : '';
-  const measure = resource || volume;
-  if (colorText && measure) {
-    facts.push(`Цвет — ${colorText}, ${measure}.`);
-    used.color = 1; used[resource ? 'resource' : 'volumeMl'] = 1;
-  } else if (colorText) {
-    facts.push(`Цвет — ${colorText}.`);
-    used.color = 1;
-  } else if (measure) {
-    facts.push(`${measure[0].toUpperCase()}${measure.slice(1)}.`);
-    used[resource ? 'resource' : 'volumeMl'] = 1;
+  if (item.resource) {
+    facts.push(`Заявленный поставщиком ресурс — ${fmt(item.resource)} страниц.`);
+    used.resource = 1;
+  } else if (item.volumeMl) {
+    facts.push(`Объём — ${fmt(item.volumeMl)} мл.`);
+    used.volumeMl = 1;
   }
 
-  /* Свободная строка поставщика идёт под его подписью и без разбора: в
-     ней лежат и «с чипом», и «Позиция снята с производства». */
-  const note = String(item.compatibilityText ?? '').trim();
-  if (note && !used.compatibility && note !== modelsFromName(item.name)) {
-    facts.push(`Примечание поставщика: ${note.replace(/\.$/, '')}.`);
+  for (const phrase of note.notes) facts.push(phrase);
+  if (note.notes.length) used.notes = 1;
+  if (note.unknown.length) {
+    const joined = note.unknown.join(', ');
+    /* «состав: термоузел, ролик переноса» — это комплектация, и писать
+       перед ней «Поставщик отмечает:» значит поставить двоеточие дважды. */
+    const composition = /^состав\s*:/i.exec(joined);
+    facts.push(composition
+      ? `В комплект входят: ${joined.slice(composition[0].length).trim()}.`
+      : `Поставщик отмечает: ${joined}.`);
+    used.notes = 1;
+  }
+  /*
+    Длинный перечень моделей в текст не идёт: у ролика он занимает
+    триста знаков и читать его невозможно. Место такому списку — в
+    характеристиках, отдельной строкой за подписью поставщика. В текст он
+    попадает только когда это единственное, что известно о совместимости.
+  */
+  if (note.compat && !fits) {
+    const short = note.compat.length <= 160 ? note.compat : `${note.compat.slice(0, 157)}…`;
+    facts.push(`Совместимость по данным поставщика: ${short}`.replace(/[.\s]*$/, '.'));
     used.compatibilityText = 1;
   }
 
   if (item.originalNumber && item.originalNumber !== code) {
-    facts.push(`Оригинальный номер: ${item.originalNumber}.`);
+    facts.push(`Оригинальный номер — ${item.originalNumber}.`);
     used.originalNumber = 1;
   }
-
-  const pack = [];
-  if (item.inPackage && item.inPackage > 1) { pack.push(`в упаковке ${fmt(item.inPackage)} шт.`); used.inPackage = 1; }
-  if (item.grossWeight) { pack.push(`вес одной штуки ${fmt(item.grossWeight)} кг`); used.grossWeight = 1; }
-  else if (item.weight) { pack.push(`вес ${fmt(item.weight)} кг`); used.weight = 1; }
-  if (pack.length) facts.push(`${pack[0][0].toUpperCase()}${pack[0].slice(1)}${pack[1] ? `, ${pack[1]}` : ''}.`);
-
-  if (item.categoryRoot || item.category) {
-    const path = [item.categoryRoot, item.category].filter(Boolean).join(' / ');
-    facts.push(`Раздел поставщика: ${path}.`);
-    used.category = 1;
-  }
-  if (item.barcode) { facts.push(`Штрихкод: ${item.barcode}.`); used.barcode = 1; }
 
   return {
     text: facts.join(' '),
