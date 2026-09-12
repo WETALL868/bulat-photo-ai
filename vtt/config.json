@@ -1,9 +1,18 @@
 {
   "serviceUrl": "http://api.vtt.ru:8048/Portal.svc",
-  "namespace": "http://tempuri.org/",
+  "namespace": "http://portal.vtt.ru",
+  "soapActionBase": "http://portal.vtt.ru/IPortalService",
   "portionSize": 500,
   "timeoutMs": 60000,
   "retryAttempts": 4,
   "retryBaseDelayMs": 1000,
-  "publishFilter": { "brands": [], "categories": [], "excludeBrands": [] }
+  "publishFilter": {
+    "brands": ["Hi-Black", "NetProduct", "Hi-Image", "Content", "Hi-Color"],
+    "brandFallback": {
+      "whenBrandIn": ["", "Совместимые"],
+      "nameMarks": ["Hi-Black", "NetProduct", "Hi-Image", "Hi-Color"]
+    },
+    "categories": [],
+    "excludeBrands": []
+  }
 }

@@ -161,7 +161,7 @@ if (path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1
       : rec?.variants?.length
         ? path.join(ROOT, [...rec.variants].sort((a, b) => b.width - a.width)[0].files.webp)
         : (fromDir && isRemote ? path.join(path.resolve(fromDir), path.basename(new URL(url).pathname)) : null);
-    if (local && fs.existsSync(local)) sources.push({ id, file: local });
+    if (local && fs.existsSync(local)) sources.push({ id, vttId: row[col.vttId] ?? null, file: local });
     else missing.push(id);
   }
 

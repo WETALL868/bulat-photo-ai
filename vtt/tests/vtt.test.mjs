@@ -1233,3 +1233,153 @@ test('атлас: раскладка, ячейки и обратный расч�
   assert.ok(big.atlases + 205 < 255, 'вместе с остальными файлами укладывается в предел публикации');
   assert.equal(big.width, 2880, 'атлас не выходит за размер, который браузеры декодируют без оговорок');
 });
+
+/* ------------------------------------------------------------------ *
+   Витрина только собственных марок VTT
+
+   Поставщик отдаёт весь свой ассортимент — 9 483 позиции, включая чужие
+   бренды. Публиковать нужно только линейки самого VTT. Отбор идёт по
+   полю Brand выгрузки, то есть по производителю; Vendor для этого не
+   годится — у VTT это марка принтера, к которому товар подходит, и по
+   нему на витрину попал бы весь чужой ассортимент, совместимый с HP.
+ * ------------------------------------------------------------------ */
+
+const OWN_FILTER = {
+  brands: ['Hi-Black', 'NetProduct', 'Hi-Image', 'Content', 'Hi-Color'],
+  brandFallback: {
+    whenBrandIn: ['', 'Совместимые'],
+    nameMarks: ['Hi-Black', 'NetProduct', 'Hi-Image', 'Hi-Color'],
+  },
+};
+
+test('пять собственных марок VTT проходят фильтр', async () => {
+  const { matchesFilter } = await import('../src/publish.mjs');
+  for (const brand of ['Hi-Black', 'NetProduct', 'Hi-Image', 'Content', 'Hi-Color']) {
+    assert.equal(matchesFilter({ brand, name: `Товар ${brand}` }, OWN_FILTER), true, `марка ${brand} отсеяна`);
+  }
+  /* Регистр и пробелы у поставщика гуляют, маркой это быть не перестаёт. */
+  assert.equal(matchesFilter({ brand: ' hi-black ', name: 'Картридж' }, OWN_FILTER), true);
+  assert.equal(matchesFilter({ brand: 'HI-BLACK', name: 'Картридж' }, OWN_FILTER), true);
+});
+
+test('чужие марки на витрину не попадают', async () => {
+  const { matchesFilter } = await import('../src/publish.mjs');
+  for (const brand of ['Original', 'OEM', 'InkTec', 'Static Control', 'Katun', 'Pantum', 'Tomoegawa', 'Mitsubishi']) {
+    assert.equal(matchesFilter({ brand, name: 'Картридж для HP LaserJet' }, OWN_FILTER), false, `марка ${brand} прошла`);
+  }
+  /* Пустой Brand сам по себе пропуском не является. */
+  assert.equal(matchesFilter({ brand: '', name: 'Тонер для HP LJ 1010' }, OWN_FILTER), false);
+  assert.equal(matchesFilter({ brand: 'Совместимые', name: 'Ролик подачи для Samsung' }, OWN_FILTER), false);
+});
+
+test('отбор идёт по производителю, а не по совместимости с принтером', async () => {
+  const { matchesFilter } = await import('../src/publish.mjs');
+  /*
+    Ровно та ошибка, ради которой это правило и написано: у VTT поле
+    Vendor означает марку ПРИНТЕРА. Чужой картридж Original для HP имеет
+    Vendor «HP» и shopBrand «hp» — и по любому из них прошёл бы на
+    витрину, хотя произвёл его не VTT.
+  */
+  const foreign = { brand: 'Original', compatibleBrand: 'HP', name: 'Картридж HP CF259A', cat: 'laser' };
+  assert.equal(matchesFilter(foreign, OWN_FILTER), false, 'чужой товар прошёл по марке принтера');
+
+  const own = { brand: 'Hi-Black', compatibleBrand: 'HP', name: 'Картридж Hi-Black HB-CF259A' };
+  assert.equal(matchesFilter(own, OWN_FILTER), true, 'свой товар отсеян из-за марки принтера');
+});
+
+test('позиции без Brand спасаются по марке в названии, но только по ней', async () => {
+  const { matchesFilter, ownBrandInName } = await import('../src/publish.mjs');
+  const marks = OWN_FILTER.brandFallback.nameMarks;
+
+  /* Настоящие исключения из реальной выгрузки: Brand не заполнен либо
+     «Совместимые», а марка стоит в названии перед хвостом о
+     совместимости. */
+  const real = [
+    ['', 'Универсальный очиститель Hi-Black Cleaner для оргтехники и электроники, 520 мл'],
+    ['', 'Поглотитель чернил (абсорбер, памперс) Hi-Black для принтеров Epson L8160'],
+    ['Совместимые', 'Ролик проявки Hi-Black для Avision AP30A/КАТЮША M133'],
+    ['Совместимые', 'Шестерня 29T/14T GP-160 Hi-Black (совместима с LJ 5000/5100)'],
+    ['Совместимые', 'Тормозная площадка (металлическая рамка) Hi-Black для Samsung ML-1510/1710'],
+  ];
+  for (const [brand, name] of real) {
+    assert.equal(matchesFilter({ brand, name }, OWN_FILTER), true, `не спасено: ${name}`);
+  }
+
+  /*
+    А вот это — чужая деталь, ПОДХОДЯЩАЯ к технике Hi-Black. Марка стоит
+    после «для», то есть в хвосте о совместимости, и производителем не
+    является. Без этой оговорки на витрину уехал бы чужой товар.
+  */
+  assert.equal(ownBrandInName('Ролик подачи для Hi-Black HB-2030', marks), false);
+  assert.equal(ownBrandInName('Шестерня, совместимая с Hi-Black HB-1050', marks), false);
+  assert.equal(matchesFilter({ brand: 'Совместимые', name: 'Ролик подачи для Hi-Black HB-2030' }, OWN_FILTER), false);
+
+  /* Марка должна быть отдельным словом, а не куском другого. */
+  assert.equal(ownBrandInName('Картридж Hi-Blackberry', marks), false);
+  assert.equal(ownBrandInName('Тонер NetProductions', marks), false);
+  assert.equal(ownBrandInName('Картридж Hi Black HB-1', marks), true, 'написание через пробел — та же марка');
+
+  /*
+    Content в спасательный список не входит намеренно: это обычное
+    английское слово, и в названии чужого товара оно ничего не доказывает.
+  */
+  assert.equal(ownBrandInName('Premium Content Roller for HP', marks), false);
+  assert.equal(matchesFilter({ brand: '', name: 'Premium Content Roller for HP' }, OWN_FILTER), false);
+  /* При этом товар, у которого Content стоит именно в поле Brand, свой. */
+  assert.equal(matchesFilter({ brand: 'Content', name: 'Тонер-картридж' }, OWN_FILTER), true);
+});
+
+test('описание и совместимость на отбор не влияют', async () => {
+  const { matchesFilter } = await import('../src/publish.mjs');
+  /* Марка может встретиться в тексте описания или в списке совместимых
+     моделей — это не делает товар своим. Смотрим только название. */
+  const item = {
+    brand: 'Original', name: 'Картридж Canon 045 M',
+    supplierDescription: 'Аналог Hi-Black HB-045M, тот же ресурс',
+    compatibilityText: 'подходит там же, где Hi-Black HB-045',
+    compatibilityLabels: ['Hi-Black HB-045M'],
+  };
+  assert.equal(matchesFilter(item, OWN_FILTER), false, 'марка из описания протащила чужой товар');
+
+  const weak = { brand: '', name: 'Ролик захвата', supplierDescription: 'Замена для Hi-Black' };
+  assert.equal(matchesFilter(weak, OWN_FILTER), false, 'марка из описания сработала как признак');
+});
+
+test('публикация: чужие артикулы не доходят до витрины', async () => {
+  const { publish } = await import('../src/publish.mjs');
+  const { store } = tmpStore();
+  const rows = [
+    { Id: 'own-1', Name: 'Картридж Hi-Black HB-CF259A', Brand: 'Hi-Black', Vendor: 'HP', NameAlias: 'HB-CF259A', PriceLocal: '1000', Group: 'Картриджи лазерные', RootGroup: 'Картриджи для лазерной печати' },
+    { Id: 'own-2', Name: 'Тонер NetProduct N-100', Brand: 'NetProduct', Vendor: 'Canon', NameAlias: 'N-100', PriceLocal: '900', Group: 'Тонеры черные', RootGroup: 'Тонеры/ Девелоперы' },
+    { Id: 'own-3', Name: 'Очиститель Hi-Black Cleaner для оргтехники', Brand: '', Vendor: 'HP', NameAlias: 'HB-CLN', PriceLocal: '500', Group: 'Чистящие средства', RootGroup: 'Чистящие средства и материалы для обслуживания' },
+    { Id: 'ext-1', Name: 'Тонер-картридж 045 M Canon LBP610', Brand: 'Original', Vendor: 'Canon', NameAlias: '1240C002', PriceLocal: '6543', Group: 'Картриджи лазерные', RootGroup: 'Картриджи для лазерной печати' },
+    { Id: 'ext-2', Name: 'Чернила InkTec для Epson', Brand: 'InkTec', Vendor: 'Epson', NameAlias: 'IT-100', PriceLocal: '700', Group: 'Чернила', RootGroup: 'Чернила' },
+    { Id: 'ext-3', Name: 'Ролик подачи для Hi-Black HB-2030', Brand: 'Совместимые', Vendor: 'HP', NameAlias: 'RL-1', PriceLocal: '300', Group: 'Ролики', RootGroup: 'Запчасти для ремонта техники' },
+  ];
+  store.upsertItems(rows.map((r) => normalizeItem(r)), {});
+
+  const res = publish(store, { filter: OWN_FILTER });
+  const ids = res.products.map((p) => p.vttId).sort();
+  assert.deepEqual(ids, ['own-1', 'own-2', 'own-3'], 'на витрине не тот набор');
+  assert.equal(res.report.filtered, 3, 'в отчёте не указан отсев');
+  assert.equal(res.report.total, 6, 'стор не должен уменьшаться');
+
+  /* Чужие артикулы не должны находиться ни по коду, ни по названию. */
+  const blob = JSON.stringify(res.products);
+  for (const needle of ['1240C002', 'InkTec', 'RL-1']) {
+    assert.ok(!blob.includes(needle), `чужой артикул ${needle} дошёл до витрины`);
+  }
+  /* А стор остался полным — он нужен для анализа. */
+  assert.equal(store.loadAll().size, 6, 'фильтр не имеет права удалять из стора');
+});
+
+test('фильтр марок прописан в конфигурации, а не только в тестах', async () => {
+  const { loadConfig } = await import('../src/config.mjs');
+  const cfg = loadConfig(path.join(process.cwd(), 'vtt/config.json'));
+  const f = cfg.publishFilter;
+  assert.deepEqual(f.brands, ['Hi-Black', 'NetProduct', 'Hi-Image', 'Content', 'Hi-Color'],
+    'состав витрины задаётся конфигурацией — пустой список вернул бы чужие бренды');
+  assert.deepEqual(f.brandFallback.whenBrandIn, ['', 'Совместимые']);
+  assert.ok(!f.brandFallback.nameMarks.includes('Content'), 'Content не должен спасать по названию');
+  assert.ok(f.brandFallback.nameMarks.includes('Hi-Black'));
+});

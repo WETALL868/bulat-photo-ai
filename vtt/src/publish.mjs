@@ -109,13 +109,60 @@ export function buildDescription(item) {
   };
 }
 
+/*
+  Марка в тексте. Границы заданы явно, а не через \b: в JavaScript \b
+  считает «словом» только латиницу с цифрами, поэтому у кириллического
+  слова границы нет вовсе и такая проверка молча ничего не находит.
+*/
+const BOUND = '(^|[^\\p{L}\\p{N}])';
+const markRe = (mark) => new RegExp(`${BOUND}${String(mark).replace(/-/g, '[-\\s]?')}($|[^\\p{L}\\p{N}])`, 'iu');
+/* «для», «совместим…», «подходит» открывают хвост о совместимости. */
+const COMPAT_TAIL = new RegExp(`${BOUND}(для|совместим\\p{L}*|подходит|под)($|[^\\p{L}\\p{N}])`, 'iu');
+
+/*
+  Собственная марка в названии — запасной признак для товаров, у которых
+  поставщик не заполнил Brand.
+
+  Смотрим только «производительную» часть названия, до хвоста о
+  совместимости. Иначе «Ролик подачи для Hi-Black …» — чужая деталь,
+  подходящая к технике Hi-Black, — попала бы на витрину как своя.
+  Описание и поле совместимости здесь не участвуют вовсе: слово из
+  описания маркой не является.
+*/
+export function ownBrandInName(name, marks = []) {
+  const text = String(name ?? '');
+  const tail = text.search(COMPAT_TAIL);
+  const head = tail >= 0 ? text.slice(0, tail) : text;
+  return marks.some((m) => markRe(m).test(head));
+}
+
+/*
+  Что попадает на витрину.
+
+  Отбор идёт по Brand из выгрузки — по тому, кто товар произвёл. Ни
+  Vendor, ни раздел витрины для этого не годятся: Vendor у VTT означает
+  марку принтера, к которому товар подходит, и по нему в каталог попал бы
+  весь чужой ассортимент, совместимый с HP или Canon.
+
+  Товары с незаполненным Brand спасаются по названию, но только по
+  списку марок, у которых название однозначно: Hi-Black, Hi-Image,
+  Hi-Color, NetProduct — придуманные имена, их ни с чем не спутать.
+  Content в этот список не входит: это обычное английское слово, и
+  встретившись в названии чужого товара оно протащило бы его на витрину.
+*/
 export function matchesFilter(item, filter = {}) {
-  const brands = (filter.brands ?? []).map((s) => s.toLowerCase());
-  const exclude = (filter.excludeBrands ?? []).map((s) => s.toLowerCase());
+  const brands = (filter.brands ?? []).map((s) => String(s).trim().toLowerCase());
+  const exclude = (filter.excludeBrands ?? []).map((s) => String(s).trim().toLowerCase());
   const cats = filter.categories ?? [];
-  const brand = (item.brand ?? '').toLowerCase();
+  const brand = String(item.brand ?? '').trim().toLowerCase();
   if (exclude.length && exclude.includes(brand)) return false;
-  if (brands.length && !brands.includes(brand)) return false;
+
+  if (brands.length && !brands.includes(brand)) {
+    const fb = filter.brandFallback ?? null;
+    const weak = (fb?.whenBrandIn ?? []).map((s) => String(s).trim().toLowerCase()).includes(brand);
+    if (!(weak && ownBrandInName(item.name, fb?.nameMarks ?? []))) return false;
+  }
+
   if (cats.length && !cats.includes(item.categoryId) && !cats.includes(item.category)) return false;
   return true;
 }

@@ -372,10 +372,26 @@ async function readVttStore(storeRoot) {
     console.log(`  локальных картинок подставлено: ${withLocal} из ${products.length}`);
   }
 
-  const taxonomy = tax.taxonomyReport([...store.loadAll().values()].filter((i) => i.active !== false));
+  /* Сводка считается по тому, что реально попало на витрину, а не по
+     всему стору: иначе отчёт обещал бы разделы, которых на сайте нет. */
+  const publishedIds = new Set(products.map((p) => p.vttId));
+  const taxonomy = tax.taxonomyReport(
+    [...store.loadAll().values()].filter((i) => i.active !== false && publishedIds.has(i.id)),
+  );
   console.log(`  импорт VTT: в сторе ${report.total}, опубликовано ${report.published}, ` +
     `скрыто ${report.inactive}, отсеяно фильтром ${report.filtered}`);
   console.log('  разделы витрины: ' + Object.entries(taxonomy.cats).map(([k, v]) => `${k} ${v}`).join(', '));
+  if (report.filtered) {
+    const byBrand = {};
+    for (const i of store.loadAll().values()) {
+      if (i.active === false || publishedIds.has(i.id)) continue;
+      const b = (i.brand ?? '').trim() || '(Brand не заполнен)';
+      byBrand[b] = (byBrand[b] ?? 0) + 1;
+    }
+    const top = Object.entries(byBrand).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    console.log(`  отсеяно фильтром марок: ${report.filtered} — ` + top.map(([b, n]) => `${b} ${n}`).join(', ') +
+      (Object.keys(byBrand).length > 6 ? ` и ещё ${Object.keys(byBrand).length - 6} марок` : ''));
+  }
   if (Object.keys(taxonomy.unknownRoots).length) {
     console.log('  РАЗДЕЛЫ ПОСТАВЩИКА БЕЗ СООТВЕТСТВИЯ: ' + JSON.stringify(taxonomy.unknownRoots));
   }
@@ -810,6 +826,16 @@ const featured = products.slice(0, 8).map((p) => p.id);
 
 /* ----------------------------------------------------------------- запись */
 
+/*
+  Каталог пересобирается начисто, но карта атласов — не его выход. Её
+  собирает отдельный этап (tools/pack-thumbs.mjs) из скачанных картинок,
+  а лежит она здесь же. Стереть её вместе с каталогом значит потерять все
+  фотографии: файлы атласов останутся на диске, а указателя на ячейки не
+  будет — и витрина молча покажет заглушки. Поэтому карта переживает
+  пересборку.
+*/
+const THUMBS_FILE = path.join(OUT_CATALOG, 'thumbs.json');
+const keptThumbs = fs.existsSync(THUMBS_FILE) ? JSON.parse(fs.readFileSync(THUMBS_FILE, 'utf8')) : null;
 fs.rmSync(OUT_CATALOG, { recursive: true, force: true });
 fs.mkdirSync(path.join(OUT_CATALOG, 'chunks'), { recursive: true });
 fs.mkdirSync(OUT_LIVE, { recursive: true });
@@ -824,6 +850,29 @@ const sizes = {};
 /* Сжатие индекса живёт в отдельном модуле: тем же кодом его разбирает
    предрендер, и формат проверяется тестом на круговой обход. */
 sizes.index = write('data/catalog/index.json', packIndex(FIELDS, rows));
+
+/*
+  Карта атласов возвращается на место и заново привязывается к
+  идентификаторам этой сборки.
+
+  Привязка обязательна. Идентификатор витрины не вечен: при совпадении
+  артикулов сборщик дописывает к нему хвост, и какие товары столкнутся —
+  зависит от состава витрины. Сменился фильтр — сменилась часть
+  идентификаторов, и карта, ключёванная ими, начала бы указывать в
+  пустоту. Устойчив только Id поставщика, поэтому карта хранит и его.
+*/
+if (keptThumbs) {
+  const byVtt = keptThumbs.byVtt ?? null;
+  const items = {};
+  let found = 0;
+  for (const p of products) {
+    const cell = byVtt ? byVtt[p.vttId] : keptThumbs.items?.[p.id];
+    if (cell) { items[p.id] = cell; found += 1; }
+  }
+  const kept = { ...keptThumbs, version: 2, items, byVtt: byVtt ?? undefined };
+  sizes.thumbs = write('data/catalog/thumbs.json', kept);
+  console.log(`  миниатюр из атласов: ${found} на ${products.filter((p) => p.source === 'vtt').length} импортированных товаров`);
+}
 sizes.categories = write('data/catalog/categories.json', categories);
 sizes.brands = write('data/catalog/brands.json', brands);
 sizes.compatibility = write('data/catalog/compatibility.json', compatibility);
@@ -856,6 +905,8 @@ const meta = {
   fields: FIELDS,
   bytes: { ...sizes, firstLoad: sizes.index + sizes.categories + sizes.brands + sizes.live },
 };
+/* Отметка о карте атласов: по ней витрина решает, запрашивать ли её. */
+if (keptThumbs) meta.thumbs = true;
 write('data/catalog/meta.json', meta);
 
 /*
