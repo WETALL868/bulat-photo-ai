@@ -30,6 +30,7 @@ import { contacts, legal, shop, messengers} from '../catalog-source/site.config.
 import { colorKey, colorTitle, colorRank } from '../vtt/src/colors.mjs';
 import { modelsFromName } from '../vtt/src/publish.mjs';
 import { seriesKey, famKey, FAM_MAX, FAM_MIN_SERIES, variantLabel } from '../vtt/src/family.mjs';
+import { ItemRegistry, stableKey } from './item-registry.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_CATALOG = path.join(ROOT, 'data/catalog');
@@ -414,6 +415,22 @@ const fallback = SOURCE === 'data-js' ? src : readDataJs();
   На боевых данных флаг не нужен: там источником становится сам стор
   (--source=vtt), и никакой пометки demo у товаров не появляется.
 */
+/*
+  Реестр идентичности. Адрес карточки и «Код товара» выдаются из него и
+  больше не зависят от того, какие товары попали в эту сборку.
+
+  Товары прототипа занимают свои адреса первыми: они были в магазине до
+  импорта, и их адреса — основа, вокруг которой разводятся совпадения.
+*/
+const REGISTRY_FILE = path.join(ROOT, 'data/item-registry.json');
+const registry = ItemRegistry.load(REGISTRY_FILE);
+const registryWas = registry.size;
+for (const p of src.products) {
+  const rec = registry.claim(stableKey(p), { preferredId: p.id, seed: p.id });
+  p.id = rec.id;
+  p.no = rec.no;
+}
+
 /* `--with-vtt=all` — весь ассортимент поставщика; число — ограничение для
    быстрой проверки сборки, чтобы не ждать девять с половиной тысяч
    карточек на каждой правке вёрстки. */
@@ -431,27 +448,29 @@ if (WITH_VTT > 0 && SOURCE !== 'vtt') {
     выдуманы.
   */
   const demoFlag = argOf('vtt-demo', '0') !== '0';
-  const existing = new Set(src.products.map((p) => p.id));
   let taken = 0, renamed = 0;
   for (const p of imported.products) {
     if (taken >= WITH_VTT) break;
     /*
-      Совпадение идентификаторов не повод потерять товар. Артикул у VTT
-      не уникален — один и тот же NameAlias встречается у позиций с чипом
-      и без, в повреждённой упаковке и в целой, — а раньше такой товар
-      просто пропускался: из 9 483 позиций на витрину доходило 8 104.
-      Теперь к идентификатору дописывается собственный Id поставщика,
-      который уникален по определению.
+      Адрес выдаёт реестр, а не текущий состав каталога.
+
+      Артикул у VTT не уникален: один и тот же NameAlias встречается у
+      позиций с чипом и без, в повреждённой упаковке и в целой. Раньше
+      совпадение разводилось на месте — к идентификатору дописывался Id
+      поставщика, — и адрес зависел от того, кто в этой сборке попался
+      первым. Стоило убрать с витрины повреждённую упаковку, и 449
+      нормальных товаров переехали на освободившиеся адреса.
+
+      Теперь адрес принадлежит товару: реестр помнит, кому что выдано, и
+      держит занятыми даже адреса ушедших позиций. Освободившийся адрес
+      повреждённой упаковки не достанется никому.
     */
-    let id = p.id;
-    if (existing.has(id)) {
-      id = `${p.id}-${slugify(p.vttId || '')}`.replace(/-+$/, '');
-      let n = 2;
-      while (existing.has(id)) id = `${p.id}-${slugify(p.vttId || '')}-${n++}`;
-      renamed += 1;
-    }
-    src.products.push({ ...p, id, demo: demoFlag, source: 'vtt' });
-    existing.add(id);
+    const rec = registry.claim(stableKey({ ...p, source: 'vtt' }), {
+      preferredId: p.id,
+      seed: slugify(p.vttId || ''),
+    });
+    if (rec.id !== p.id) renamed += 1;
+    src.products.push({ ...p, id: rec.id, no: rec.no, demo: demoFlag, source: 'vtt' });
     taken += 1;
   }
   src.vttCategories = imported.vttCategories;
@@ -547,12 +566,17 @@ function uniqueSlug(p) {
 /* `demo` и `src` едут в индексе, а не только в деталях: по ним витрина
    рисует пометку в списке, а сборщик страниц решает, что не индексировать
    и не класть в sitemap. Читать ради этого чанк деталей было бы дороже. */
-const FIELDS = ['id', 'slug', 'name', 'code', 'cat', 'brand', 'img', 'type', 'res', 'color', 'chip', 'badge', 'rate', 'reviews', 'fam', 'demo', 'src'];
+/* `no` — «Код товара»: выдаётся реестром один раз и живёт с товаром.
+   Раньше витрина считала его хешем от адреса при отрисовке, и вместе со
+   сменой адреса менялся код — покупатель переставал находить товар по
+   известному ему номеру. */
+const FIELDS = ['id', 'slug', 'name', 'code', 'no', 'cat', 'brand', 'img', 'type', 'res', 'color', 'chip', 'badge', 'rate', 'reviews', 'fam', 'demo', 'src'];
 const rows = products.map((p) => [
   p.id,
   uniqueSlug(p),
   p.name,
   p.code,
+  p.no,
   p.cat,
   p.brand,
   p.img,
@@ -764,7 +788,9 @@ console.log(`  цветовых серий: ${Object.keys(families).length}, в 
 /* Поисковый индекс: токен → номера строк. Клиент ищет по началу слова. */
 const searchIndex = {};
 products.forEach((p, i) => {
-  const text = [p.name, p.code, p.model, p.compat, brandName(p.brand), p.type, p.color].join(' ').toLowerCase();
+  /* «Код товара» ищется наравне с артикулом: покупатель, которому его
+     назвали по телефону, вводит в поиск именно его. */
+  const text = [p.name, p.code, p.no, p.model, p.compat, brandName(p.brand), p.type, p.color].join(' ').toLowerCase();
   for (const tok of new Set(text.split(/[^0-9a-zа-яё]+/i).filter((t) => t.length >= 2))) {
     (searchIndex[tok] ||= []).push(i);
   }
@@ -904,6 +930,16 @@ meta.colorTitles = Object.fromEntries(
   [...new Set(products.map((p) => p.color).filter(Boolean))].map((c) => [c, colorTitle(c)]),
 );
 write('data/catalog/meta.json', meta);
+
+/*
+  Реестр сохраняется после сборки — вместе с адресами и номерами, которые
+  выдались впервые. Файл коммитится: это не кэш, а история выданного.
+  Потерять его значит перенумеровать магазин.
+*/
+registry.save(REGISTRY_FILE);
+console.log(`  реестр идентификаторов: ${registry.size} записей` +
+  (registry.issued ? `, выдано новых ${registry.issued}` : ', новых не выдавалось') +
+  ` (было ${registryWas})`);
 
 /*
   Заглушки в текстах страниц заменяются настоящими контактами: адрес и телефон

@@ -604,7 +604,13 @@
              «#»: она работает и с клавиатуры, и после обновления
              страницы, и в новой вкладке. */
           : '<span class="rate rate-none"><a href="' + link.product(p, { tab: 'reviews' }) + '" data-tab-link="reviews">Пока нет отзывов</a></span>') +
-        '<span>Артикул: <b>' + esc(p.code) + '</b></span><span>Код товара: <b>' + (100000 + hash(p.id) % 900000) + '</b></span>' + badge(p) + '</div></header>' +
+        /* «Код товара» приходит из каталога, а не считается на месте хешем от
+           адреса. Прежний способ менял код вместе с адресом: когда с витрины
+           убрали повреждённую упаковку, 449 нормальных товаров переехали на
+           освободившиеся адреса и сменили номер — покупатель, знавший
+           670235, перестал находить товар. Теперь номер выдаётся один раз
+           и живёт с товаром. */
+        '<span>Артикул: <b>' + esc(p.code) + '</b></span><span>Код товара: <b>' + esc(String(p.no || '')) + '</b></span>' + badge(p) + '</div></header>' +
         '<div class="gallery"><div class="gmain' + (hasAtlas ? ' has-atlas' : '') + '" id="gmain" data-src="' + (hasAtlas ? '' : src) + '">' + imgHtml(p, { alt: p.name, eager: true, view: 'img', cls: hasAtlas ? 'g-atlas-img' : '' }) + (hasAtlas ? '' : '<div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>') + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span>' + (hasAtlas ? '' : '<span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span>') + '</div><div class="thumbs">' + thumbs + '</div></div>' +
         '<div class="pinfo"><div class="keyspecs"><h3>Коротко о товаре</h3>' + key.map(function (k) { return '<div class="krow"><span>' + esc(k[0]) + '</span><b>' + esc(k[1]) + '</b></div>'; }).join('') + '</div>' +
         (compatChips ? '<div class="compat"><h3>Подходит для принтеров ' + brandLogo(p.brand, 18, '') + '</h3><div class="tags">' + compatChips + '</div></div>' : '') +

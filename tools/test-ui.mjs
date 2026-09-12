@@ -24,7 +24,7 @@ const arg = (n, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${n}=`));
   return hit ? hit.slice(n.length + 3) : d;
 };
-const SLUG = arg('slug', 'hb-tk-8115c');
+const SLUG = arg('slug', 'hb-tk-8115c-4100603161');
 const PORT = Number(arg('port', 8098));
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -120,6 +120,35 @@ for (const device of [
   st = await panelOpen();
   check(`${device.name}: кнопка вкладки «Отзывы» работает`, st.tab === 'reviews');
   check(`${device.name}: вкладка отзывов попала в адрес`, page.url().includes('tab=reviews'));
+
+  /* ---------- код товара и поиск по нему ---------- */
+  /*
+    Код товара покупатель запоминает и называет по телефону. Он не имеет
+    права меняться от того, что с витрины убрали другие позиции: в
+    прошлой публикации HB-TK-8115C уехал с 670235 на 686396, и поиск по
+    известному номеру перестал что-либо находить.
+  */
+  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.pmeta');
+  const meta = await page.locator('.pmeta').innerText();
+  check(`${device.name}: код товара на карточке — 670235`, /670235/.test(meta), meta.replace(/\n/g, ' '));
+
+  await page.goto(`${BASE}/search?q=670235`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1200);
+  const found = await page.locator('.card a.cname, .card .cname, .card h3').allInnerTexts().catch(() => []);
+  const foundText = await page.locator('#app').innerText();
+  check(`${device.name}: поиск по 670235 находит товар`,
+    /HB-TK-8115C/i.test(foundText), (found[0] || foundText.split('\n').slice(0, 3).join(' | ')).slice(0, 80));
+
+  /* Адрес удалённой повреждённой позиции не должен показывать чужой товар. */
+  await page.goto(`${BASE}/product/hb-tk-8115c`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(600);
+  const gone = await page.locator('#app').innerText();
+  check(`${device.name}: адрес удалённой упаковки не занят другим товаром`,
+    /не найдена/i.test(gone), gone.split('\n')[0]);
+
+  await page.goto(`${BASE}/product/${SLUG}?tab=reviews`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('#ptabs');
 
   /* ---------- отзывы ---------- */
   const honest = await page.locator('[data-panel="reviews"]').innerText();

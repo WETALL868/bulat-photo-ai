@@ -1580,3 +1580,126 @@ test('отзывов нет — счётчики, рейтинг и микрор
   assert.ok(app.includes("fetch('/api/review'"), 'форма отзыва снова ничего не отправляет');
   assert.ok(/rv\.verified \?/.test(app), '«Покупка подтверждена» должна зависеть от источника');
 });
+
+/* ===================================================================== */
+/*  Реестр идентичности: адрес и «Код товара» не меняются                */
+/* ===================================================================== */
+
+test('реестр: выданное не меняется и не переиспользуется', async () => {
+  const { ItemRegistry, stableKey } = await import('../../tools/item-registry.mjs');
+  const reg = new ItemRegistry();
+
+  /* Два товара с одинаковым артикулом: второй получает адрес с хвостом. */
+  const normal = reg.claim('vtt:4100603161', { preferredId: 'hb-tk-8115c', seed: '4100603161' });
+  const damaged = reg.claim('vtt:4100603161p', { preferredId: 'hb-tk-8115c', seed: '4100603161p' });
+  assert.notEqual(normal.id, damaged.id);
+  assert.notEqual(normal.no, damaged.no);
+
+  /* Повторная выдача возвращает то же самое — даже если предпочтения другие. */
+  assert.deepEqual(reg.claim('vtt:4100603161', { preferredId: 'совсем-другое', seed: 'zzz' }), normal);
+
+  /*
+    Главное. Товар ушёл с витрины (повреждённая упаковка) — его адрес и
+    номер остаются занятыми, и новый товар их не получает. Именно этого
+    не хватало: адрес удалённой позиции достался нормальной, и вместе с
+    адресом сменился код.
+  */
+  const other = reg.claim('vtt:9999', { preferredId: damaged.id, seed: '9999' });
+  assert.notEqual(other.id, damaged.id, 'адрес ушедшего товара переиспользован');
+  assert.notEqual(other.no, damaged.no, 'код ушедшего товара переиспользован');
+  assert.notEqual(other.no, normal.no);
+
+  /* Ключ берётся из источника, а не из состава витрины. */
+  assert.equal(stableKey({ source: 'vtt', vttId: '4100603161', id: 'что-угодно' }), 'vtt:4100603161');
+  assert.equal(stableKey({ id: 'hb-ce285a' }), 'own:hb-ce285a');
+
+  /* Номер — шесть знаков. */
+  for (const rec of [normal, damaged, other]) {
+    assert.ok(rec.no >= 100000 && rec.no <= 999999, `код вне диапазона: ${rec.no}`);
+  }
+});
+
+test('реестр сохраняется и переживает перезапуск сборки', async () => {
+  const { ItemRegistry } = await import('../../tools/item-registry.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-reg-'));
+  const file = path.join(dir, 'registry.json');
+
+  const first = new ItemRegistry();
+  const a = first.claim('vtt:1', { preferredId: 'hb-a', seed: '1' });
+  const b = first.claim('vtt:2', { preferredId: 'hb-b', seed: '2' });
+  first.save(file);
+
+  /* Вторая сборка: товар vtt:1 с витрины ушёл, пришёл новый vtt:3. */
+  const second = ItemRegistry.load(file);
+  assert.deepEqual(second.get('vtt:1'), a, 'реестр не восстановился из файла');
+  const c = second.claim('vtt:3', { preferredId: 'hb-a', seed: '3' });
+  assert.notEqual(c.id, a.id, 'адрес ушедшего товара выдан новому');
+  assert.notEqual(c.no, a.no);
+  assert.deepEqual(second.claim('vtt:2', { preferredId: 'hb-b', seed: '2' }), b, 'адрес оставшегося товара изменился');
+});
+
+test('адреса и коды товаров совпадают с предыдущей публикацией', async () => {
+  const root = process.cwd();
+  const regFile = path.join(root, 'data/item-registry.json');
+  const idxFile = path.join(root, 'data/catalog/index.json');
+  if (!fs.existsSync(regFile) || !fs.existsSync(idxFile)) return; // каталог не собран
+
+  const { unpackRows } = await import('../../tools/index-pack.mjs');
+  const reg = JSON.parse(fs.readFileSync(regFile, 'utf8'));
+  const idx = JSON.parse(fs.readFileSync(idxFile, 'utf8'));
+  const rows = unpackRows(idx);
+  const col = Object.fromEntries(idx.fields.map((f, i) => [f, i]));
+
+  /*
+    Контрольные позиции: адрес и код, которые видели покупатели в
+    предыдущей публикации. Среди них HB-TK-8115C — тот самый товар, у
+    которого код уехал с 670235 на 686396, — и пять позиций из разных
+    разделов, чей адрес заканчивается Id поставщика: именно они переезжали
+    на освободившиеся адреса при исключении повреждённой упаковки.
+  */
+  const expected = [
+    ['hb-tk-8115c-4100603161', 'HB-TK-8115C', 670235],
+    ['hb-tk-8115bk', 'HB-TK-8115BK', 300972],
+    ['hb-tk-8115m', 'HB-TK-8115M', 552110],
+    ['hb-tk-8115y', 'HB-TK-8115Y', 820682],
+    ['hb-ce285a', 'HB-CE285A', 388518],
+    ['n-dv-1150-9897174', 'N-DV-1150', 361320],
+    ['n-cf232a-7970267140', 'N-CF232A', 589433],
+    ['hb-049-2200959296', 'HB-049', 734090],
+    ['hb-44574302-220095911', 'HB-44574302', 489107],
+    ['hb-ce314a-9970159540', 'HB-CE314A', 576109],
+  ];
+  for (const [id, code, no] of expected) {
+    const row = rows.find((r) => r[col.id] === id);
+    assert.ok(row, `адрес ${id} пропал с витрины`);
+    assert.equal(row[col.code], code, `на адресе ${id} другой товар`);
+    assert.equal(row[col.no], no, `у ${id} изменился код товара`);
+  }
+
+  /* Код уникален: по нему ищут, и два товара под одним номером — поломка. */
+  const nos = rows.map((r) => r[col.no]);
+  assert.equal(nos.filter((n) => !n).length, 0, 'есть товары без кода');
+  assert.equal(new Set(nos).size, nos.length, 'коды товаров повторяются');
+
+  /* Каждый адрес на витрине выдан реестром, и код взят оттуда же. */
+  const byId = new Map(Object.values(reg.items).map((r) => [r.id, r.no]));
+  for (const r of rows) {
+    assert.ok(byId.has(r[col.id]), `адрес ${r[col.id]} выдан мимо реестра`);
+    assert.equal(byId.get(r[col.id]), r[col.no], `код ${r[col.id]} разошёлся с реестром`);
+  }
+
+  /*
+    Адреса удалённой повреждённой упаковки заняты в реестре и свободными
+    не считаются, но на витрине их нет. Проверяем на той самой паре, из-за
+    которой всё началось: hb-tk-8115c принадлежит повреждённой позиции.
+  */
+  assert.ok(byId.has('hb-tk-8115c'), 'адрес удалённой позиции выпал из реестра — его выдадут другому');
+  assert.ok(!rows.some((r) => r[col.id] === 'hb-tk-8115c'), 'повреждённая упаковка вернулась на витрину');
+
+  /* Поиск по коду товара находит карточку. */
+  const search = JSON.parse(fs.readFileSync(path.join(root, 'data/catalog/search-index.json'), 'utf8'));
+  for (const [id, , no] of expected) {
+    const hits = (search[String(no)] ?? []).map((i) => rows[i][col.id]);
+    assert.deepEqual(hits, [id], `поиск по коду ${no} не находит ${id}`);
+  }
+});
