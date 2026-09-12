@@ -47,7 +47,10 @@ function put(rel, body) {
   const abs = path.join(OUT, rel);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, body);
-  published.push(rel);
+  /* Один и тот же файл может встретиться и в разметке, и в стилях, и в
+     индексе. В списке публикации он должен быть один: лимит файлов один
+     на всю публикацию, и тратить его на повтор незачем. */
+  if (!published.includes(rel)) published.push(rel);
   return rel;
 }
 function copy(rel) {
