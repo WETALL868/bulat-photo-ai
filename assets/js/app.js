@@ -222,6 +222,35 @@
     такой товар честно говорит «Цена по запросу» и не продаётся кнопкой.
   */
   function noPrice(p) { return !(p.price > 0); }
+
+  /*
+    Картинка товара.
+
+    Обычно это <img> с адресом из каталога. Но там, где витрина
+    опубликована набором файлов, а картинки поставщика во фрейме не
+    грузятся, уменьшенные копии лежат внутри самой публикации — по сто
+    сорок четыре штуки в одной картинке. Показать ячейку такой картинки
+    через <img> нельзя, поэтому вместо него встаёт блок с фоном и
+    смещением. Разметка отличается только здесь; всё остальное — верстка,
+    ссылка, подпись — одинаково.
+
+    Проценты в background-position и background-size — не произвол, а
+    единственный способ адресовать ячейку, не зная размера элемента:
+    браузер сам считает долю от разницы размеров фона и блока.
+  */
+  function imgHtml(p, attrs) {
+    var a = attrs || {};
+    var t = C.thumb && C.thumb(p.id);
+    if (t) {
+      var px = t.cols > 1 ? (t.col / (t.cols - 1)) * 100 : 0;
+      var py = t.rows > 1 ? (t.row / (t.rows - 1)) * 100 : 0;
+      return '<span class="atimg' + (a.cls ? ' ' + a.cls : '') + '" role="img" aria-label="' + esc(a.alt || p.name) + '"' +
+        ' style="background-image:url(' + t.file + ');background-size:' + (t.cols * 100) + '% ' + (t.rows * 100) + '%;' +
+        'background-position:' + px.toFixed(4) + '% ' + py.toFixed(4) + '%"></span>';
+    }
+    return '<img src="' + p.img + '" alt="' + esc(a.alt || '') + '"' +
+      (a.cls ? ' class="' + a.cls + '"' : '') + (a.eager ? '' : ' loading="lazy"') + '>';
+  }
   function priceBlock(p, cls) {
     if (noPrice(p)) {
       return '<div class="price price-ask' + (cls ? ' ' + cls : '') + '">Цена по запросу</div>';
@@ -279,7 +308,7 @@
   function card(p) {
     var fav = S.fav[p.id] ? ' on' : '', cmp = S.cmp[p.id] ? ' on' : '';
     return '<div class="card" data-id="' + p.id + '">' +
-      '<a class="cmedia" href="' + link.product(p) + '"><img src="' + p.img + '" alt="' + esc(p.name) + '" loading="lazy">' + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="cbrand" title="Для принтеров ' + esc(C.brandName(p.brand)) + '">' + brandLogo(p.brand, 16) + '</span></a>' +
+      '<a class="cmedia" href="' + link.product(p) + '">' + imgHtml(p, { alt: p.name }) + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="cbrand" title="Для принтеров ' + esc(C.brandName(p.brand)) + '">' + brandLogo(p.brand, 16) + '</span></a>' +
       '<div class="cacts"><button class="ibtn fav' + fav + '" type="button" data-fav="' + p.id + '" title="' + (S.fav[p.id] ? 'Убрать из избранного' : 'В избранное') + '" aria-label="' + (S.fav[p.id] ? 'Убрать из избранного' : 'В избранное') + '">' + ic('heart', 18) + '</button></div>' +
       '<div class="cbody"><a class="ctitle" href="' + link.product(p) + '">' + esc(p.name) + '</a>' +
       '<div class="crate">' + stars(p.rate) + '<span>' + ratef(p.rate) + '</span><a href="' + link.product(p, { tab: 'reviews' }) + '"><span class="rn">' + p.reviews + '</span><span class="rw"> ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</span></a></div>' +
@@ -738,7 +767,7 @@
     var addon = C.all().filter(function (x) { return !S.cart[x.id]; }).slice(0, 3);
     var rows = items.map(function (it) {
       var p = it.p;
-      return '<div class="item"><a class="img" href="' + link.product(p) + '"><img src="' + p.img + '" alt="" loading="lazy"></a>' +
+      return '<div class="item"><a class="img" href="' + link.product(p) + '">' + imgHtml(p, {}) + '</a>' +
         '<div class="ibody"><a class="t" href="' + link.product(p) + '">' + esc(p.name) + '</a><div class="m"><span>Артикул ' + esc(p.code) + '</span>' + (p.res ? '<span>Ресурс ' + fmt(p.res) + ' стр.</span>' : '') + '<span>Для ' + brandLogo(p.brand, 12, '') + '</span>' + (p.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Под заказ</span>') + '</div><div class="u">' + fmt(p.price) + ' ₽ за шт.</div></div>' +
         '<div class="ictl"><div class="qty"><button type="button" data-cq="' + p.id + '" data-d="-1" aria-label="Меньше">' + ic('minus', 18) + '</button><span>' + it.q + '</span><button type="button" data-cq="' + p.id + '" data-d="1" aria-label="Больше">' + ic('plus', 18) + '</button></div>' +
         /* Расчёт строки пишем целиком, включая одну штуку: покупателю не
@@ -1045,10 +1074,67 @@
     всплывает, и повесить его на каждый <img> значило бы дублировать
     обработчик в десяти местах разметки.
   */
+  /*
+    Запасной источник. Адрес прокси несёт в себе исходный — значит второй
+    попытки не нужно ничего хранить: она извлекается из того же адреса.
+    Порядок такой: прокси, затем прямой адрес поставщика, затем подпись.
+    Какой из двух хостов разрешён политикой страницы, заранее неизвестно,
+    и выбирать вслепую значило бы гадать.
+  */
+  /*
+    Счётчик источников картинок.
+
+    Нужен для проверки снаружи. Какой из двух хостов разрешён политикой
+    страницы, из кода не видно, а глазами по девяти тысячам карточек не
+    посчитаешь. Поэтому витрина считает сама: сколько картинок пришло с
+    прокси, сколько с прямого адреса поставщика, сколько не пришло вовсе.
+    Одна строка в консоли — и картина точная:
+
+        HB_IMGDIAG()
+
+    На поведение витрины это не влияет и в разметке не видно.
+  */
+  var imgStat = { прокси: 0, прямой: 0, свои: 0, заглушка: 0 };
+  window.HB_IMGDIAG = function () {
+    /* Картинки без адреса в счёт не идут: у лайтбокса <img> живёт в
+       разметке заранее и получает src только при открытии. Без этой
+       оговорки проверка показывала бы одну несуществующую ошибку. */
+    var imgs = [].slice.call(document.images).filter(function (i) { return i.getAttribute('src'); });
+    return {
+      всегоНаСтранице: imgs.length,
+      загрузилось: imgs.filter(function (i) { return i.complete && i.naturalWidth > 0; }).length,
+      неЗагрузилось: imgs.filter(function (i) { return i.complete && !i.naturalWidth; }).length,
+      поИсточникам: imgStat,
+      примеры: imgs.slice(0, 4).map(function (i) { return { src: i.currentSrc || i.src, naturalWidth: i.naturalWidth }; }),
+    };
+  };
+  document.addEventListener('load', function (e) {
+    var el = e.target;
+    if (!el || el.tagName !== 'IMG' || !el.naturalWidth) return;
+    var src = el.currentSrc || el.src || '';
+    if (src.indexOf('wsrv.nl/') >= 0) imgStat['прокси'] += 1;
+    else if (src.indexOf('b2b.vtt.ru') >= 0) imgStat['прямой'] += 1;
+    else imgStat['свои'] += 1;
+  }, true);
+
+  function directFromProxy(src) {
+    if (!src || src.indexOf('wsrv.nl/') < 0) return null;
+    try {
+      var u = new URL(src).searchParams.get('url');
+      return u ? (/^https?:\/\//i.test(u) ? u : 'https://' + u) : null;
+    } catch (err) { return null; }
+  }
+
   document.addEventListener('error', function (e) {
     var el = e.target;
     if (!el || el.tagName !== 'IMG' || el.getAttribute('data-imgfail')) return;
+    if (!el.getAttribute('src')) return;
+    if (!el.getAttribute('data-retried')) {
+      var direct = directFromProxy(el.getAttribute('src'));
+      if (direct) { el.setAttribute('data-retried', '1'); el.src = direct; return; }
+    }
     el.setAttribute('data-imgfail', '1');
+    imgStat['заглушка'] += 1;
     if (el.parentElement) el.parentElement.classList.add('hb-imgfail');
   }, true);
 

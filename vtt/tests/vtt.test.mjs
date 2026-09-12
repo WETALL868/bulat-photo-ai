@@ -1159,3 +1159,77 @@ test('исчезнувшее поле поставщика не остаётся
   assert.deepEqual(store.loadAll().get('P1').compatibilityLabels, ['HP LJ 1010']);
   assert.equal(store.loadAll().get('P1').categorySource, 'GetCategoryItems');
 });
+
+/* ------------------------------------------------------------------ *
+   Картинки в превью: прокси и упаковка в атласы
+
+   Опубликованное превью живёт во фрейме со строгой политикой ресурсов:
+   картинка поставщика по прямому адресу там не появляется — src
+   проставлен, тот же файл в отдельной вкладке отдаёт 200, а
+   naturalWidth остаётся нулём. Отсюда два пути, и оба проверяются здесь.
+ * ------------------------------------------------------------------ */
+
+test('прокси-адрес собирается корректно и только для чужих хостов', async () => {
+  const { proxyUrl, proxySrcset, shouldProxy, PROXY_ORIGIN } = await import('../../tools/image-proxy.mjs');
+  const u = proxyUrl('https://b2b.vtt.ru/images/1240C002.jpg', { width: 320 });
+  assert.ok(u.startsWith(PROXY_ORIGIN), 'адрес ведёт на прокси');
+  const q = new URL(u).searchParams;
+  assert.equal(q.get('url'), 'b2b.vtt.ru/images/1240C002.jpg', 'источник передан без схемы');
+  assert.equal(q.get('w'), '320');
+  assert.equal(q.get('output'), 'webp');
+  assert.ok(q.has('we'), 'запрет на увеличение выставлен');
+
+  /* Скобки и кириллица в адресах поставщика встречаются — экранирование
+     обязано их пережить. */
+  const tricky = proxyUrl('https://b2b.vtt.ru/images/C-EPS (1469197).jpg');
+  assert.equal(new URL(tricky).searchParams.get('url'), 'b2b.vtt.ru/images/C-EPS (1469197).jpg');
+
+  const set = proxySrcset('https://b2b.vtt.ru/images/x.jpg');
+  assert.match(set, /320w/); assert.match(set, /640w/);
+  assert.ok(set.indexOf('320w') < set.indexOf('640w'), 'от узкого к широкому');
+
+  /* Собственные файлы витрины лежат рядом со страницей: проксировать их
+     значит добавить зависимость от третьего сервиса на пустом месте. */
+  assert.equal(shouldProxy('assets/img/no-photo.svg'), false);
+  assert.equal(shouldProxy('/assets/img/no-photo.svg'), false);
+  assert.equal(shouldProxy('https://b2b.vtt.ru/images/x.jpg'), true);
+  assert.equal(proxyUrl('assets/img/no-photo.svg'), 'assets/img/no-photo.svg', 'не-адрес остаётся собой');
+});
+
+test('атлас: раскладка, ячейки и обратный расчёт позиции', async () => {
+  const { buildAtlases, atlasLayout, placeOf } = await import('../../tools/pack-thumbs.mjs');
+  const sharp = (await import('sharp')).default;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-atlas-'));
+
+  const sources = [];
+  for (let i = 0; i < 20; i++) {
+    sources.push({
+      id: 'p' + i,
+      buffer: await sharp({ create: { width: 400, height: 300, channels: 3, background: { r: i * 10, g: 90, b: 170 } } }).jpeg().toBuffer(),
+    });
+  }
+  const res = await buildAtlases(sources, { outDir: dir, publicDir: 'assets/img/atlas', cell: 240, perAtlas: 9, quality: 70 });
+
+  assert.equal(res.files.length, 3, '20 миниатюр по 9 в атласе — три файла');
+  assert.equal(Object.keys(res.items).length, 20, 'ни одна миниатюра не потеряна');
+  assert.equal(res.cols, 3); assert.equal(res.rows, 3);
+
+  const meta = await sharp(path.join(dir, 'atlas-0.webp')).metadata();
+  assert.equal(meta.width, 720); assert.equal(meta.height, 720);
+
+  /* Позиция ячейки — то, по чему витрина считает background-position.
+     Расхождение здесь означало бы чужую картинку в карточке. */
+  assert.deepEqual(res.items.p0, [0, 0, 0]);
+  assert.deepEqual(res.items.p4, [0, 1, 1]);
+  assert.deepEqual(res.items.p9, [1, 0, 0]);
+  assert.deepEqual(res.items.p19, [2, 1, 0]);
+  const layout = atlasLayout(20, { cell: 240, perAtlas: 9 });
+  assert.deepEqual(placeOf(13, layout), { atlas: 1, col: 1, row: 1 });
+
+  /* Атлас должен помещаться в пределы публикации: 6 201 картинка по 144
+     в атласе — это 44 файла, а не 6 201. */
+  const big = atlasLayout(6201, { cell: 240, perAtlas: 144 });
+  assert.equal(big.atlases, 44);
+  assert.ok(big.atlases + 205 < 255, 'вместе с остальными файлами укладывается в предел публикации');
+  assert.equal(big.width, 2880, 'атлас не выходит за размер, который браузеры декодируют без оговорок');
+});

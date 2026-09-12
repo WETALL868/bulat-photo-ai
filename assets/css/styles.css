@@ -1868,3 +1868,14 @@ a.mphone .ic *{pointer-events:none!important}
 .hb-imgfail::before{content:"Фото не передано";position:absolute;inset:0;display:flex;
   align-items:center;justify-content:center;padding:6px;text-align:center;
   color:#8b8b8b;font-size:12px;line-height:1.3;pointer-events:none}
+
+/* 22. Миниатюра из атласа
+   --------------------------------------------------------------------------
+   Там, где картинки поставщика во фрейме не грузятся, уменьшенные копии
+   лежат внутри публикации — по сто сорок четыре штуки в одном файле.
+   Ячейка показывается фоном со смещением: <img> так не умеет. Квадрат
+   выбран не случайно — раскладка атласа квадратная, и при другом
+   соотношении сторон ячейка «переехала» бы на соседнюю. */
+.atimg{display:block;width:100%;aspect-ratio:1/1;background-repeat:no-repeat;background-color:#fff}
+.cmedia .atimg{height:100%}
+.item .img .atimg{width:100%;height:auto}

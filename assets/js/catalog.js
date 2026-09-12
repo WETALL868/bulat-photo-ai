@@ -80,6 +80,23 @@
     return value;
   }
 
+  /*
+    Карта миниатюр в атласах.
+
+    Нужна там, где витрина опубликована набором файлов и картинки
+    поставщика во фрейме не грузятся. Тогда уменьшенные копии лежат
+    внутри самой публикации, собранные по сто сорок четыре штуки в одну
+    картинку, а здесь хранится, где чья ячейка. Карты нет — всё работает
+    как раньше, поэтому файл и запрашивается только по отметке в meta.
+  */
+  function thumbOf(id) {
+    var t = state.thumbs;
+    if (!t || !t.items) return null;
+    var e = t.items[id];
+    if (!e) return null;
+    return { file: t.files[e[0]], col: e[1], row: e[2], cols: t.cols, rows: t.rows };
+  }
+
   /* Слаг нужен и до разбора всей строки: по нему ищется карточка. */
   function slugAt(i) {
     var row = state.rows[i];
@@ -119,6 +136,13 @@
         json('/live/catalog-live.json'),
         json('/data/site.json'),
       ]).then(function (r) {
+        /* Карта миниатюр грузится вторым шагом и только если она есть:
+           первый пакет и так определяет скорость первого экрана. */
+        if (r[0] && r[0].thumbs) {
+          return json(BASE + 'thumbs.json').then(function (t) { state.thumbs = t; return r; }, function () { return r; });
+        }
+        return r;
+      }).then(function (r) {
         state.meta = r[0];
         unpackIndex(r[1]);
         state.cats = r[2];
@@ -131,6 +155,7 @@
       return readyPromise;
     },
 
+    thumb: thumbOf,
     at: hydrate,
     all: function () { var out = []; for (var i = 0; i < state.rows.length; i++) out.push(hydrate(i)); return out; },
     byId: function (id) { for (var i = 0; i < state.rows.length; i++) if (state.rows[i][0] === id) return hydrate(i); return null; },

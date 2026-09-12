@@ -21,6 +21,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { packIndex, unpackRows } from './index-pack.mjs';
+import { proxyUrl, shouldProxy, PROXY_ORIGIN } from './image-proxy.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argOf = (name, fallback) => {
@@ -34,6 +36,10 @@ const argOf = (name, fallback) => {
    группами — на сайте размер чанка остаётся прежним. */
 const GROUP = Math.max(1, Number(argOf('chunk-group', 4)) || 4);
 const OUT = path.resolve(ROOT, argOf('out', 'dist/artifact'));
+/* `--image-proxy=none` собирает превью с прямыми адресами поставщика —
+   нужно, чтобы отличить «политика фрейма запрещает хост» от «прокси сам
+   не отвечает». */
+const IMAGE_PROXY = argOf('image-proxy', 'wsrv');
 const MAX_FILES = 255;
 
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -72,12 +78,58 @@ function copy(rel) {
 */
 const relativeAssets = (text) => text.replace(/(["'(]|\\")\/assets\//g, '$1assets/');
 
-for (const f of ['meta.json', 'index.json', 'categories.json', 'brands.json',
+for (const f of ['meta.json', 'categories.json', 'brands.json',
   'featured.json', 'search-index.json', 'compatibility.json', 'families.json']) {
   put(`data/catalog/${f}`, relativeAssets(read(`data/catalog/${f}`)));
 }
+
+/*
+  Индекс — отдельно: в нём переписываются адреса картинок поставщика.
+
+  Прямой адрес во фрейме превью не работает: src проставлен, файл по нему
+  открывается в отдельной вкладке и отдаёт 200, а naturalWidth остаётся
+  нулём. Значит ограничение не в файле, а в том, откуда фрейму разрешено
+  грузить картинки. Прокси заодно уменьшает картинку до ширины карточки и
+  отдаёт WebP, так что превью ещё и легчает.
+
+  Это правка ТОЛЬКО превью. В data/catalog лежат настоящие адреса
+  поставщика, и боевой сайт ходит к нему напрямую.
+*/
+{
+  const idxRaw = JSON.parse(relativeAssets(read('data/catalog/index.json')));
+  const rows = unpackRows(idxRaw);
+  const col = Object.fromEntries(idxRaw.fields.map((f, i) => [f, i]));
+  let proxied = 0;
+  if (IMAGE_PROXY !== 'none') {
+    for (const row of rows) {
+      const url = row[col.img];
+      if (typeof url !== 'string' || !shouldProxy(url)) continue;
+      row[col.img] = proxyUrl(url, { width: 320 });
+      proxied += 1;
+    }
+  }
+  /* Префикс прокси выносится в таблицу баз: он одинаков у всех строк, и
+     без этого индекс распух бы на полсотни байт на товар. */
+  const bases = [`${PROXY_ORIGIN}?url=`, ...idxRaw.imgBases];
+  put('data/catalog/index.json', JSON.stringify(packIndex(idxRaw.fields, rows, { imgBases: bases })));
+  console.log(`  адресов картинок через прокси: ${proxied}${IMAGE_PROXY === 'none' ? ' (прокси отключён)' : ''}`);
+}
 put('data/site.json', relativeAssets(read('data/site.json')));
 copy('live/catalog-live.json');
+
+/*
+  Атласы миниатюр, если они собраны (tools/pack-thumbs.mjs). Это второй,
+  самостоятельный путь: картинки лежат внутри публикации и не зависят ни
+  от поставщика, ни от стороннего прокси. Нет атласов — превью работает
+  как раньше.
+*/
+let atlasFiles = 0;
+if (fs.existsSync(path.join(ROOT, 'data/catalog/thumbs.json'))) {
+  const thumbs = JSON.parse(read('data/catalog/thumbs.json'));
+  put('data/catalog/thumbs.json', relativeAssets(read('data/catalog/thumbs.json')));
+  for (const rel of thumbs.files ?? []) if (copy(rel)) atlasFiles += 1;
+  console.log(`  атласов миниатюр: ${atlasFiles}, товаров с миниатюрой ${Object.keys(thumbs.items ?? {}).length}`);
+}
 
 /*
   Склейка чанков. Клиент вычисляет номер чанка как floor(строка /
@@ -169,7 +221,9 @@ const page = fs.statSync(path.join(OUT, 'index.html')).size;
 const mb = (n) => (n / 1048576).toFixed(2) + ' МБ';
 console.log(`Превью собрано в ${path.relative(ROOT, OUT)}`);
 console.log(`  страница ${mb(page)}, файлов рядом ${published.length}, данные ${mb(bytes)}`);
-console.log(`  чанков деталей ${groups} (по ${meta.chunkSize} товаров), картинок ${needed.size}`);
+console.log(`  чанков деталей ${groups} (по ${meta.chunkSize} товаров), картинок ${needed.size}` +
+  (atlasFiles ? `, атласов ${atlasFiles}` : ''));
+console.log(`  файлов ${published.length + 1} из ${MAX_FILES} — запас ${MAX_FILES - published.length - 1}`);
 if (published.length + 1 > MAX_FILES) {
   console.error(`  ОШИБКА: файлов ${published.length + 1}, публикация принимает не больше ${MAX_FILES}`);
   process.exit(1);
