@@ -1880,6 +1880,23 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
 .rev-sum-demo{border-color:#ddd6fe;background:#faf9ff}
 .rev-sum-demo .rev-none svg{color:#5b21b6}
 
+/* Блок примеров стоит отдельно от ленты отзывов и подписан так, чтобы
+   его нельзя было принять за отзывы: рамка, заголовок со счётчиком и
+   объяснение прямо под ним. */
+.demo-block{border:1px solid #ddd6fe;border-radius:16px;background:#faf9ff;padding:6px 14px 14px;
+  margin-bottom:20px;display:flex;flex-direction:column;gap:12px}
+.demo-head{display:flex;gap:12px;align-items:flex-start;padding:14px 4px 12px;border-bottom:1px dashed #ddd6fe}
+.demo-head svg{color:#5b21b6;flex:none;margin-top:2px}
+.demo-head > div{min-width:0}
+.demo-head b{display:block;font-family:var(--head);font-weight:800;font-size:17px;letter-spacing:-.01em;color:#4c1d95}
+.demo-head span{display:block;margin-top:4px;font-size:13px;color:var(--muted);line-height:1.5}
+.demo-block .rev{background:#fff}
+@media (max-width:640px){
+  .demo-block{padding:4px 10px 10px}
+  .demo-head{padding:12px 2px 10px}
+  .demo-head b{font-size:16px}
+}
+
 /* Оценка в форме — настоящие переключатели, а не картинка со звёздами:
    прежние звёзды выглядели кликабельными, но ничего не выбирали. */
 .rev-form .frate .fstar{position:relative;cursor:pointer}

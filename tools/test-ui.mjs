@@ -234,7 +234,10 @@ for (const device of [
 
   /* ---------- отзывы ---------- */
   const honest = await page.locator('[data-panel="reviews"]').innerText();
-  check(`${device.name}: блок отзывов честно пуст`, honest.includes('Пока нет отзывов'));
+  /* Формулировка важна дословно: «настоящих» отделяет отзывы от
+     демонстрационных примеров, которые на превью стоят ниже. */
+  check(`${device.name}: блок отзывов честно пуст`, honest.includes('Настоящих отзывов пока нет'),
+    honest.split('\n')[0]);
   check(`${device.name}: нет выдуманных отзывов`, !/Покупка подтверждена/.test(honest));
   check(`${device.name}: нет пометки ДЕМО`, !/ДЕМО/.test(await page.locator('#app').innerText()));
   const headNone = await page.locator('.pmeta').innerText();
@@ -289,6 +292,112 @@ for (const device of [
   }, null, { timeout: 10000 });
   msg = (await page.locator('#rev-msg').innerText()).trim();
   check(`${device.name}: форма сообщает результат отправки, а не «Спасибо»`, !/^Спасибо/.test(msg), msg);
+
+  await ctx.close();
+}
+
+/*
+  Демонстрационные примеры — сплошная проверка по всему активному
+  ассортименту.
+
+  Открывать 4 374 страницы бессмысленно: генератор чистый и живёт на
+  window, поэтому гоняем его прямо в браузере по всем карточкам разом.
+  Детали берутся штатным C.detail — те же 137 чанков, что грузит витрина.
+
+  Проверяем три вещи: пример есть у каждого товара; записей от одной до
+  трёх и внутри карточки они разные; в тексте нет ни одного признака
+  выдуманного опыта эксплуатации.
+*/
+{
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/product/${SLUG}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('#ptabs', { timeout: 15000 });
+
+  /* Боевая витрина флага не ставит — примеров на ней нет вовсе. */
+  const flagOff = await page.evaluate(() => !window.HB_DEMO_REVIEWS);
+  check('боевая сборка: флаг примеров выключен', flagOff);
+  const noneByDefault = await page.evaluate(() => document.querySelectorAll('.rev-demo, .demo-block').length);
+  check('боевая сборка: на странице нет ни одного примера', noneByDefault === 0, `найдено ${noneByDefault}`);
+
+  const stat = await page.evaluate(async () => {
+    window.HB_DEMO_REVIEWS = 3;
+    const C = window.HBCatalog;
+    const gen = window.HB_DEMO_EXAMPLES;
+    const items = C.all();
+    const out = { total: items.length, without: [], counts: {}, dup: [], invented: [], byType: {}, sample: null, bare: 0, lying: [], unattributed: [] };
+    /*
+      Две разные проверки, и обе нужны.
+
+      Первая — первое лицо покупателя: «купил», «пользуюсь», «мне
+      подошёл». Такого опыта у нас нет ни по одной позиции, и появиться
+      в тексте он может только выдумкой. Слова вроде «печатает» или
+      «рекомендует» сюда не входят намеренно: это цитата поставщика, а
+      не чьё-то впечатление.
+
+      Вторая — атрибуция. Каждая запись обязана начинаться с оборота,
+      который прямо называет источник. Тогда цитата поставщика остаётся
+      цитатой, а не превращается в мнение.
+    */
+    /* Границы слова заданы явно: \b в JS знает только латиницу, и без
+       этого «печатаю» ловилось внутри «печатающих головок». */
+    const FICTION = new RegExp('(?:^|[^а-яёА-ЯЁ])(?:' + [
+      'купил[аи]?', 'заказал[аи]?', 'пользуюсь', 'пользуемся',
+      'доволен', 'довольн[ая]', 'довольны', '(?:мне|нам) подош[ёе]л',
+      'печатаю', 'печатал[аи]?', 'поставил себе', 'рекомендую', 'советую',
+      'хватило на', 'работает отлично', 'полос[ыа] нет',
+    ].join('|') + ')(?![а-яёА-ЯЁ])', 'i');
+    const LEADS = [
+      'В выгрузке поставщика эта позиция значится',
+      'Ресурс по данным поставщика',
+      'Объём по данным поставщика',
+      'Вес одной штуки по выгрузке',
+      'В упаковке по данным поставщика',
+      'Оригинальный номер по выгрузке',
+      'Штрихкод позиции',
+      'Технология печати по выгрузке',
+      'Гарантия по выгрузке',
+      'Совместимость по данным поставщика',
+      'Состав и особенности по выгрузке',
+      'Поставщик относит позицию к разделу',
+      'По этой позиции поставщик передал только',
+      'Кроме типа и обозначения, поставщик',
+    ];
+    for (const p of items) {
+      const d = await C.detail(p.id);
+      const recs = gen(p, d) || [];
+      out.counts[recs.length] = (out.counts[recs.length] || 0) + 1;
+      if (!recs.length) { if (out.without.length < 5) out.without.push(p.id); continue; }
+      const texts = recs.map((r) => r.text);
+      if (new Set(texts).size !== texts.length && out.dup.length < 5) out.dup.push(p.id);
+      for (const t of texts) {
+        if (FICTION.test(t) && out.invented.length < 5) out.invented.push(p.id + ': ' + t.slice(0, 90));
+        if (!LEADS.some((l) => t.indexOf(l) === 0) && out.unattributed.length < 5) out.unattributed.push(p.id + ': ' + t.slice(0, 70));
+      }
+      out.byType[p.type || '—'] = (out.byType[p.type || '—'] || 0) + 1;
+      if (p.no === 300972) out.sample = recs;
+      /* Крайняя ветка «поставщик ничего не передал» должна срабатывать
+         только там, где и правда ничего нет: если она встречается у
+         карточки с перечнем или составом — это ложь в тексте. */
+      const last = texts[texts.length - 1] || '';
+      if (/ничего не передал/.test(last)) {
+        out.bare += 1;
+        const hasData = (d.models && d.models.length) || d.compat ||
+          (d.specs || []).some((r) => /^(Особенности|Для техники|Вендор оборудования|Раздел поставщика|Тип продукции)/.test(r[0] || ''));
+        if (hasData && out.lying.length < 5) out.lying.push(p.id);
+      }
+    }
+    return out;
+  });
+  check(`примеры есть у каждого из ${stat.total} активных товаров`, stat.without.length === 0,
+    stat.without.length ? 'без примеров: ' + stat.without.join(', ') : `типов товара: ${Object.keys(stat.byType).length}`);
+  const counts = Object.entries(stat.counts).map(([k, v]) => `${k}→${v}`).join(', ');
+  check('записей на карточке от 1 до 3', !stat.counts['0'] && !stat.counts['4'], counts);
+  check('внутри карточки записи не повторяются', stat.dup.length === 0, stat.dup.join(', '));
+  check('в примерах нет выдуманного опыта эксплуатации', stat.invented.length === 0, stat.invented.join(' | '));
+  check('каждая запись прямо называет источник факта', stat.unattributed.length === 0, stat.unattributed.join(' | '));
+  check('«поставщик ничего не передал» стоит только там, где и правда пусто',
+    stat.lying.length === 0, `таких карточек ${stat.bare}` + (stat.lying.length ? ', врут: ' + stat.lying.join(', ') : ''));
 
   await ctx.close();
 }

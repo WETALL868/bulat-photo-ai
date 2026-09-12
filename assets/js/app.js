@@ -21,6 +21,152 @@
   function fmt(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
   function hash(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
   function ratef(r) { return String(Number(r).toFixed(1)).replace('.', ','); }
+  /*
+    Демонстрационные примеры оформления блока отзывов.
+
+    Зачем. У поставщика отзывов нет ни одного, и на превью вкладка
+    «Отзывы» всегда пустая: не видно ни записи, ни ответа магазина, ни
+    того, как блок держит длинный текст на узком экране. Посмотреть это
+    надо на живых карточках, а не на пяти выбранных.
+
+    Как. Записи не лежат в данных, а собираются здесь, в браузере, из
+    полей уже загруженной карточки. Это важно по двум причинам:
+
+      • в статические чанки не уходит ни байта — на 4 374 карточках
+        материализованные записи весили лишние 4,3 МБ;
+      • в боевой сборке флага нет, значит нет и записей: подмешать их в
+        data/catalog, предрендер или карту сайта нечем в принципе.
+
+    Что внутри. Только то, что поставщик действительно передал по этой
+    позиции: тип, артикул, код товара, цвет, ресурс, совместимость,
+    состав комплекта. Ни одной фразы о том, как товар печатает и кому
+    подошёл: выдуманный опыт эксплуатации — это ложь даже под пометкой.
+    Если фактов мало, запись честно говорит, что это пример оформления
+    для такого-то артикула, и ничего не додумывает.
+
+    Функция чистая и детерминированная: одна и та же карточка всегда даёт
+    один и тот же набор. Вынесена на window, чтобы тест мог прогнать её
+    по всему активному ассортименту, не открывая 4 374 страницы.
+  */
+  function demoExamples(p, d) {
+    if (!p) return [];
+    var n = Number(window.HB_DEMO_REVIEWS) || 0;
+    if (n <= 0) return [];
+    d = d || {};
+    /*
+      У части позиций артикул поставщика — это всё название целиком
+      («Чернила Hi-Black Универсальные для HP (Тип H), Black, 0,1 л.»).
+      Вставлять такое в фразу «артикул …» нельзя: читается как сбой. Для
+      таких позиций опознавательный знак — код товара.
+    */
+    var code = String(p.code || '');
+    var shortCode = code && code.length <= 40 && code.indexOf(' ') < 0 ? code : '';
+    var idPhrase = shortCode ? 'по артикулу ' + shortCode : (p.no ? 'по коду товара ' + p.no : '');
+    var out = [];
+
+    /* 1. Чем позиция значится в выгрузке. Есть у любого товара. */
+    var what = 'В выгрузке поставщика эта позиция значится как «' + (p.type || 'товар') + '»';
+    if (shortCode) what += ', артикул ' + shortCode;
+    if (p.no) what += ', код товара ' + p.no;
+    what = sentence(what);
+    if (p.color && C.colorTitle) what += ' ' + sentence('Цвет — ' + C.colorTitle(p.color));
+    out.push({ n: 1, text: what });
+
+    /* 2. Самый конкретный числовой факт, какой передали. Порядок — от
+          полезного к формальному; чего нет, того не выдумываем. */
+    var spec = null;
+    if (p.res) spec = 'Ресурс по данным поставщика — ' + fmt(p.res) + ' ' + plural(p.res, 'страница', 'страницы', 'страниц');
+    if (!spec) spec = specValue(d, 'Объём', 'Объём по данным поставщика — ');
+    if (!spec) spec = specValue(d, 'Вес одной штуки', 'Вес одной штуки по выгрузке — ');
+    if (!spec) spec = specValue(d, 'В упаковке', 'В упаковке по данным поставщика — ');
+    if (!spec && d.originalNumber && d.originalNumber !== code) spec = 'Оригинальный номер по выгрузке — ' + d.originalNumber;
+    if (!spec) spec = specValue(d, 'Штрихкод', 'Штрихкод позиции — ');
+    /* У позиций старого прототипа характеристики названы иначе, чем в
+       выгрузке VTT. Словарь тут второй, а правило то же: берём поле, а
+       не придумываем. */
+    if (!spec) spec = specValue(d, 'Технология печати', 'Технология печати по выгрузке — ');
+    if (!spec) spec = specValue(d, 'Гарантия', 'Гарантия по выгрузке — ');
+    if (spec) {
+      out.push({
+        n: out.length + 1,
+        text: sentence(spec) + ' Так выглядит запись с ответом магазина.',
+        reply: 'А так — ответ магазина под записью. На боевой витрине здесь будет ответ менеджера на настоящий отзыв покупателя.',
+      });
+    }
+
+    /*
+      3. Длинная запись — на ней видно перенос текста и высоту блока.
+      Берём самое содержательное из того, что передали: перечень
+      аппаратов, состав комплекта, принадлежность к марке и разделу.
+      Если не передали ничего — так и пишем, вместо выдуманного списка.
+    */
+    var fits = (d.models && d.models.length) ? d.models.join(', ') : String(d.compat || '');
+    var kit = pickSpec(d, 'Особенности');
+    var forBrand = pickSpec(d, 'Для техники') || pickSpec(d, 'Вендор оборудования') ||
+      (p.brand && C.brandName ? C.brandName(p.brand) : null);
+    var section = (d.vttCatPath && d.vttCatPath.length) ? d.vttCatPath[d.vttCatPath.length - 1]
+      : (pickSpec(d, 'Раздел поставщика') || pickSpec(d, 'Тип продукции'));
+    var long;
+    if (fits) {
+      long = 'Совместимость по данным поставщика: ' + clip(fits, 260);
+    } else if (kit) {
+      long = 'Состав и особенности по выгрузке: ' + upFirst(clip(kit, 260));
+    } else if (forBrand && section) {
+      long = 'Поставщик относит позицию к разделу «' + clip(section, 90) + '»' +
+        (/универсальн/i.test(forBrand) ? ' и отмечает её как универсальную' : ' и к технике ' + forBrand);
+    } else if (forBrand || section) {
+      long = 'По этой позиции поставщик передал только ' +
+        (forBrand ? 'марку техники — ' + forBrand : 'раздел каталога — ' + clip(section, 90));
+    } else {
+      long = 'Кроме типа и обозначения, поставщик по этой позиции ничего не передал, ' +
+        'и придумывать за него здесь нечего' + (idPhrase ? ': подбирают её ' + idPhrase : '');
+    }
+    out.push({
+      n: out.length + 1,
+      text: sentence(long) + ' Это пример оформления записи для данной позиции: по нему видно, ' +
+        'как блок держит несколько строк подряд и как текст переносится на узком экране.',
+    });
+
+    return out.slice(0, Math.min(n, 3));
+  }
+
+  /* Ровно одна точка в конце: значения из выгрузки то с точкой, то без. */
+  function sentence(t) { return String(t).replace(/[\s.]+$/, '') + '.'; }
+  /* Поставщик склеивает пометки как попало — «Поставляется с чипом. чип
+     с самосбросом». Заглавная после точки, больше ничего не трогаем. */
+  function upFirst(t) {
+    return String(t).replace(/(^|[.!?]\s+)([а-яё])/g, function (m, sep, ch) { return sep + ch.toUpperCase(); });
+  }
+  function clip(t, max) { t = String(t).trim(); return t.length > max ? t.slice(0, max - 1) + '…' : t; }
+
+  /* Значение характеристики по началу подписи: у разных типов товара
+     поля называются по-разному («Объём, мл» и «Объём, л»). */
+  function pickSpec(d, prefix) {
+    var rows = d.specs || [];
+    for (var i = 0; i < rows.length; i += 1) {
+      if (String(rows[i][0] || '').indexOf(prefix) === 0) {
+        var v = String(rows[i][1] || '').trim();
+        if (v) return v;
+      }
+    }
+    return null;
+  }
+  /* То же, но с единицей измерения из подписи: «Ресурс, страниц» → «страниц». */
+  function specValue(d, prefix, lead) {
+    var rows = d.specs || [];
+    for (var i = 0; i < rows.length; i += 1) {
+      var name = String(rows[i][0] || '');
+      if (name.indexOf(prefix) !== 0) continue;
+      var v = String(rows[i][1] || '').trim();
+      if (!v) continue;
+      var comma = name.indexOf(',');
+      var unit = comma > 0 ? name.slice(comma + 1).trim() : '';
+      return lead + v + (unit ? ' ' + unit : '');
+    }
+    return null;
+  }
+  window.HB_DEMO_EXAMPLES = demoExamples;
+
   function plural(n, a, b, c) { n = Math.abs(n) % 100; var n1 = n % 10; if (n > 10 && n < 20) return c; if (n1 > 1 && n1 < 5) return b; if (n1 === 1) return a; return c; }
   function ic(name, size, cls) {
     return '<svg class="' + (cls || 'ic') + '" width="' + (size || 20) + '" height="' + (size || 20) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + ICONS[name] + '</svg>';
@@ -541,10 +687,15 @@
         Проверочных записей здесь больше нет: список пуст ровно тогда,
         когда отзывов нет, и карточка так и говорит.
       */
-      var revs = d.reviews || [];
-      /* Демо-набор определяется по самим записям, а не по флагу товара:
-         так пометка не разъедется, если записи появятся где-то ещё. */
-      var demoOnly = revs.length > 0 && revs.every(function (r) { return r.demo; });
+      var revs = (d.reviews || []).filter(function (r) { return r && !r.demo; });
+      /*
+        Демо и настоящие отзывы живут порознь и складываться не должны.
+        Раньше они шли одним списком, и над видимыми примерами стояло
+        «Отзывов пока нет» — прямое противоречие на экране. Теперь это
+        два блока: сводка говорит про настоящие отзывы, примеры стоят
+        под своим заголовком со счётчиком.
+      */
+      var demos = demoExamples(p, d);
       var revAvg = revs.length ? Math.round(revs.reduce(function (a, r) { return a + (r.rate || 0); }, 0) / revs.length * 10) / 10 : 0;
       var src = p.img;
       var hasAtlas = !!(C.thumb && C.thumb(p.id));
@@ -688,16 +839,7 @@
         */
         '<div data-panel="reviews" id="panel-reviews" role="tabpanel" aria-labelledby="tab-reviews"' + (tab !== 'reviews' ? ' hidden' : '') + '>' +
         '<div class="rev-grid">' +
-        (demoOnly
-          /* Демо-набор не притворяется сводкой: цифры рейтинга здесь нет
-             вовсе, потому что рейтинга нет. */
-          ? '<div class="rev-sum rev-sum-demo"><div class="rev-none">' + ic('info', 28) +
-            '<b>Отзывов пока нет</b>' +
-            '<span>Ниже — примеры оформления, а не отзывы покупателей: они собраны из полей выгрузки ' +
-            'поставщика, не имеют авторов и оценок и не влияют ни на рейтинг товара, ни на микроразметку, ' +
-            'ни на карту сайта. Настоящие отзывы появятся здесь после проверки модератором.</span></div>' +
-            '<button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button></div>'
-        : revs.length
+        (revs.length
           ? '<div class="rev-sum"><div class="big"><b>' + ratef(revAvg) + '</b><span>из 5</span></div>' + stars(revAvg, 20) +
             '<div class="cnt">' + revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + '</div>' +
             '<div class="bars">' + [5, 4, 3, 2, 1].map(function (n) {
@@ -706,25 +848,40 @@
             }).join('') + '</div>' +
             '<button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button></div>'
           : '<div class="rev-sum rev-sum-empty"><div class="rev-none">' + ic('chat', 28) +
-            '<b>Пока нет отзывов</b>' +
+            /* Формулировка держится рядом с демо-блоком: «настоящих» —
+               потому что ниже могут стоять примеры оформления, и без
+               этого слова сводка спорила бы с тем, что видно глазами. */
+            '<b>Настоящих отзывов пока нет</b>' +
             '<span>Этот товар ещё никто не оценил. Оценки и звёзды появятся, ' +
-            'когда придёт первый отзыв и его проверит модератор.</span></div>' +
+            'когда придёт первый отзыв и его проверит модератор.' +
+            (demos.length ? ' Примеры оформления ниже отзывами не считаются и в оценку не идут.' : '') +
+            '</span></div>' +
             '<button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать первым</button></div>') +
-        '<div class="rev-list">' + revs.map(function (rv) {
-          /*
-            Демонстрационная запись не имеет права выглядеть как отзыв
-            покупателя: у неё нет имени человека, нет «покупки
-            подтверждено» и нет оценки, идущей в рейтинг. Зато есть
-            плашка, которую нельзя не заметить.
-          */
-          if (rv.demo) {
-            return '<article class="rev rev-demo"><div class="rh"><div class="who">' +
-              '<span class="ava ava-demo">Д</span><div><b>Демонстрационный отзыв №' + (rv.n || 1) + '</b>' +
-              '<span class="demo-tag">Пример оформления, не отзыв покупателя</span></div></div></div>' +
-              '<p>' + esc(rv.text || '') + '</p>' +
-              (rv.reply ? '<div class="rreply"><b>Пример ответа магазина</b><p>' + esc(typeof rv.reply === 'string' ? rv.reply : rv.reply.text) + '</p></div>' : '') +
-              '</article>';
-          }
+        '<div class="rev-list">' +
+        /*
+          Демонстрационные примеры — отдельный блок со своим заголовком и
+          счётчиком, а не записи вперемешку с отзывами. Пометка стоит
+          дважды: на заголовке блока и на каждой карточке, — потому что
+          человек может попасть сюда по якорю и увидеть только одну.
+        */
+        (demos.length
+          ? '<section class="demo-block" aria-label="Демонстрационные примеры оформления">' +
+            '<header class="demo-head">' + ic('info', 20) +
+            '<div><b>Демонстрационные примеры (' + demos.length + ')</b>' +
+            '<span>Демонстрационный пример — не отзыв покупателя. Собран из полей выгрузки ' +
+            'поставщика по этому артикулу: без авторов, без оценок, без опыта эксплуатации. ' +
+            'В рейтинг, счётчик отзывов, микроразметку и карту сайта не идёт.</span></div></header>' +
+            demos.map(function (rv) {
+              return '<article class="rev rev-demo"><div class="rh"><div class="who">' +
+                '<span class="ava ava-demo">Д</span><div><b>Демонстрационный пример №' + (rv.n || 1) + '</b>' +
+                '<span class="demo-tag">Не отзыв покупателя</span></div></div></div>' +
+                '<p>' + esc(rv.text || '') + '</p>' +
+                (rv.reply ? '<div class="rreply"><b>Пример ответа магазина</b><p>' + esc(rv.reply) + '</p></div>' : '') +
+                '</article>';
+            }).join('') +
+            '</section>'
+          : '') +
+        revs.map(function (rv) {
           var name = rv.name || 'Покупатель';
           return '<article class="rev"><div class="rh"><div class="who"><span class="ava">' + esc(name.slice(0, 1)) + '</span><div><b>' + esc(name) + '</b><span>' +
             (rv.city ? esc(rv.city) : '') +

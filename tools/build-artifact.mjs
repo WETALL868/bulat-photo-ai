@@ -40,6 +40,20 @@ const OUT = path.resolve(ROOT, argOf('out', 'dist/artifact'));
    нужно, чтобы отличить «политика фрейма запрещает хост» от «прокси сам
    не отвечает». */
 const IMAGE_PROXY = argOf('image-proxy', 'wsrv');
+/*
+  Демонстрационные примеры оформления блока отзывов: --demo-reviews[=1..3].
+
+  Флаг живёт только здесь, в сборке превью, и ничего не пишет в данные —
+  он лишь объявляет window.HB_DEMO_REVIEWS на странице. Примеры собирает
+  браузер из полей карточки (assets/js/app.js, demoExamples), поэтому
+  чанки не растут ни на байт, а в боевой сборке этой строки нет и брать
+  записи неоткуда.
+*/
+const DEMO_REVIEWS = (() => {
+  const raw = argOf('demo-reviews', null);
+  if (raw === null) return 0;
+  return raw === '' ? 3 : Math.max(0, Math.min(3, Number(raw) || 0));
+})();
 const MAX_FILES = 255;
 
 /* Собранный каталог можно взять не из репозитория, а из отдельной папки:
@@ -154,19 +168,18 @@ const chunkFiles = fs.readdirSync(chunkDir)
   .sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
 
 let groups = 0;
-/* Демонстрационные записи считаются и называются вслух: собрать превью с
-   примерами оформления и не заметить этого нельзя. */
-let demoCards = 0, demoRecords = 0;
+/* Записей в данных быть не должно ни в каком виде: примеры собирает
+   браузер. Если они здесь появились — это дефект, и молчать о нём
+   нельзя. */
+let stray = 0;
 for (let i = 0; i < chunkFiles.length; i += GROUP) {
   const merged = {};
   for (const f of chunkFiles.slice(i, i + GROUP)) Object.assign(merged, JSON.parse(fs.readFileSync(path.join(chunkDir, f), 'utf8')));
-  for (const card of Object.values(merged)) {
-    const demo = (card.reviews || []).filter((r) => r && r.demo);
-    if (demo.length) { demoCards += 1; demoRecords += demo.length; }
-  }
+  for (const card of Object.values(merged)) stray += (card.reviews || []).filter((r) => r && r.demo).length;
   put(`data/catalog/chunks/detail-${groups}.json`, relativeAssets(JSON.stringify(merged)));
   groups += 1;
 }
+if (stray) throw new Error(`в данных каталога лежат ${stray} демонстрационных записей — их там быть не должно`);
 meta.chunkSize = (meta.chunkSize ?? 32) * GROUP;
 /* Число чанков тоже пересчитывается: иначе в meta остаётся счёт исходной
    сборки (137 файлов по 32 товара), а рядом лежит 35 файлов по 128. Поле
@@ -233,7 +246,9 @@ html = html
   .replace('<link rel="stylesheet" href="/assets/css/styles.css">', '<style>\n' + css + '\n</style>')
   .replace(
     /<script src="\/assets\/js\/icons.js"><\/script>\s*<script src="\/assets\/js\/catalog.js"><\/script>\s*<script src="\/assets\/js\/app.js"><\/script>/,
-    '<script>window.HB_DATA_BASE = "./"; window.HB_HASH_ROUTING = true;</script>\n<script>\n' + js + '\n</script>',
+    '<script>window.HB_DATA_BASE = "./"; window.HB_HASH_ROUTING = true;' +
+    (DEMO_REVIEWS ? ` window.HB_DEMO_REVIEWS = ${DEMO_REVIEWS};` : '') +
+    '</script>\n<script>\n' + js + '\n</script>',
   );
 /* Ссылки на картинки в разметке тоже становятся относительными. */
 html = html.replace(/(src|href)="\/assets\//g, '$1="assets/');
@@ -270,9 +285,10 @@ const bytes = published.reduce((a, rel) => a + fs.statSync(path.join(OUT, rel)).
 const page = fs.statSync(path.join(OUT, 'index.html')).size;
 const mb = (n) => (n / 1048576).toFixed(2) + ' МБ';
 console.log(`Превью собрано в ${path.relative(ROOT, OUT)}`);
-if (demoCards) {
-  console.log(`  ДЕМОНСТРАЦИОННЫЕ ЗАПИСИ: ${demoRecords} на ${demoCards} карточках — примеры оформления, не отзывы.`);
-  console.log('  Страница помечена noindex; предрендер и карта сайта строятся отдельно и этих записей не содержат.');
+if (DEMO_REVIEWS) {
+  console.log(`  ДЕМОНСТРАЦИОННЫЕ ПРИМЕРЫ: включены, до ${DEMO_REVIEWS} на карточку, собираются в браузере.`);
+  console.log('  В данные не записаны (чанки не выросли), страница помечена noindex,');
+  console.log('  предрендер и карта сайта строятся из data/catalog и примеров не содержат.');
 }
 console.log(`  страница ${mb(page)}, файлов рядом ${published.length}, данные ${mb(bytes)}`);
 console.log(`  чанков деталей ${groups} (по ${meta.chunkSize} товаров), картинок ${needed.size}` +

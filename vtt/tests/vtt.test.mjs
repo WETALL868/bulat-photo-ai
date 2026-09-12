@@ -1944,12 +1944,16 @@ test('у бумаги формат и плотность не превращаю
   assert.ok(!/сверьте обозначение модели/.test(d.text), 'бумаге приписали совместимость с аппаратами');
 });
 
-test('демонстрационных записей по умолчанию нет, и в счётчики они не идут', async () => {
+test('в каталоге нет отзывов, которых никто не писал', async () => {
   const builder = fs.readFileSync(path.join(process.cwd(), 'tools/build-catalog.mjs'), 'utf8');
-  /* Флаг есть, но по умолчанию выключен: без --demo-reviews записей нет. */
-  assert.ok(builder.includes("argOf('demo-reviews', null)"), 'флаг демо-записей пропал');
-  assert.ok(/p\.reviews = 0;/.test(builder) && /p\.rate = 0;/.test(builder),
-    'счётчики обязаны оставаться нулевыми при любом флаге');
+  /* Сборщик каталога больше не умеет добавлять записи вовсе: список
+     отзывов пуст всегда, счётчик и оценка — нули. */
+  /* Проверяем код, а не комментарии: флаг упоминается в пояснении к
+     --out-catalog, и грубый поиск по строке ловил бы его. */
+  assert.ok(!/argOf\('demo-|demoReviewsFor\(|wantsDemo\(/.test(builder),
+    'в сборщике каталога снова появились демонстрационные записи');
+  assert.ok(/p\.reviewList = \[\];/.test(builder) && /p\.reviews = 0;/.test(builder) && /p\.rate = 0;/.test(builder),
+    'счётчики обязаны оставаться нулевыми');
 
   const dir = path.join(process.cwd(), 'data/catalog/chunks');
   if (!fs.existsSync(dir)) return;
@@ -1962,28 +1966,42 @@ test('демонстрационных записей по умолчанию н
   assert.equal(withReviews, 0, 'в опубликованный каталог попали отзывы, которых нет');
 });
 
-test('демонстрационные записи изолированы от индексируемой сборки', async () => {
-  const builder = fs.readFileSync(path.join(process.cwd(), 'tools/build-catalog.mjs'), 'utf8');
+test('демонстрационные примеры живут только в превью и только в браузере', async () => {
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
   const artifact = fs.readFileSync(path.join(process.cwd(), 'tools/build-artifact.mjs'), 'utf8');
 
-  /* Записи ставятся на короткий список карточек, а не на весь каталог:
-     тринадцать тысяч однотипных примеров — это не проверка вёрстки. */
-  assert.ok(builder.includes("argOf('demo-on', null)"), 'список карточек с примерами пропал');
-  assert.ok(/const demo = DEMO_REVIEWS && wantsDemo\(p\);/.test(builder),
-    'примеры снова раскладываются по всем товарам');
-  /* Артикул для сверки не годится: он у поставщика не уникален. */
-  assert.ok(!/DEMO_ON\.has\(String\(p\.code\)/.test(builder),
-    'сверка по артикулу вернулась — один артикул даст примеры на нескольких карточках');
+  /* Примеры собираются на клиенте из полей карточки: в статические
+     чанки не уходит ни байта, а без флага их нет вовсе. */
+  assert.ok(/function demoExamples\(p, d\)/.test(app), 'генератор примеров пропал');
+  assert.ok(/var n = Number\(window\.HB_DEMO_REVIEWS\) \|\| 0;\s*\n\s*if \(n <= 0\) return \[\];/.test(app),
+    'примеры перестали зависеть от флага превью');
+  assert.ok(app.includes('window.HB_DEMO_EXAMPLES = demoExamples;'),
+    'генератор не вынесен наружу — сплошную проверку по каталогу не прогнать');
 
-  /* Демо-сборка пишется в отдельную папку, а не поверх data/catalog,
-     из которого строятся предрендер и карта сайта. */
-  assert.ok(builder.includes("argOf('out-catalog', 'data/catalog')"), 'отдельная папка сборки пропала');
-  assert.ok(artifact.includes("argOf('catalog', 'data/catalog')"), 'превью больше не умеет брать каталог со стороны');
+  /* Флаг ставит только сборка превью, и только в разметку страницы. */
+  assert.ok(artifact.includes("argOf('demo-reviews', null)"), 'флаг превью пропал');
+  assert.ok(/window\.HB_DEMO_REVIEWS = \$\{DEMO_REVIEWS\};/.test(artifact),
+    'флаг не объявляется на странице превью');
+  /* И сборка превью падает, если записи всё-таки оказались в данных. */
+  assert.ok(/демонстрационных записей — их там быть не должно/.test(artifact),
+    'сборка превью перестала проверять данные на подложенные записи');
 
   /* Превью не индексируется ни при каких условиях. */
   assert.ok(/name="robots" content="noindex/.test(artifact), 'в превью пропал noindex');
 
-  /* Микроразметка с рейтингом появляется только при настоящих отзывах. */
+  /* Демо и настоящие отзывы разведены: сводка считает только настоящие,
+     примеры стоят под своим заголовком со счётчиком. */
+  assert.ok(/var revs = \(d\.reviews \|\| \[\]\)\.filter\(function \(r\) \{ return r && !r\.demo; \}\);/.test(app),
+    'демонстрационные записи снова попадают в ленту отзывов');
+  assert.ok(app.includes('Настоящих отзывов пока нет'), 'сводка снова спорит с видимыми примерами');
+  assert.ok(/Демонстрационные примеры \(' \+ demos\.length \+ '\)/.test(app),
+    'у блока примеров нет отдельного заголовка со счётчиком');
+  assert.ok(app.includes('Демонстрационный пример — не отзыв покупателя'), 'пропала пометка на заголовке блока');
+  assert.ok(app.includes('Не отзыв покупателя'), 'пропала пометка на самой записи');
+  /* Ни рейтинга, ни оценки у примера нет и быть не может. */
+  assert.ok(!/demos[^\n]*rate/.test(app), 'у демонстрационного примера появилась оценка');
+
+  /* Микроразметка с рейтингом требует настоящих отзывов. */
   const seo = fs.readFileSync(path.join(process.cwd(), 'tools/build-seo.mjs'), 'utf8');
   assert.ok(/p\.reviews > 0 && p\.rate > 0/.test(seo),
     'AggregateRating перестал требовать настоящих отзывов');
@@ -1998,13 +2016,13 @@ test('демонстрационные записи изолированы от 
         if (e.isDirectory()) walk(f);
         else if (e.name.endsWith('.html')) {
           checked += 1;
-          if (fs.readFileSync(f, 'utf8').includes('Демонстрационный отзыв')) demo += 1;
+          if (/Демонстрационн\w+ (?:отзыв|пример)/.test(fs.readFileSync(f, 'utf8'))) demo += 1;
         }
       }
     };
     walk(dir);
     assert.ok(checked > 100, 'предрендер нечего было проверять');
-    assert.equal(demo, 0, 'демонстрационные записи попали в индексируемые страницы');
+    assert.equal(demo, 0, 'демонстрационные примеры попали в индексируемые страницы');
   }
 });
 
