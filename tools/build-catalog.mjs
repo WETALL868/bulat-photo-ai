@@ -509,10 +509,64 @@ const brandName = (id) => (brandDict[id] ? brandDict[id].name : id);
 
 products.sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name, 'ru'));
 
+/*
+  Демонстрационные записи для проверки вёрстки: --demo-reviews[=N].
+
+  По умолчанию их нет и быть не должно. Настоящих отзывов у нас ноль, и
+  витрина обязана это показывать: счётчик, звёзды, микроразметка и карта
+  сайта считают только то, что прислали живые люди и одобрил модератор.
+
+  Но блок отзывов надо иногда посмотреть глазами — пустое состояние не
+  показывает ни строки записи, ни ответа магазина. Для этого и нужен флаг.
+  Что он делает и чего не делает:
+
+    • запись подписана «Демонстрационная запись №N», а не именем человека,
+      и несёт признак demo — принять её за отзыв покупателя невозможно;
+    • текст собран из фактических полей этой позиции. Ни впечатлений, ни
+      «печатает без полос»: выдуманный опыт эксплуатации — это ложь,
+      даже под пометкой;
+    • p.rate и p.reviews остаются нулями, поэтому запись не идёт ни в
+      рейтинг, ни в AggregateRating, ни в карту сайта;
+    • в боевой сборке флага нет, и появиться там нечему.
+*/
+const DEMO_REVIEWS = (() => {
+  const raw = argOf('demo-reviews', null);
+  if (raw === null) return 0;
+  return raw === '' ? 2 : Math.max(0, Math.min(3, Number(raw) || 0));
+})();
+
+function demoReviewsFor(p) {
+  const nf = (n) => Number(n).toLocaleString('ru-RU');
+  /* Пул фактов — только то, что действительно пришло в выгрузке. */
+  const facts = [];
+  if (p.code) facts.push(['Артикул в выгрузке', p.code]);
+  if (p.res) facts.push(['Заявленный ресурс', `${nf(p.res)} страниц`]);
+  if (p.colorTitle || p.color) facts.push(['Цвет', p.colorTitle || p.color]);
+  if (p.compatText) facts.push(['Примечание поставщика', p.compatText.slice(0, 90)]);
+  if (p.barcode) facts.push(['Штрихкод', p.barcode]);
+  if (!facts.length && p.name) facts.push(['Наименование в выгрузке', p.name.slice(0, 90)]);
+  const ANGLE = ['подписи и переносы в карточке записи', 'вложенный ответ магазина', 'длинную строку и выравнивание'];
+  const out = [];
+  for (let i = 0; i < Math.min(DEMO_REVIEWS, facts.length); i++) {
+    const [label, value] = facts[i];
+    out.push({
+      demo: true, n: i + 1, rate: 5,
+      text: `${label}: ${value}. Запись проверяет ${ANGLE[i]}; это не отзыв покупателя.`,
+      reply: `Демонстрационный ответ магазина №${i + 1} по позиции ${p.code || p.id}.`,
+    });
+  }
+  return out;
+}
+
 for (const p of products) {
-  p.reviewList = [];
+  p.reviewList = DEMO_REVIEWS ? demoReviewsFor(p) : [];
+  /* Счётчики остаются нулевыми при любом флаге: демо-запись не отзыв. */
   p.reviews = 0;
   p.rate = 0;
+}
+if (DEMO_REVIEWS) {
+  console.log(`  ВНИМАНИЕ: добавлено по ${DEMO_REVIEWS} демонстрационных записи на товар ` +
+    '(--demo-reviews). Это проверка вёрстки, не отзывы: в рейтинг, микроразметку и карту сайта они не идут.');
 }
 
 /*
@@ -602,7 +656,14 @@ const rowOf = new Map(products.map((p, i) => [p.id, i]));
 function vttDescriptionHtml(p) {
   const parts = [];
   if (p.editorialDescription) parts.push(`<p>${esc(p.editorialDescription)}</p>`);
-  if (p.description) parts.push(`<p>${esc(p.description)}</p>`);
+  /* Описание собирается абзацами и абзацами же показывается: сплошная
+     простыня из пяти предложений читается хуже, чем те же предложения,
+     разложенные по смыслу. */
+  if (p.description) {
+    for (const para of String(p.description).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean)) {
+      parts.push(`<p>${esc(para)}</p>`);
+    }
+  }
   if (p.supplierDescription && p.supplierDescription !== p.description) {
     parts.push(`<p class="supplier-desc"><b>Описание поставщика.</b> ${esc(p.supplierDescription)}</p>`);
   }

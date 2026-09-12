@@ -149,9 +149,18 @@ if ($route === 'review') {
     $cut = static fn (string $k, int $n): string => mb_substr(trim((string) ($in[$k] ?? '')), 0, $n);
     $product = $cut('product', 120);
     $name = $cut('name', 80);
+    $email = $cut('email', 120);
     $text = $cut('text', 2000);
     if ($product === '' || $name === '' || mb_strlen($text) < 20) {
         fail(422, 'Нужны товар, имя и текст отзыва');
+    }
+    /*
+      Адрес проверяется и здесь. Клиентскую проверку обходит кто угодно, а
+      без обратного адреса модератор не сможет уточнить отзыв — значит,
+      принимать его бессмысленно.
+    */
+    if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+        fail(422, 'Нужен корректный e-mail для связи по отзыву');
     }
     $rate = isset($in['rate']) ? (int) $in['rate'] : 0;
     if ($rate < 1 || $rate > 5) {
@@ -178,6 +187,13 @@ if ($route === 'review') {
         'verified' => false,
         'product' => $product,
         'name' => $name,
+        /*
+          Адрес живёт только здесь, в приватной очереди модерации: папка
+          лежит выше публичной директории и наружу не отдаётся. В карточку,
+          в микроразметку и в опубликованные данные каталога он не уходит
+          ни при каких условиях — это контакт автора, а не часть отзыва.
+        */
+        'email' => $email,
         'rate' => $rate ?: null,
         'printer' => $cut('printer', 80),
         'text' => $text,

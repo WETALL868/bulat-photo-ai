@@ -710,7 +710,25 @@ a.line-c:hover{border-color:var(--ink)}
 .rev-form h3{font-size:18px;margin-bottom:6px}
 .rev-form p{font-size:14px;color:var(--muted);margin-bottom:16px}
 .rev-form .row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
-.rev-form .field{background:#fff}
+/*
+  Поля формы отзыва — со своим классом, а не с общим .field.
+
+  Общий .field из оформления заказа задаёт высоту 48 px и раскладку в
+  строку: подпись с полем в него не помещаются, и «Модель принтера»
+  наезжала на поле «Ваше имя». Подпись здесь постоянная, а не placeholder:
+  placeholder исчезает с первым символом, и человек перестаёт понимать,
+  что заполняет.
+*/
+.rev-form .rfield{display:block;margin-bottom:12px}
+.rev-form .rfield-wide{width:100%}
+.rev-form .row .rfield{margin-bottom:0}
+.rev-form .flabel{display:block;font-size:12.5px;font-weight:600;color:var(--ink2);margin-bottom:5px}
+.rev-form .flabel i{font-style:normal;font-weight:400;color:var(--muted)}
+.rev-form .rfield input{width:100%;border:1px solid var(--line2);border-radius:12px;padding:12px 16px;
+  font:inherit;font-size:15px;background:#fff;outline:0;display:block}
+.rev-form .rfield input:focus{border-color:var(--ink)}
+.rev-form .rfield input:user-invalid{border-color:var(--red,#c0392b)}
+.rev-form .rfield textarea{margin:0}
 .rev-form textarea{width:100%;min-height:110px;border:1px solid var(--line2);border-radius:12px;padding:12px 16px;font:inherit;font-size:15px;background:#fff;resize:vertical;outline:0}
 .rev-form textarea:focus{border-color:var(--ink)}
 .rev-form .frate{display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:14px}
@@ -1851,6 +1869,16 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
 .rev-none svg{color:var(--muted2)}
 .rev-none b{font-family:var(--head);font-weight:800;font-size:20px;letter-spacing:-.02em}
 .rev-none span{font-size:13.5px;color:var(--muted);line-height:1.5}
+
+/* Демонстрационная запись (только сборка с --demo-reviews). Цвет
+   намеренно не фирменный: жёлтый на витрине значит «акция», и путать эти
+   смыслы нельзя. */
+.rev-demo{border-color:#ddd6fe;background:#faf9ff}
+.rev-demo .ava-demo{background:#5b21b6;color:#fff}
+.rev-demo .demo-tag{display:inline-block;margin-top:2px;padding:1px 8px;border-radius:999px;
+  background:#ede9fe;color:#5b21b6;font-size:11px;font-weight:700;letter-spacing:.03em}
+.rev-sum-demo{border-color:#ddd6fe;background:#faf9ff}
+.rev-sum-demo .rev-none svg{color:#5b21b6}
 
 /* Оценка в форме — настоящие переключатели, а не картинка со звёздами:
    прежние звёзды выглядели кликабельными, но ничего не выбирали. */

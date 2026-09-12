@@ -240,12 +240,44 @@ for (const device of [
   const headNone = await page.locator('.pmeta').innerText();
   check(`${device.name}: в шапке не стоит оценка 0,0`, !/0,0/.test(headNone), headNone.replace(/\n/g, ' '));
 
+  /*
+    Поле e-mail. Под формой стояло «Ваш email не публикуется», а самого
+    поля не было — обещание относилось к тому, чего форма не спрашивала.
+  */
+  const fields = await page.evaluate(() => ({
+    email: !!document.querySelector('#rev-form input[name=email][type=email]'),
+    labels: [...document.querySelectorAll('#rev-form .flabel')].map((e) => e.textContent.trim()),
+    note: (document.querySelector('#rev-email-note') || {}).textContent || '',
+    overlap: (() => {
+      const r = [...document.querySelectorAll('#rev-form .rfield')].map((e) => e.getBoundingClientRect());
+      let bad = 0;
+      for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) {
+        if (r[i].left < r[j].right - 1 && r[j].left < r[i].right - 1
+          && r[i].top < r[j].bottom - 1 && r[j].top < r[i].bottom - 1) bad += 1;
+      }
+      return bad;
+    })(),
+  }));
+  check(`${device.name}: в форме есть поле e-mail`, fields.email);
+  check(`${device.name}: у полей формы есть постоянные подписи`, fields.labels.length >= 4, fields.labels.join(' | '));
+  check(`${device.name}: поля формы не накладываются`, fields.overlap === 0, `перекрытий ${fields.overlap}`);
+  check(`${device.name}: подпись под формой говорит про e-mail честно`,
+    /не публикуется/.test(fields.note) && /модератор/i.test(fields.note), fields.note.slice(0, 80));
+
   /* Форма не пишет «Спасибо», не отправив ничего. */
   await page.locator('#rev-form button[type=submit]').click();
   let msg = (await page.locator('#rev-msg').innerText().catch(() => '')).trim();
   check(`${device.name}: пустая форма не принимается`, /имя/i.test(msg), msg);
   await page.fill('#rev-form input[name=name]', 'Проверка');
   await page.fill('#rev-form textarea', 'Коротко');
+  await page.locator('#rev-form button[type=submit]').click();
+  msg = (await page.locator('#rev-msg').innerText()).trim();
+  check(`${device.name}: без e-mail отзыв не принимается`, /e-?mail/i.test(msg), msg);
+  await page.fill('#rev-form input[name=email]', 'не-почта');
+  await page.locator('#rev-form button[type=submit]').click();
+  msg = (await page.locator('#rev-msg').innerText()).trim();
+  check(`${device.name}: неверный e-mail не принимается`, /e-?mail/i.test(msg), msg);
+  await page.fill('#rev-form input[name=email]', 'buyer@example.ru');
   await page.locator('#rev-form button[type=submit]').click();
   msg = (await page.locator('#rev-msg').innerText()).trim();
   check(`${device.name}: слишком короткий текст не принимается`, /пару предложений/i.test(msg), msg);

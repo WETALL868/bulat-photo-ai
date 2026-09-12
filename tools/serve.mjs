@@ -73,9 +73,15 @@ const server = http.createServer((req, res) => {
       try { rev = JSON.parse(rbody); } catch { return send(res, 400, JSON.stringify({ ok: false, error: 'Некорректный запрос' }), TYPES['.json']); }
       const text = String(rev.text ?? '').trim();
       const name = String(rev.name ?? '').trim();
+      const email = String(rev.email ?? '').trim();
       const product = String(rev.product ?? '').trim();
       if (!product || !name || text.length < 20) {
         return send(res, 422, JSON.stringify({ ok: false, error: 'Нужны товар, имя и текст отзыва' }), TYPES['.json']);
+      }
+      /* Та же проверка адреса, что и на боевом сервере: иначе локальная
+         проверка формы расходится с настоящей. */
+      if (!/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(email)) {
+        return send(res, 422, JSON.stringify({ ok: false, error: 'Нужен корректный e-mail для связи по отзыву' }), TYPES['.json']);
       }
       fs.mkdirSync(REVIEWS, { recursive: true });
       const key = Buffer.from(product + '\0' + text).toString('base64url').slice(0, 22);
@@ -85,7 +91,8 @@ const server = http.createServer((req, res) => {
         createdAt: new Date().toISOString(),
         /* Статус ставит сервер: поле из запроса игнорируется целиком. */
         status: 'pending', verified: false,
-        product, name, rate: Number(rev.rate) || null,
+        /* Адрес — только в очередь модерации, как на боевом сервере. */
+        product, name, email, rate: Number(rev.rate) || null,
         printer: String(rev.printer ?? '').trim(), text,
       }, null, 2));
       console.log(`отзыв на модерации: ${product} — ${name}`);

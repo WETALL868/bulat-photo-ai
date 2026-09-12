@@ -542,6 +542,9 @@
         когда отзывов нет, и карточка так и говорит.
       */
       var revs = d.reviews || [];
+      /* Демо-набор определяется по самим записям, а не по флагу товара:
+         так пометка не разъедется, если записи появятся где-то ещё. */
+      var demoOnly = revs.length > 0 && revs.every(function (r) { return r.demo; });
       var revAvg = revs.length ? Math.round(revs.reduce(function (a, r) { return a + (r.rate || 0); }, 0) / revs.length * 10) / 10 : 0;
       var src = p.img;
       var hasAtlas = !!(C.thumb && C.thumb(p.id));
@@ -685,7 +688,15 @@
         */
         '<div data-panel="reviews" id="panel-reviews" role="tabpanel" aria-labelledby="tab-reviews"' + (tab !== 'reviews' ? ' hidden' : '') + '>' +
         '<div class="rev-grid">' +
-        (revs.length
+        (demoOnly
+          /* Демо-набор не притворяется сводкой: цифры рейтинга здесь нет
+             вовсе, потому что рейтинга нет. */
+          ? '<div class="rev-sum rev-sum-demo"><div class="rev-none">' + ic('info', 28) +
+            '<b>Демонстрационные записи</b>' +
+            '<span>Настоящих отзывов у этого товара пока нет. Ниже — проверочные записи для согласования вёрстки: ' +
+            'они собраны из полей выгрузки и не влияют ни на рейтинг, ни на микроразметку, ни на карту сайта.</span></div>' +
+            '<button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button></div>'
+        : revs.length
           ? '<div class="rev-sum"><div class="big"><b>' + ratef(revAvg) + '</b><span>из 5</span></div>' + stars(revAvg, 20) +
             '<div class="cnt">' + revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + '</div>' +
             '<div class="bars">' + [5, 4, 3, 2, 1].map(function (n) {
@@ -699,6 +710,20 @@
             'когда придёт первый отзыв и его проверит модератор.</span></div>' +
             '<button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать первым</button></div>') +
         '<div class="rev-list">' + revs.map(function (rv) {
+          /*
+            Демонстрационная запись не имеет права выглядеть как отзыв
+            покупателя: у неё нет имени человека, нет «покупки
+            подтверждено» и нет оценки, идущей в рейтинг. Зато есть
+            плашка, которую нельзя не заметить.
+          */
+          if (rv.demo) {
+            return '<article class="rev rev-demo"><div class="rh"><div class="who">' +
+              '<span class="ava ava-demo">Д</span><div><b>Демонстрационная запись №' + (rv.n || 1) + '</b>' +
+              '<span class="demo-tag">ДЕМО · проверка вёрстки, не отзыв покупателя</span></div></div></div>' +
+              '<p>' + esc(rv.text || '') + '</p>' +
+              (rv.reply ? '<div class="rreply"><b>ДЕМО · ответ магазина</b><p>' + esc(typeof rv.reply === 'string' ? rv.reply : rv.reply.text) + '</p></div>' : '') +
+              '</article>';
+          }
           var name = rv.name || 'Покупатель';
           return '<article class="rev"><div class="rh"><div class="who"><span class="ava">' + esc(name.slice(0, 1)) + '</span><div><b>' + esc(name) + '</b><span>' +
             (rv.city ? esc(rv.city) : '') +
@@ -729,11 +754,29 @@
         [1, 2, 3, 4, 5].map(function (n) {
           return '<label class="fstar"><input type="radio" name="rate" value="' + n + '"' + (n === 5 ? ' checked' : '') + '><span>' + n + '</span></label>';
         }).join('') + '</div>' +
-        '<div class="row"><div class="field"><input type="text" name="name" maxlength="80" placeholder="Ваше имя" required></div>' +
-        '<div class="field"><input type="text" name="printer" maxlength="80" placeholder="Модель принтера"></div></div>' +
-        '<textarea name="text" maxlength="2000" placeholder="Достоинства, недостатки, впечатления от печати" required></textarea>' +
+        /*
+          Поле e-mail появилось не для красоты. Под формой стояла подпись
+          «Ваш email не публикуется», а самого поля не было: обещание
+          относилось к тому, чего форма не спрашивала. Теперь адрес
+          спрашивается явно, он обязателен — по нему модератор возвращается
+          к автору, если отзыв нужно уточнить, — и на витрину он не идёт.
+
+          Подписи у полей настоящие, а не только placeholder: placeholder
+          исчезает при первом же символе, и человек перестаёт понимать, что
+          он сейчас заполняет.
+        */
+        '<div class="row"><label class="rfield"><span class="flabel">Ваше имя</span>' +
+        '<input type="text" name="name" maxlength="80" autocomplete="name" placeholder="Как вас подписать" required></label>' +
+        '<label class="rfield"><span class="flabel">E-mail</span>' +
+        '<input type="email" name="email" maxlength="120" autocomplete="email" inputmode="email" placeholder="name@example.ru" required' +
+        ' aria-describedby="rev-email-note"></label></div>' +
+        '<label class="rfield rfield-wide"><span class="flabel">Модель принтера <i>необязательно</i></span>' +
+        '<input type="text" name="printer" maxlength="80" placeholder="Например, Kyocera Ecosys M8130cidn"></label>' +
+        '<label class="rfield rfield-wide"><span class="flabel">Отзыв</span>' +
+        '<textarea name="text" maxlength="2000" placeholder="Достоинства, недостатки, впечатления от печати" required></textarea></label>' +
         '<div class="fbtn"><button class="btn btn-y" type="submit">Отправить отзыв</button>' +
-        '<span>Отзыв появится после проверки модератором. Ваш email не публикуется.</span></div>' +
+        '<span id="rev-email-note">Отзыв появится на странице после проверки модератором. ' +
+        'E-mail нужен только для связи с вами по этому отзыву: он не публикуется и не попадает в рассылку.</span></div>' +
         '<div class="rev-msg" id="rev-msg" role="status" aria-live="polite" hidden></div>' +
         '</form></div></div>' +
         '<div data-panel="delivery" id="panel-delivery" role="tabpanel" aria-labelledby="tab-delivery"' + (tab !== 'delivery' ? ' hidden' : '') + '><div class="desc" style="max-width:820px">' + C.site.pageText.delivery_short + '</div></div>' +
@@ -1684,8 +1727,20 @@
         rmsg.textContent = text;
       };
       var rname = (f.elements.name.value || '').trim();
+      var remail = (f.elements.email.value || '').trim();
       var rtext = (f.elements.text.value || '').trim();
       if (!rname) { say('bad', 'Укажите имя — без него отзыв не принимаем.'); f.elements.name.focus(); return; }
+      /*
+        Адрес проверяется по форме, а не по списку доменов: чей-то
+        редкий почтовый домен — не повод отказать в отзыве. Проверка
+        одна и та же на клиенте и на сервере, потому что клиентскую
+        легко обойти, а серверная одна оставляет человека без внятного
+        объяснения.
+      */
+      if (!/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(remail)) {
+        say('bad', 'Проверьте e-mail: он нужен, чтобы модератор мог связаться с вами по этому отзыву. Публиковать его мы не будем.');
+        f.elements.email.focus(); return;
+      }
       if (rtext.length < 20) { say('bad', 'Напишите хотя бы пару предложений: по двум словам другому покупателю не понять, подошёл расходник или нет.'); f.elements.text.focus(); return; }
 
       /* Повторную отправку того же текста на тот же товар не делаем:
@@ -1700,6 +1755,9 @@
       var rbody = {
         product: f.dataset.revForm,
         name: rname,
+        /* Адрес уходит только в очередь модерации. На витрину он не
+           попадает ни в каком виде — ни в карточку, ни в разметку. */
+        email: remail,
         rate: rated ? Number(rated.value) : null,
         printer: (f.elements.printer.value || '').trim(),
         text: rtext,

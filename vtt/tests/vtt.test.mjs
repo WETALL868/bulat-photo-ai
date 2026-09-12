@@ -1532,7 +1532,10 @@ test('описание собирается из фактов, не повтор
   assert.match(d.text, /^Голубой тонер-картридж Hi-Black HB-TK-8115C/, 'цвет не назван по-русски');
   assert.ok(d.text.includes('Kyocera Ecosys M8124cidn/M8130cidn'), 'совместимость из названия потеряна');
   /* Габариты, штрихкод и упаковка переехали в характеристики. */
-  assert.ok(!d.text.includes('4690665028417') && !d.text.includes('В упаковке'));
+  /* Штрихкод теперь есть — но как то, что покупатель сверяет при
+     получении, а не как строка выгрузки с подписью. */
+  assert.ok(d.text.includes('Штрихкод позиции'), 'штрихкод должен быть в абзаце про проверку');
+  assert.ok(!d.text.includes('Штрихкод:'), 'штрихкод не должен идти подписью из выгрузки');
   /*
     Габаритов в тексте нет, и «см» тем более: единицы измерения поставщик
     не указывает, а 0,38 × 0,45 × 0,57 см — это спичечный коробок вместо
@@ -1542,7 +1545,7 @@ test('описание собирается из фактов, не повтор
   assert.ok(!d.text.includes('0,38'), 'габариты без единиц не место в тексте');
   assert.ok(d.basedOn.includes('resource') && d.basedOn.includes('color'));
   assert.ok(!d.basedOn.includes('dimensions'));
-  assert.ok(!d.text.includes('Штрихкод'), 'штрихкод остался в тексте описания');
+  assert.ok(!d.text.includes('Штрихкод:'), 'штрихкод не должен идти подписью из выгрузки');
   /* Цены и остатка в постоянном тексте нет: они меняются каждой выгрузкой. */
   assert.ok(!d.text.includes(Number(1273).toLocaleString('ru-RU')) && !d.text.includes('₽'));
   assert.ok(!/\b500\b/.test(d.text));
@@ -1748,6 +1751,7 @@ test('подлежащее берётся из названия и сохран�
   assert.ok(chip.includes('(T2A)'), `модель картриджа потеряна: ${chip}`);
   assert.ok(chip.includes('многоразовый'), `отличие потеряно: ${chip}`);
   assert.ok(!/\bBk\b|2K/.test(chip), `цвет и ресурс должны уйти в свои поля: ${chip}`);
+  assert.ok(chip.includes('многоразовый'), `отличие потеряно вместе с ресурсом: ${chip}`);
 });
 
 test('тип расходника — в единственном числе и по названию, а не по разделу', async () => {
@@ -1776,7 +1780,7 @@ test('описание читается как текст, а не как выг
   assert.ok(text.includes('Бункер для отработанного тонера в комплект не входит.'));
 
   /* Служебных подписей в тексте быть не должно — им место в характеристиках. */
-  for (const label of ['Раздел поставщика', 'Штрихкод', 'Примечание поставщика', 'В упаковке', 'Вес ']) {
+  for (const label of ['Раздел поставщика:', 'Штрихкод:', 'Примечание поставщика:', 'В упаковке ']) {
     assert.ok(!text.includes(label), `в описании осталась служебная подпись «${label}»`);
   }
   /* Складских количеств в публичном тексте нет. */
@@ -1816,4 +1820,106 @@ test('отзывов поставщик не отдаёт: в контракте
   const ops = [...wsdl.matchAll(/<wsdl:operation name="(\w+)"/g)].map((m) => m[1]);
   assert.ok(ops.length > 10, 'операции из контракта не разобрались');
   assert.ok(ops.every((o) => !/review|rating/i.test(o)), 'операция про отзывы не учтена');
+});
+
+/* ===================================================================== */
+/*  Описания от 500 знаков, e-mail в форме, демо-записи по флагу         */
+/* ===================================================================== */
+
+test('описание собирается абзацами и добирает длину фактами, а не словами', async () => {
+  const { buildDescription, DESCRIPTION_MIN } = await import('../src/publish.mjs');
+  const item = normalizeItem({
+    Id: '4100603162', Name: 'Тонер-картридж Hi-Black (HB-TK-8115M) для Kyocera Ecosys M8124cidn/M8130cidn, M, 6K',
+    Brand: 'Hi-Black', Vendor: 'Kyocera-Mita', NameAlias: 'HB-TK-8115M', Group: 'Тонер-картриджи',
+    RootGroup: 'Картриджи для лазерной печати', PriceLocal: '1273.77', ColorName: 'M', ItemLifeTime: '6K',
+    Compatibility: 'с чипом, без бункера отработки тонера', Barcode: '4690665028424',
+    NumberInPackage: '6.00', GrossWeight: '0.80',
+  });
+  const d = buildDescription(item);
+  assert.ok(d.text.length >= DESCRIPTION_MIN, `описание короче ${DESCRIPTION_MIN}: ${d.text.length}`);
+  assert.ok(d.paragraphs.length >= 4, `абзацев мало: ${d.paragraphs.length}`);
+
+  /* Каждый абзац опирается на свои факты этой позиции. */
+  assert.match(d.paragraphs[0], /^Пурпурный тонер-картридж Hi-Black HB-TK-8115M для Kyocera/);
+  assert.ok(d.text.includes(`${Number(6000).toLocaleString('ru-RU')} страниц`));
+  assert.ok(d.text.includes('4690665028424'), 'штрихкод — проверяемый факт, он должен быть в тексте');
+
+  /* И ни одного придуманного свойства. */
+  for (const invented of ['без полос', 'не осыпается', 'ISO', '5 %', 'гарантия 12', 'лучшее качество']) {
+    assert.ok(!new RegExp(invented, 'i').test(d.text), `в описании появилось «${invented}»`);
+  }
+  /* Складских количеств в публичном тексте нет. */
+  assert.ok(!/\b500\b/.test(d.text));
+});
+
+test('после «для» не всегда модели: назначение не выдаётся за совместимость', async () => {
+  const { looksLikeModels, buildDescription } = await import('../src/publish.mjs');
+  assert.equal(looksLikeModels('Kyocera P2235/2040/M2135'), true);
+  assert.equal(looksLikeModels('Epson'), true, 'марка без цифр — это тоже совместимость');
+  assert.equal(looksLikeModels('очистки оргтехники'), false);
+  assert.equal(looksLikeModels('струйной печати, односторонний, A4, 260 г/м2'), false);
+  assert.equal(looksLikeModels('всех регионов/ без гарантии'), false);
+
+  /*
+    Без этой проверки карточка чистящего средства получала совет «сверьте
+    обозначение модели на корпусе аппарата с этим перечнем», где перечнем
+    была «очистка оргтехники».
+  */
+  const cleaner = normalizeItem({
+    Id: '1', Name: 'Средство Hi-Black для очистки оргтехники, 180 мл.', Brand: 'Hi-Black',
+    NameAlias: '15070600251', Group: 'Очистители', RootGroup: 'Чистящие средства', PriceLocal: '100',
+  });
+  const text = buildDescription(cleaner).text;
+  assert.ok(!/сверьте обозначение модели/.test(text), 'совет про сверку моделей попал к чистящему средству');
+  assert.ok(text.includes('для очистки оргтехники'), 'назначение потерялось из названия');
+});
+
+test('у бумаги формат и плотность не превращаются в «модели»', async () => {
+  const { buildDescription, productSubject } = await import('../src/publish.mjs');
+  const paper = {
+    name: 'Холст Hi-Image Paper (хлопок) для струйной печати, односторонний, A4, 260 г/м2, 20 л.',
+    brand: 'Hi-Image', vendorCode: 'HB-Canv-Cott-1S-A4-260g/m-20л',
+  };
+  const subject = productSubject(paper, paper.vendorCode);
+  assert.ok(subject.includes('260 г/м2'), `плотность потерялась: ${subject}`);
+  assert.ok(subject.includes('A4'), `формат потерялся: ${subject}`);
+  assert.ok(!/\/м2$/.test(subject.replace(/260 г\/м2/, '')), 'плотность порезана пополам');
+  assert.ok(!subject.includes('Paper'), `сиротское «Paper» осталось: ${subject}`);
+
+  const d = buildDescription({ ...paper, category: 'Бумага', barcode: '4690665000001' });
+  assert.ok(!/сверьте обозначение модели/.test(d.text), 'бумаге приписали совместимость с аппаратами');
+});
+
+test('демонстрационных записей по умолчанию нет, и в счётчики они не идут', async () => {
+  const builder = fs.readFileSync(path.join(process.cwd(), 'tools/build-catalog.mjs'), 'utf8');
+  /* Флаг есть, но по умолчанию выключен: без --demo-reviews записей нет. */
+  assert.ok(builder.includes("argOf('demo-reviews', null)"), 'флаг демо-записей пропал');
+  assert.ok(/p\.reviews = 0;/.test(builder) && /p\.rate = 0;/.test(builder),
+    'счётчики обязаны оставаться нулевыми при любом флаге');
+
+  const dir = path.join(process.cwd(), 'data/catalog/chunks');
+  if (!fs.existsSync(dir)) return;
+  let withReviews = 0, checked = 0;
+  for (const f of fs.readdirSync(dir)) {
+    const chunk = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    for (const d of Object.values(chunk)) { checked += 1; if ((d.reviews ?? []).length) withReviews += 1; }
+  }
+  assert.ok(checked > 1000, 'проверять было нечего');
+  assert.equal(withReviews, 0, 'в опубликованный каталог попали отзывы, которых нет');
+});
+
+test('форма отзыва спрашивает e-mail и обещает ровно то, что делает', async () => {
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  assert.ok(/name="email" maxlength="120"[^>]*type=|type="email" name="email"/.test(app), 'поля e-mail нет в форме');
+  assert.ok(app.includes('не публикуется и не попадает в рассылку'), 'обещание про e-mail пропало');
+  assert.ok(/email: remail/.test(app), 'адрес не уходит в очередь модерации');
+
+  /* Сервер проверяет адрес сам: клиентскую проверку обходит кто угодно. */
+  const php = fs.readFileSync(path.join(process.cwd(), 'api/index.php'), 'utf8');
+  assert.ok(php.includes('FILTER_VALIDATE_EMAIL'), 'серверной проверки e-mail нет');
+  assert.ok(/'email' => \$email/.test(php), 'адрес не сохраняется в очередь модерации');
+  /* И не попадает в публичные данные: в карточку уходит только reviewList. */
+  const builder = fs.readFileSync(path.join(process.cwd(), 'tools/build-catalog.mjs'), 'utf8');
+  assert.ok(!/email/i.test(builder.split('\n').filter((l) => /reviews:|reviewList/.test(l)).join('\n')),
+    'адрес автора просочился в публикуемые данные');
 });
