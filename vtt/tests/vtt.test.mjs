@@ -176,18 +176,67 @@ test('остатки не суммируются ни на одном шаге',
   assert.equal(rt.mainOffice, 5);
 });
 
-test('PhotoUrl и PhotoUrls объединяются без дублей', () => {
+test('PhotoUrl и PhotoUrls объединяются без дублей и поднимаются до https', () => {
   const item = normalizeItem({
     Id: 'X',
     PhotoUrl: 'http://b2b.vtt.ru/images/a.jpg',
     PhotoUrls: ['http://b2b.vtt.ru/images/a.jpg', 'http://b2b.vtt.ru/images/b.jpg'],
   });
-  assert.deepEqual(item.photos, ['http://b2b.vtt.ru/images/a.jpg', 'http://b2b.vtt.ru/images/b.jpg']);
+  /*
+    Схема поднята не для красоты. Страница магазина открыта по https, и
+    картинку по http браузер блокирует как смешанный контент — молча, с
+    naturalWidth 0 и пустым местом вместо товара. Найдено на живом
+    preview: 1240C002 не грузился именно поэтому.
+  */
+  assert.deepEqual(item.photos, ['https://b2b.vtt.ru/images/a.jpg', 'https://b2b.vtt.ru/images/b.jpg']);
+  assert.deepEqual(item.photosOriginal, ['http://b2b.vtt.ru/images/a.jpg', 'http://b2b.vtt.ru/images/b.jpg'],
+    'исходные адреса поставщика сохранены отдельно');
+
+  /* Уже поднятый адрес не трогается и в «оригиналы» не дублируется. */
+  const already = normalizeItem({ Id: 'Z', PhotoUrl: 'https://b2b.vtt.ru/images/c.jpg' });
+  assert.deepEqual(already.photos, ['https://b2b.vtt.ru/images/c.jpg']);
+  assert.equal(already.photosOriginal, undefined);
 
   /* Относительное имя файла адресом не является: у VTT так выражено
      отсутствие картинки, и до карточки оно доходить не должно. */
   const stub = normalizeItem({ Id: 'Y', PhotoUrl: 'dummy.jpg', PhotoUrls: '{"string":[]}' });
   assert.deepEqual(stub.photos, []);
+});
+
+test('схема поднимается только у проверенных хостов', async () => {
+  const { upgradePhotoUrl, HTTPS_SAFE_IMAGE_HOSTS } = await import('../src/normalize.mjs');
+  assert.equal(upgradePhotoUrl('http://b2b.vtt.ru/images/1240C002.jpg'), 'https://b2b.vtt.ru/images/1240C002.jpg');
+  assert.equal(upgradePhotoUrl('http://B2B.VTT.RU/images/x.jpg'), 'https://B2B.VTT.RU/images/x.jpg');
+  assert.equal(upgradePhotoUrl('http://b2b.vtt.ru:80/x.jpg'), 'https://b2b.vtt.ru/x.jpg');
+
+  /*
+    Чужой хост не трогаем. Подмена схемы у сервера без TLS не чинит
+    картинку, а ломает работавшую: соединение просто не установится.
+    Поэтому список хостов закрытый и каждый в нём проверен вручную.
+  */
+  assert.equal(upgradePhotoUrl('http://example.com/x.jpg'), 'http://example.com/x.jpg');
+  assert.equal(upgradePhotoUrl('http://b2b.vtt.ru:8080/x.jpg'), 'http://b2b.vtt.ru:8080/x.jpg',
+    'нестандартный порт по https никто не слушает');
+  assert.equal(upgradePhotoUrl('https://b2b.vtt.ru/x.jpg'), 'https://b2b.vtt.ru/x.jpg');
+  assert.equal(upgradePhotoUrl(''), undefined);
+  assert.ok(HTTPS_SAFE_IMAGE_HOSTS.has('b2b.vtt.ru'));
+});
+
+test('в опубликованном каталоге не остаётся адресов по http', async () => {
+  const { publish } = await import('../src/publish.mjs');
+  const { store } = tmpStore();
+  const items = makeItems(12).map((raw, i) => normalizeItem({
+    ...raw,
+    PhotoUrl: `http://b2b.vtt.ru/images/${i}.jpg`,
+    PhotoUrls: [`http://b2b.vtt.ru/images/${i}.jpg`, `http://b2b.vtt.ru/images/${i}-b.jpg`],
+  }));
+  store.upsertItems(items, {});
+  const { products } = publish(store, {});
+  for (const p of products) {
+    assert.ok(!String(p.img).startsWith('http://'), `главная картинка по http: ${p.img}`);
+    for (const u of p.images) assert.ok(!u.startsWith('http://'), `дополнительная картинка по http: ${u}`);
+    assert.ok(p.imagesOriginal.every((u) => u.startsWith('http://')), 'исходные адреса сохранены как есть');
+  }
 });
 
 test('мусорные количества не превращаются в нули', () => {

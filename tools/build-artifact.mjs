@@ -61,11 +61,22 @@ function copy(rel) {
 
 /* ------------------------------------------------------------- данные */
 
+/*
+  Адреса картинок внутри данных тоже становятся относительными.
+
+  Это не мелочь и не косметика. Рядом со страницей путь с ведущим слешем
+  не обслуживается вовсе, а в каталоге такие пути лежат у 3 282 заглушек
+  «Фото не передано», у картинок разделов и у логотипов марок. Переписать
+  их только в разметке, как было, недостаточно: в разметке их единицы, а
+  в данных — три с половиной тысячи, и именно они попадают в src карточек.
+*/
+const relativeAssets = (text) => text.replace(/(["'(]|\\")\/assets\//g, '$1assets/');
+
 for (const f of ['meta.json', 'index.json', 'categories.json', 'brands.json',
   'featured.json', 'search-index.json', 'compatibility.json', 'families.json']) {
-  copy(`data/catalog/${f}`);
+  put(`data/catalog/${f}`, relativeAssets(read(`data/catalog/${f}`)));
 }
-copy('data/site.json');
+put('data/site.json', relativeAssets(read('data/site.json')));
 copy('live/catalog-live.json');
 
 /*
@@ -83,7 +94,7 @@ let groups = 0;
 for (let i = 0; i < chunkFiles.length; i += GROUP) {
   const merged = {};
   for (const f of chunkFiles.slice(i, i + GROUP)) Object.assign(merged, JSON.parse(fs.readFileSync(path.join(chunkDir, f), 'utf8')));
-  put(`data/catalog/chunks/detail-${groups}.json`, JSON.stringify(merged));
+  put(`data/catalog/chunks/detail-${groups}.json`, relativeAssets(JSON.stringify(merged)));
   groups += 1;
 }
 meta.chunkSize = (meta.chunkSize ?? 32) * GROUP;

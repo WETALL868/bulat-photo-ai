@@ -164,6 +164,34 @@ export const RECOMMENDED_FOR_CARD = ['brand', 'category', 'compatibilityText', '
   изображение.
 */
 const PHOTO_STUBS = new Set(['dummy.jpg', 'dummy.jpeg', 'dummy.png', 'no-photo.jpg', 'nophoto.jpg']);
+
+/*
+  Хосты картинок, у которых проверено наличие HTTPS.
+
+  Поставщик отдаёт адреса по http://, и на странице, открытой по https,
+  браузер блокирует такую картинку как смешанный контент — молча, с
+  naturalWidth 0 и пустым местом вместо товара. Проверено на живом
+  preview: 1240C002 не грузился именно поэтому.
+
+  Схему поднимаем только для хостов из этого списка и только потому, что
+  у каждого из них https проверен вручную (b2b.vtt.ru отдаёт ту же
+  картинку 646×444 по https). Делать это для любого хоста подряд нельзя:
+  сервер без TLS после подмены схемы перестанет отвечать вовсе, и
+  рабочая картинка превратится в битую — то есть лечение окажется хуже
+  болезни.
+*/
+export const HTTPS_SAFE_IMAGE_HOSTS = new Set(['b2b.vtt.ru']);
+
+export function upgradePhotoUrl(url) {
+  const s = asText(url);
+  if (!s) return s;
+  const m = /^http:\/\/([^/:]+)(:\d+)?(\/.*)?$/i.exec(s);
+  if (!m) return s;
+  /* Нестандартный порт не трогаем: 80 по https не слушает никто. */
+  if (m[2] && m[2] !== ':80') return s;
+  if (!HTTPS_SAFE_IMAGE_HOSTS.has(m[1].toLowerCase())) return s;
+  return `https://${m[1]}${m[3] ?? ''}`;
+}
 export function isPhotoUrl(value) {
   const s = asText(value);
   if (!s) return false;
@@ -197,10 +225,14 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
   const id = asText(pick(raw, FIELD.id));
   const name = asText(pick(raw, FIELD.name));
   const vendorCode = asText(pick(raw, FIELD.vendorCode));
-  const photos = [...new Set([
+  /* Исходные адреса поставщика сохраняются отдельно и не подменяются:
+     по ним работает этап загрузки картинок и по ним же видно, что
+     именно прислал VTT. На витрину идут они же, но по https. */
+  const photosOriginal = [...new Set([
     ...asList(pick(raw, FIELD.photoUrl)),
     ...photoUrlList(pick(raw, FIELD.photoUrls)),
   ])].filter(isPhotoUrl);
+  const photos = [...new Set(photosOriginal.map(upgradePhotoUrl))];
 
   const item = {
     id: id ?? '',
@@ -233,6 +265,7 @@ export function normalizeItem(raw, { now = new Date().toISOString() } = {}) {
        отдельная операция GetGoodsCompatibilityInformation. */
     compatibilityText: asText(pick(raw, FIELD.compatibility)),
     photos,
+    photosOriginal: photosOriginal.some((u, i) => u !== photos[i]) ? photosOriginal : undefined,
     dimensions: {
       width: asNumber(pick(raw, FIELD.width)),
       height: asNumber(pick(raw, FIELD.height)),

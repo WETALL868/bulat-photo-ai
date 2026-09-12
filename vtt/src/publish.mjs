@@ -225,6 +225,9 @@ export function toShopProduct(item, { editorial = {}, categoryPath = [], shopCat
     weight: item.weight ?? '',
     img: usablePhoto(item.photos?.[0]) ? item.photos[0] : PHOTO_PLACEHOLDER,
     images: (item.photos ?? []).filter(usablePhoto),
+    /* Адреса в том виде, в каком их прислал поставщик. Витрина ходит по
+       https-версии, но исходник нужен для сверки и для этапа загрузки. */
+    imagesOriginal: (item.photosOriginal ?? []).filter(usablePhoto),
     photoMissing: !usablePhoto(item.photos?.[0]),
     /* Три текста живут раздельно и никогда не перезаписывают друг друга. */
     supplierDescription: item.supplierDescription ?? '',

@@ -1031,6 +1031,27 @@
   window.addEventListener('hashchange', function () { if (OFFLINE) render(); });
 
   /* Внутренние ссылки открываются без перезагрузки. */
+  /*
+    Картинка, которая не загрузилась.
+
+    Причин хватает: сервер поставщика недоступен, файла нет, а строгая
+    политика страницы может запретить чужой хост целиком. Браузер в
+    таком случае не показывает ничего — остаётся пустой прямоугольник,
+    и витрина выглядит сломанной, хотя сломана только одна ссылка.
+    Поэтому место картинки честно подписывается тем же текстом, что и у
+    товара без фото.
+
+    Слушатель один и в фазе перехвата: событие error у картинок не
+    всплывает, и повесить его на каждый <img> значило бы дублировать
+    обработчик в десяти местах разметки.
+  */
+  document.addEventListener('error', function (e) {
+    var el = e.target;
+    if (!el || el.tagName !== 'IMG' || el.getAttribute('data-imgfail')) return;
+    el.setAttribute('data-imgfail', '1');
+    if (el.parentElement) el.parentElement.classList.add('hb-imgfail');
+  }, true);
+
   document.addEventListener('click', function (e) {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     var a = e.target.closest('a');

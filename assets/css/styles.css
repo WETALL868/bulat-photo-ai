@@ -1857,3 +1857,14 @@ a.mphone .ic *{pointer-events:none!important}
 .price-ask{font-size:17px;font-weight:600;color:var(--ink2);white-space:nowrap}
 .oneclick-off{color:var(--ink3,#8b8b8b);cursor:default;text-decoration:none;border:0}
 @media (max-width:700px){.price-ask{font-size:15px}}
+
+/* 21. Картинка не загрузилась
+   --------------------------------------------------------------------------
+   Пустой прямоугольник вместо товара читается как поломка витрины. Место
+   картинки подписывается тем же текстом, что и у товара без фото, — так
+   видно, что дело в отсутствующем снимке, а не в сломанной странице. */
+.hb-imgfail{position:relative;background:#f4f4f2;min-height:64px}
+.hb-imgfail img[data-imgfail]{visibility:hidden}
+.hb-imgfail::before{content:"Фото не передано";position:absolute;inset:0;display:flex;
+  align-items:center;justify-content:center;padding:6px;text-align:center;
+  color:#8b8b8b;font-size:12px;line-height:1.3;pointer-events:none}
