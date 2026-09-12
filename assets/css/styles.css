@@ -1906,6 +1906,22 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   font-family:var(--head);font-weight:700;font-size:14px}
 .rev-form .frate .fstar input:checked+span{border-color:var(--yellow2);background:var(--yellow,#ffd84d);color:var(--ink)}
 .rev-form .frate .fstar input:focus-visible+span{outline:2px solid var(--ink);outline-offset:2px}
+/*
+  Оценка обязательна и заранее не выбрана. Подпись и подсказка стоят
+  постоянно — по пустой строке переключателей иначе не понять, что это
+  вообще поле и что его надо заполнить.
+*/
+.rev-form .frate .flabel{font-family:var(--head);font-weight:700;font-size:13px;color:var(--ink2)}
+.rev-form .frate .fhint{font-size:12px;color:var(--muted)}
+/* Пропущенную оценку показываем на самом поле, а не только строкой
+   внизу формы: до неё ещё надо долистать. */
+.rev-form .frate.bad .fstar span{border-color:var(--red)}
+.rev-form .frate.bad .flabel,.rev-form .frate.bad .fhint{color:var(--red)}
+@media (max-width:640px){
+  .rev-form .frate{flex-wrap:wrap;gap:8px}
+  .rev-form .frate .flabel{width:100%}
+  .rev-form .frate .fhint{width:100%}
+}
 /* Ответ формы. Он появляется только после настоящей попытки отправки и
    говорит то, что произошло на самом деле. */
 .rev-msg{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:13.5px;line-height:1.45}

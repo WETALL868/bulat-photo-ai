@@ -908,10 +908,27 @@
         '<form class="rev-form" id="rev-form" data-rev-form="' + esc(p.id) + '" novalidate>' +
         '<h3>Оставить отзыв</h3>' +
         '<p>Расскажите, как расходник работает на вашем принтере — это поможет другим покупателям.</p>' +
-        '<div class="frate" role="radiogroup" aria-label="Оценка">Оценка ' +
+        /*
+          Оценка не выбрана заранее.
+
+          Раньше здесь стояла пятёрка «по умолчанию»: форма открывалась с
+          отмеченной 5, и человек, который её не трогал, отправлял отзыв с
+          оценкой, которую не ставил. Такие пятёрки — не мнение о товаре, а
+          нетронутый переключатель, но в среднем рейтинге они неотличимы от
+          настоящих.
+
+          Теперь оценку выбирают явно, а без неё форма не отправляется и
+          прямо об этом говорит. Проверка продублирована на сервере:
+          клиентскую обходит кто угодно, а пустую оценку в очереди
+          модерации потом не отличить от намеренной.
+        */
+        '<div class="frate" role="radiogroup" aria-label="Оценка от 1 до 5" aria-required="true"' +
+        ' id="rev-rate" aria-describedby="rev-rate-note">' +
+        '<span class="flabel">Оценка</span>' +
         [1, 2, 3, 4, 5].map(function (n) {
-          return '<label class="fstar"><input type="radio" name="rate" value="' + n + '"' + (n === 5 ? ' checked' : '') + '><span>' + n + '</span></label>';
-        }).join('') + '</div>' +
+          return '<label class="fstar"><input type="radio" name="rate" value="' + n + '"><span>' + n + '</span></label>';
+        }).join('') +
+        '<span class="fhint" id="rev-rate-note">от 1 до 5, обязательно</span></div>' +
         /*
           Поле e-mail появилось не для красоты. Под формой стояла подпись
           «Ваш email не публикуется», а самого поля не было: обещание
@@ -1782,6 +1799,17 @@
     return false;
   }
   /* Снимаем подсветку сразу, как только галочку поставили. */
+  /* Поставили оценку — подсветка ошибки уходит сразу, а не на следующей
+     попытке отправки: поле, которое уже исправили, не должно продолжать
+     выглядеть сломанным. */
+  document.addEventListener('change', function (e) {
+    var r = e.target;
+    if (!r || r.type !== 'radio' || r.name !== 'rate') return;
+    var g = r.closest('#rev-rate'); if (g) g.classList.remove('bad');
+    var m = document.getElementById('rev-msg');
+    if (m && /оценку от 1 до 5/.test(m.textContent)) m.hidden = true;
+  });
+
   document.addEventListener('change', function (e) {
     var b = e.target;
     if (!b || b.type !== 'checkbox' || !b.closest('.agree')) return;
@@ -1887,6 +1915,17 @@
       var rname = (f.elements.name.value || '').trim();
       var remail = (f.elements.email.value || '').trim();
       var rtext = (f.elements.text.value || '').trim();
+      var rated = f.querySelector('input[name=rate]:checked');
+      var rgroup = f.querySelector('#rev-rate');
+      /* Порядок проверок — порядок полей на экране: человеку не за чем
+         прыгать снизу вверх к ошибке, о которой ему скажут позже. */
+      if (rgroup) rgroup.classList.toggle('bad', !rated);
+      if (!rated) {
+        say('bad', 'Поставьте оценку от 1 до 5 — заранее мы её за вас не выбираем.');
+        var firstStar = f.querySelector('input[name=rate]');
+        if (firstStar) firstStar.focus();
+        return;
+      }
       if (!rname) { say('bad', 'Укажите имя — без него отзыв не принимаем.'); f.elements.name.focus(); return; }
       /*
         Адрес проверяется по форме, а не по списку доменов: чей-то
@@ -1909,14 +1948,13 @@
 
       var rbtn = f.querySelector('button[type=submit]'), rwas = rbtn.innerHTML;
       rbtn.disabled = true; rbtn.textContent = 'Отправляем…';
-      var rated = f.querySelector('input[name=rate]:checked');
       var rbody = {
         product: f.dataset.revForm,
         name: rname,
         /* Адрес уходит только в очередь модерации. На витрину он не
            попадает ни в каком виде — ни в карточку, ни в разметку. */
         email: remail,
-        rate: rated ? Number(rated.value) : null,
+        rate: Number(rated.value),
         printer: (f.elements.printer.value || '').trim(),
         text: rtext,
       };
@@ -1927,7 +1965,9 @@
         }).then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); }))
         .then(function () {
           try { sessionStorage.setItem(rkey, '1'); } catch (err) { }
+          /* reset снимает и оценку: форма снова открывается пустой. */
           f.reset();
+          if (rgroup) rgroup.classList.remove('bad');
           say('ok', 'Отзыв отправлен на проверку. Он появится на странице после модерации — обычно в течение рабочего дня.');
         })
         .catch(function (err) {

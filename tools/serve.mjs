@@ -83,6 +83,12 @@ const server = http.createServer((req, res) => {
       if (!/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(email)) {
         return send(res, 422, JSON.stringify({ ok: false, error: 'Нужен корректный e-mail для связи по отзыву' }), TYPES['.json']);
       }
+      /* Оценка обязательна, как и на боевом сервере: без неё отзыв не
+         принимаем, а не сохраняем с пустым полем. */
+      const rate = Number(rev.rate);
+      if (!Number.isInteger(rate) || rate < 1 || rate > 5) {
+        return send(res, 422, JSON.stringify({ ok: false, error: 'Поставьте оценку от 1 до 5' }), TYPES['.json']);
+      }
       fs.mkdirSync(REVIEWS, { recursive: true });
       const key = Buffer.from(product + '\0' + text).toString('base64url').slice(0, 22);
       const file = path.join(REVIEWS, `${product.replace(/[^A-Za-z0-9_-]+/g, '-')}-${key}.json`);
@@ -92,7 +98,7 @@ const server = http.createServer((req, res) => {
         /* Статус ставит сервер: поле из запроса игнорируется целиком. */
         status: 'pending', verified: false,
         /* Адрес — только в очередь модерации, как на боевом сервере. */
-        product, name, email, rate: Number(rev.rate) || null,
+        product, name, email, rate,
         printer: String(rev.printer ?? '').trim(), text,
       }, null, 2));
       console.log(`отзыв на модерации: ${product} — ${name}`);

@@ -2026,6 +2026,35 @@ test('демонстрационные примеры живут только в
   }
 });
 
+test('оценка в форме отзыва не выбрана заранее и обязательна', async () => {
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  /*
+    Пятёрка «по умолчанию» превращала нетронутый переключатель в мнение о
+    товаре: в среднем рейтинге такая оценка неотличима от поставленной
+    осознанно. Ни одного checked среди переключателей оценки быть не
+    должно.
+  */
+  const stars = app.slice(app.indexOf("name=\"rate\""), app.indexOf("name=\"rate\"") + 200);
+  assert.ok(!/checked/.test(stars), 'оценка снова выбрана заранее');
+  assert.ok(app.includes('Поставьте оценку от 1 до 5'), 'нет понятной ошибки о пропущенной оценке');
+  /* В запрос уходит именно выбранная оценка, а не «что нашлось». */
+  assert.ok(/rate: Number\(rated\.value\)/.test(app), 'оценка уходит на сервер не из выбранного переключателя');
+  assert.ok(/if \(!rated\) \{/.test(app), 'отправка без оценки больше не останавливается');
+
+  /* Обе серверные реализации проверяют оценку: клиентскую обходит кто
+     угодно, а отзыв без оценки в очереди модерации не отличить от того,
+     у которого её потеряли по дороге. */
+  const php = fs.readFileSync(path.join(process.cwd(), 'api/index.php'), 'utf8');
+  assert.ok(/\$rate < 1 \|\| \$rate > 5\) \{\s*\n\s*fail\(422/.test(php),
+    'боевой сервер снова молча принимает отзыв без оценки');
+  const dev = fs.readFileSync(path.join(process.cwd(), 'tools/serve.mjs'), 'utf8');
+  assert.ok(/rate < 1 \|\| rate > 5/.test(dev) && /Поставьте оценку от 1 до 5/.test(dev),
+    'dev-сервер расходится с боевым в проверке оценки');
+
+  /* И демонстрационным примерам оценка по-прежнему не положена. */
+  assert.ok(!/demos[^\n]*rate|rv\.rate.*rev-demo/.test(app), 'у демонстрационного примера появилась оценка');
+});
+
 test('форма отзыва спрашивает e-mail и обещает ровно то, что делает', async () => {
   const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
   assert.ok(/name="email" maxlength="120"[^>]*type=|type="email" name="email"/.test(app), 'поля e-mail нет в форме');

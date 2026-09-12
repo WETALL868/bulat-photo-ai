@@ -267,9 +267,31 @@ for (const device of [
   check(`${device.name}: подпись под формой говорит про e-mail честно`,
     /не публикуется/.test(fields.note) && /модератор/i.test(fields.note), fields.note.slice(0, 80));
 
+  /*
+    Оценка не выбрана заранее: отправить отзыв, не поставив её, нельзя, а
+    пятёрка «по умолчанию» превращала нетронутый переключатель в мнение.
+  */
+  const preselected = await page.locator('#rev-form input[name=rate]:checked').count();
+  check(`${device.name}: оценка заранее не выбрана`, preselected === 0, `отмечено ${preselected}`);
+
   /* Форма не пишет «Спасибо», не отправив ничего. */
   await page.locator('#rev-form button[type=submit]').click();
   let msg = (await page.locator('#rev-msg').innerText().catch(() => '')).trim();
+  check(`${device.name}: без оценки отзыв не принимается`, /оценку от 1 до 5/i.test(msg), msg);
+  const marked = await page.locator('#rev-rate.bad').count();
+  check(`${device.name}: пропущенная оценка подсвечена на самом поле`, marked === 1);
+
+  await page.locator('#rev-form input[name=rate][value="4"]').click();
+  const picked = await page.locator('#rev-form input[name=rate]:checked').getAttribute('value');
+  check(`${device.name}: оценка выбирается нажатием`, picked === '4', `выбрано ${picked}`);
+  /* Исправленное поле не должно продолжать выглядеть сломанным. */
+  const stillBad = await page.locator('#rev-rate.bad').count();
+  const msgGone = await page.locator('#rev-msg').isHidden();
+  check(`${device.name}: после выбора оценки подсветка ошибки уходит`, stillBad === 0 && msgGone,
+    `подсвечено ${stillBad}, сообщение скрыто ${msgGone}`);
+
+  await page.locator('#rev-form button[type=submit]').click();
+  msg = (await page.locator('#rev-msg').innerText()).trim();
   check(`${device.name}: пустая форма не принимается`, /имя/i.test(msg), msg);
   await page.fill('#rev-form input[name=name]', 'Проверка');
   await page.fill('#rev-form textarea', 'Коротко');
@@ -292,6 +314,32 @@ for (const device of [
   }, null, { timeout: 10000 });
   msg = (await page.locator('#rev-msg').innerText()).trim();
   check(`${device.name}: форма сообщает результат отправки, а не «Спасибо»`, !/^Спасибо/.test(msg), msg);
+  /* После удачной отправки форма снова пустая — в том числе оценка. */
+  const afterSend = await page.locator('#rev-form input[name=rate]:checked').count();
+  check(`${device.name}: после отправки оценка снова не выбрана`, afterSend === 0, `отмечено ${afterSend}`);
+
+  /*
+    Серверная проверка оценки — отдельно от формы: клиентскую обходит
+    кто угодно, а отзыв без оценки в очереди модерации не отличить от
+    того, у которого её потеряли по дороге.
+  */
+  const srv = await page.evaluate(async () => {
+    const post = (body) => fetch('/api/review', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).then((r) => r.status);
+    const base = { product: 'hb-tk-8115bk', name: 'Проверка', email: 'buyer@example.ru',
+      text: 'Обход клиентской проверки: запрос отправлен напрямую, минуя форму отзыва.' };
+    return {
+      none: await post(base),
+      zero: await post({ ...base, rate: 0, text: base.text + ' Без оценки.' }),
+      over: await post({ ...base, rate: 9, text: base.text + ' Оценка вне диапазона.' }),
+      good: await post({ ...base, rate: 4, text: base.text + ' С оценкой.' }),
+    };
+  });
+  check(`${device.name}: сервер не принимает отзыв без оценки`, srv.none === 422, `код ${srv.none}`);
+  check(`${device.name}: сервер не принимает оценку 0`, srv.zero === 422, `код ${srv.zero}`);
+  check(`${device.name}: сервер не принимает оценку вне 1–5`, srv.over === 422, `код ${srv.over}`);
+  check(`${device.name}: сервер принимает отзыв с оценкой`, srv.good === 200, `код ${srv.good}`);
 
   await ctx.close();
 }

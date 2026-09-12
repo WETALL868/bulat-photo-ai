@@ -162,9 +162,14 @@ if ($route === 'review') {
     if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
         fail(422, 'Нужен корректный e-mail для связи по отзыву');
     }
+    /*
+      Оценка обязательна и проверяется здесь же. Раньше неверное значение
+      молча превращалось в null, и в очереди модерации отзыв без оценки
+      было не отличить от отзыва, у которого её потеряли по дороге.
+    */
     $rate = isset($in['rate']) ? (int) $in['rate'] : 0;
     if ($rate < 1 || $rate > 5) {
-        $rate = 0;
+        fail(422, 'Поставьте оценку от 1 до 5');
     }
     $config = settings();
     $dir = rtrim((string) $config['orders_dir'], '/') . '/../reviews';
@@ -194,7 +199,7 @@ if ($route === 'review') {
           ни при каких условиях — это контакт автора, а не часть отзыва.
         */
         'email' => $email,
-        'rate' => $rate ?: null,
+        'rate' => $rate,
         'printer' => $cut('printer', 80),
         'text' => $text,
         'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
@@ -207,7 +212,7 @@ if ($route === 'review') {
         @mail(
             (string) $config['manager_email'],
             'Новый отзыв на модерации — ' . $config['shop_name'],
-            $product . "\n" . $name . ' — ' . ($rate ?: '?') . "/5\n\n" . $text,
+            $product . "\n" . $name . ' — ' . $rate . "/5\n\n" . $text,
             'Content-Type: text/plain; charset=utf-8'
         );
     }
