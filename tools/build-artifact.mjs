@@ -52,7 +52,9 @@ const IMAGE_PROXY = argOf('image-proxy', 'wsrv');
 const DEMO_REVIEWS = (() => {
   const raw = argOf('demo-reviews', null);
   if (raw === null) return 0;
-  return raw === '' ? 3 : Math.max(0, Math.min(3, Number(raw) || 0));
+  /* Значение флага — только «включено»: сколько записей у карточки,
+     решает её артикул, а не ключ запуска. */
+  return raw === '' || Number(raw) > 0 ? 1 : 0;
 })();
 const MAX_FILES = 255;
 
@@ -286,9 +288,10 @@ const page = fs.statSync(path.join(OUT, 'index.html')).size;
 const mb = (n) => (n / 1048576).toFixed(2) + ' МБ';
 console.log(`Превью собрано в ${path.relative(ROOT, OUT)}`);
 if (DEMO_REVIEWS) {
-  console.log(`  ДЕМОНСТРАЦИОННЫЕ ПРИМЕРЫ: включены, до ${DEMO_REVIEWS} на карточку, собираются в браузере.`);
-  console.log('  В данные не записаны (чанки не выросли), страница помечена noindex,');
-  console.log('  предрендер и карта сайта строятся из data/catalog и примеров не содержат.');
+  console.log('  ДЕМО-ОТЗЫВЫ: включены. Это вымышленные тексты для предпросмотра, не отзывы покупателей.');
+  console.log('  Количество на карточку выводится из артикула (1..1000), записи собираются в браузере');
+  console.log('  порциями. В данные не записаны — чанки не выросли; страница помечена noindex,');
+  console.log('  предрендер и карта сайта строятся из data/catalog и демо-отзывов не содержат.');
 }
 console.log(`  страница ${mb(page)}, файлов рядом ${published.length}, данные ${mb(bytes)}`);
 console.log(`  чанков деталей ${groups} (по ${meta.chunkSize} товаров), картинок ${needed.size}` +

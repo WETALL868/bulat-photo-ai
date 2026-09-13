@@ -345,16 +345,13 @@ for (const device of [
 }
 
 /*
-  Демонстрационные примеры — сплошная проверка по всему активному
-  ассортименту.
+  Демо-отзывы — сплошная проверка по всему каталогу.
 
-  Открывать 4 374 страницы бессмысленно: генератор чистый и живёт на
+  Открывать тысячи страниц бессмысленно: генератор чистый и вынесен на
   window, поэтому гоняем его прямо в браузере по всем карточкам разом.
-  Детали берутся штатным C.detail — те же 137 чанков, что грузит витрина.
-
-  Проверяем три вещи: пример есть у каждого товара; записей от одной до
-  трёх и внутри карточки они разные; в тексте нет ни одного признака
-  выдуманного опыта эксплуатации.
+  Проверяем то, что обещано владельцу: отзывы есть у каждого товара,
+  количество лежит в 1..1000 и реально разбросано, оценки только 3–5,
+  внутри карточки тексты не повторяются.
 */
 {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -362,90 +359,106 @@ for (const device of [
   await page.goto(`${BASE}/product/${SLUG}`, { waitUntil: 'networkidle' });
   await page.waitForSelector('#ptabs', { timeout: 15000 });
 
-  /* Боевая витрина флага не ставит — примеров на ней нет вовсе. */
+  /* Боевая витрина флага не ставит — демо-отзывов на ней нет вовсе. */
   const flagOff = await page.evaluate(() => !window.HB_DEMO_REVIEWS);
-  check('боевая сборка: флаг примеров выключен', flagOff);
+  check('боевая сборка: флаг демо-отзывов выключен', flagOff);
   const noneByDefault = await page.evaluate(() => document.querySelectorAll('.rev-demo, .demo-block').length);
-  check('боевая сборка: на странице нет ни одного примера', noneByDefault === 0, `найдено ${noneByDefault}`);
+  check('боевая сборка: на странице нет ни одного демо-отзыва', noneByDefault === 0, `найдено ${noneByDefault}`);
+  const headHonest = await page.locator('.pmeta').innerText();
+  check('боевая сборка: в шапке нет счётчика демо-отзывов', !/Демо-отзывы/.test(headHonest));
 
   const stat = await page.evaluate(async () => {
     window.HB_DEMO_REVIEWS = 3;
     const C = window.HBCatalog;
-    const gen = window.HB_DEMO_EXAMPLES;
+    const count = window.HB_DEMO_COUNT, gen = window.HB_DEMO_REVIEWS_FOR;
     const items = C.all();
-    const out = { total: items.length, without: [], counts: {}, dup: [], invented: [], byType: {}, sample: null, bare: 0, lying: [], unattributed: [] };
-    /*
-      Две разные проверки, и обе нужны.
-
-      Первая — первое лицо покупателя: «купил», «пользуюсь», «мне
-      подошёл». Такого опыта у нас нет ни по одной позиции, и появиться
-      в тексте он может только выдумкой. Слова вроде «печатает» или
-      «рекомендует» сюда не входят намеренно: это цитата поставщика, а
-      не чьё-то впечатление.
-
-      Вторая — атрибуция. Каждая запись обязана начинаться с оборота,
-      который прямо называет источник. Тогда цитата поставщика остаётся
-      цитатой, а не превращается в мнение.
-    */
-    /* Границы слова заданы явно: \b в JS знает только латиницу, и без
-       этого «печатаю» ловилось внутри «печатающих головок». */
-    const FICTION = new RegExp('(?:^|[^а-яёА-ЯЁ])(?:' + [
-      'купил[аи]?', 'заказал[аи]?', 'пользуюсь', 'пользуемся',
-      'доволен', 'довольн[ая]', 'довольны', '(?:мне|нам) подош[ёе]л',
-      'печатаю', 'печатал[аи]?', 'поставил себе', 'рекомендую', 'советую',
-      'хватило на', 'работает отлично', 'полос[ыа] нет',
-    ].join('|') + ')(?![а-яёА-ЯЁ])', 'i');
-    const LEADS = [
-      'В выгрузке поставщика эта позиция значится',
-      'Ресурс по данным поставщика',
-      'Объём по данным поставщика',
-      'Вес одной штуки по выгрузке',
-      'В упаковке по данным поставщика',
-      'Оригинальный номер по выгрузке',
-      'Штрихкод позиции',
-      'Технология печати по выгрузке',
-      'Гарантия по выгрузке',
-      'Совместимость по данным поставщика',
-      'Состав и особенности по выгрузке',
-      'Поставщик относит позицию к разделу',
-      'По этой позиции поставщик передал только',
-      'Кроме типа и обозначения, поставщик',
-    ];
+    const out = {
+      total: items.length, without: [], dup: [], badRate: [], empty: [],
+      totals: [], hist: { one: 0, small: 0, mid: 0, big: 0 }, byType: {},
+    };
     for (const p of items) {
+      const n = count(p);
+      out.totals.push(n);
+      if (!n) { if (out.without.length < 5) out.without.push(p.id); continue; }
+      out.hist[n === 1 ? 'one' : n < 10 ? 'small' : n < 100 ? 'mid' : 'big'] += 1;
       const d = await C.detail(p.id);
-      const recs = gen(p, d) || [];
-      out.counts[recs.length] = (out.counts[recs.length] || 0) + 1;
-      if (!recs.length) { if (out.without.length < 5) out.without.push(p.id); continue; }
-      const texts = recs.map((r) => r.text);
+      const got = gen(p, d, 0, 12);
+      const texts = got.map((r) => r.text);
+      if (!texts.length || texts.some((t) => !t || t.length < 20)) { if (out.empty.length < 5) out.empty.push(p.id); }
       if (new Set(texts).size !== texts.length && out.dup.length < 5) out.dup.push(p.id);
-      for (const t of texts) {
-        if (FICTION.test(t) && out.invented.length < 5) out.invented.push(p.id + ': ' + t.slice(0, 90));
-        if (!LEADS.some((l) => t.indexOf(l) === 0) && out.unattributed.length < 5) out.unattributed.push(p.id + ': ' + t.slice(0, 70));
-      }
+      for (const r of got) if (![3, 4, 5].includes(r.rate) && out.badRate.length < 5) out.badRate.push(p.id + ': ' + r.rate);
       out.byType[p.type || '—'] = (out.byType[p.type || '—'] || 0) + 1;
-      if (p.no === 300972) out.sample = recs;
-      /* Крайняя ветка «поставщик ничего не передал» должна срабатывать
-         только там, где и правда ничего нет: если она встречается у
-         карточки с перечнем или составом — это ложь в тексте. */
-      const last = texts[texts.length - 1] || '';
-      if (/ничего не передал/.test(last)) {
-        out.bare += 1;
-        const hasData = (d.models && d.models.length) || d.compat ||
-          (d.specs || []).some((r) => /^(Особенности|Для техники|Вендор оборудования|Раздел поставщика|Тип продукции)/.test(r[0] || ''));
-        if (hasData && out.lying.length < 5) out.lying.push(p.id);
-      }
     }
+    const live = out.totals.filter(Boolean);
+    out.min = Math.min(...live); out.max = Math.max(...live);
+    out.sum = live.reduce((a, b) => a + b, 0);
     return out;
   });
-  check(`примеры есть у каждого из ${stat.total} активных товаров`, stat.without.length === 0,
-    stat.without.length ? 'без примеров: ' + stat.without.join(', ') : `типов товара: ${Object.keys(stat.byType).length}`);
-  const counts = Object.entries(stat.counts).map(([k, v]) => `${k}→${v}`).join(', ');
-  check('записей на карточке от 1 до 3', !stat.counts['0'] && !stat.counts['4'], counts);
-  check('внутри карточки записи не повторяются', stat.dup.length === 0, stat.dup.join(', '));
-  check('в примерах нет выдуманного опыта эксплуатации', stat.invented.length === 0, stat.invented.join(' | '));
-  check('каждая запись прямо называет источник факта', stat.unattributed.length === 0, stat.unattributed.join(' | '));
-  check('«поставщик ничего не передал» стоит только там, где и правда пусто',
-    stat.lying.length === 0, `таких карточек ${stat.bare}` + (stat.lying.length ? ', врут: ' + stat.lying.join(', ') : ''));
+
+  check(`демо-отзывы есть у каждого из ${stat.total} товаров каталога`, stat.without.length === 0,
+    stat.without.length ? 'без отзывов: ' + stat.without.join(', ') : `типов товара: ${Object.keys(stat.byType).length}`);
+  check('количество в диапазоне 1–1000', stat.min >= 1 && stat.max <= 1000, `от ${stat.min} до ${stat.max}, всего ${stat.sum}`);
+  /* Разброс, а не одно число на весь каталог: должны встречаться и
+     единицы, и десятки, и сотни. */
+  const h = stat.hist;
+  check('разброс количества реально используется', h.one > 0 && h.small > 0 && h.mid > 0 && h.big > 0,
+    `1 → ${h.one}, 2–9 → ${h.small}, 10–99 → ${h.mid}, 100+ → ${h.big}`);
+  check('оценки только 3–5', stat.badRate.length === 0, stat.badRate.join(', '));
+  check('внутри карточки тексты не повторяются', stat.dup.length === 0, stat.dup.join(', '));
+  check('пустых и обрубленных текстов нет', stat.empty.length === 0, stat.empty.join(', '));
+
+  /*
+    Разметка блока в собранном виде: заголовок, пояснение, значок на
+    каждой записи и порционная загрузка. Флаг ставим руками и
+    перерисовываем страницу — на боевой витрине его нет.
+  */
+  /* Флаг надо объявить до того, как отработает app.js: обычный evaluate
+     после загрузки его уже не застанет, а goto стирает window. */
+  await page.addInitScript(() => { window.HB_DEMO_REVIEWS = 3; });
+  await page.goto(`${BASE}/product/hb-tk-8115bk?tab=reviews`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.demo-block', { timeout: 15000 }).catch(() => {});
+  const block = await page.locator('.demo-block').count();
+  check('демо-блок отрисовался', block === 1, `найдено ${block}`);
+  if (block) {
+    const head = await page.locator('.demo-head').innerText();
+    check('крупный заголовок «Демо-отзывы» со счётчиком', /Демо-отзывы/.test(head) && /\d/.test(head), head.split('\n')[0]);
+    check('пояснение под заголовком на месте',
+      /Вымышленные примеры для предпросмотра, не отзывы покупателей/.test(head));
+    const shown = await page.locator('.demo-block .rev-demo').count();
+    const badges = await page.locator('.demo-block .demo-tag').count();
+    check('значок «Демо» стоит на каждой записи', shown > 0 && badges === shown, `записей ${shown}, значков ${badges}`);
+    const rated = await page.locator('.demo-block .demo-rate').count();
+    check('оценка помечена как демонстрационная', rated === shown, `оценок ${rated} на ${shown} записей`);
+    check('нумерации «Демонстрационный пример №» больше нет',
+      !/Демонстрационный пример №/.test(await page.locator('.demo-block').innerText()));
+
+    const total = Number(await page.locator('.demo-block').getAttribute('data-total'));
+    const before = await page.locator('.demo-block .rev-demo').count();
+    if (total > before) {
+      await page.locator('[data-demo-more]').click();
+      await page.waitForFunction((n) => document.querySelectorAll('.demo-block .rev-demo').length > n, before, { timeout: 8000 })
+        .catch(() => {});
+      const after = await page.locator('.demo-block .rev-demo').count();
+      check('«Показать ещё» догружает следующую порцию', after > before, `${before} → ${after} из ${total}`);
+      const foot = await page.locator('.demo-more').innerText();
+      check('счётчик показанного обновился', new RegExp(String(after)).test(foot.replace(/ /g, ' ')), foot.replace(/\n/g, ' '));
+    } else {
+      check('«Показать ещё» не нужна: записи уместились целиком', true, `всего ${total}`);
+    }
+  }
+
+  /* Шапка называет демо-отзывы своим именем и не спорит с лентой. */
+  const headDemo = await page.locator('.pmeta').innerText();
+  check('в шапке стоит «Демо-отзывы: N» и оговорка про настоящие',
+    /Демо-отзывы:\s*[\d  ]+/.test(headDemo) && /настоящих отзывов пока нет/i.test(headDemo),
+    headDemo.replace(/\n/g, ' ').slice(0, 90));
+  const sum = await page.locator('.rev-sum').innerText();
+  check('сводка по-прежнему говорит, что настоящих отзывов нет', /Настоящих отзывов пока нет/.test(sum));
+
+  /* Форма настоящего отзыва на месте и не тронута. */
+  check('форма настоящего отзыва осталась', (await page.locator('#rev-form input[name=email]').count()) === 1);
+  check('оценка в форме по-прежнему не выбрана заранее',
+    (await page.locator('#rev-form input[name=rate]:checked').count()) === 0);
 
   await ctx.close();
 }

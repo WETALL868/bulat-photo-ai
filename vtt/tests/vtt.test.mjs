@@ -1377,10 +1377,22 @@ test('фильтр марок прописан в конфигурации, а �
   const { loadConfig } = await import('../src/config.mjs');
   const cfg = loadConfig(path.join(process.cwd(), 'vtt/config.json'));
   const f = cfg.publishFilter;
-  assert.deepEqual(f.brands, ['Hi-Black', 'NetProduct', 'Hi-Image', 'Content', 'Hi-Color'],
+  /*
+    Витрина собственных марок. NetProduct и Content — сторонние
+    производители: имя стоит в названии товара («Тонер Content
+    Универсальный…», «Картридж NetProduct (N-CF259A)…»), и к Hi-Black
+    они отношения не имеют. Обе марки не только убраны из белого списка,
+    но и названы явно в excludeBrands — чтобы вернуть их можно было
+    только осознанно.
+  */
+  assert.deepEqual(f.brands, ['Hi-Black', 'Hi-Image', 'Hi-Color'],
     'состав витрины задаётся конфигурацией — пустой список вернул бы чужие бренды');
+  assert.deepEqual(f.excludeBrands, ['NetProduct', 'Content'], 'сторонние марки должны быть названы явно');
   assert.deepEqual(f.brandFallback.whenBrandIn, ['', 'Совместимые']);
-  assert.ok(!f.brandFallback.nameMarks.includes('Content'), 'Content не должен спасать по названию');
+  for (const foreign of ['Content', 'NetProduct']) {
+    assert.ok(!f.brands.includes(foreign), `${foreign} снова в белом списке`);
+    assert.ok(!f.brandFallback.nameMarks.includes(foreign), `${foreign} не должен спасать по названию`);
+  }
   assert.ok(f.brandFallback.nameMarks.includes('Hi-Black'));
 });
 
@@ -1672,8 +1684,8 @@ test('адреса и коды товаров совпадают с предыд
     ['hb-tk-8115m', 'HB-TK-8115M', 552110],
     ['hb-tk-8115y', 'HB-TK-8115Y', 820682],
     ['hb-ce285a', 'HB-CE285A', 388518],
-    ['n-dv-1150-9897174', 'N-DV-1150', 361320],
-    ['n-cf232a-7970267140', 'N-CF232A', 589433],
+    ['hb-cf234a-797026708', 'HB-CF234A', 143158],
+    ['hb-dk-1110-302m293010-9897141', 'HB-DK-1110/302M293010', 549063],
     ['hb-049-2200959296', 'HB-049', 734090],
     ['hb-44574302-220095911', 'HB-44574302', 489107],
     ['hb-ce314a-9970159540', 'HB-CE314A', 576109],
@@ -1684,6 +1696,20 @@ test('адреса и коды товаров совпадают с предыд
     assert.equal(row[col.code], code, `на адресе ${id} другой товар`);
     assert.equal(row[col.no], no, `у ${id} изменился код товара`);
   }
+
+  /*
+    Позиции сторонних марок ушли с витрины по решению владельца, и это не
+    поломка адресов, а политика допуска. Но их идентификаторы остаются
+    занятыми навсегда: переиспользовать освободившийся адрес нельзя —
+    покупатель, знавший старый номер, попал бы на чужой товар.
+  */
+  const gone = [['n-dv-1150-9897174', 361320], ['n-cf232a-7970267140', 589433]];
+  const regIds = new Map(Object.values(reg.items).map((r) => [r.id, r.no]));
+  for (const [id, no] of gone) {
+    assert.ok(!rows.some((r) => r[col.id] === id), `адрес ${id} сторонней марки снова на витрине`);
+    assert.equal(regIds.get(id), no, `идентификатор ${id} пропал из реестра — его смогут переиспользовать`);
+  }
+  assert.ok(!rows.some((r) => /^n-[a-z]/.test(String(r[col.id]))), 'на витрине остались адреса NetProduct');
 
   /* Код уникален: по нему ищут, и два товара под одним номером — поломка. */
   const nos = rows.map((r) => r[col.no]);
@@ -1966,47 +1992,61 @@ test('в каталоге нет отзывов, которых никто не 
   assert.equal(withReviews, 0, 'в опубликованный каталог попали отзывы, которых нет');
 });
 
-test('демонстрационные примеры живут только в превью и только в браузере', async () => {
+test('демо-отзывы живут только в превью и только в браузере', async () => {
   const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
   const artifact = fs.readFileSync(path.join(process.cwd(), 'tools/build-artifact.mjs'), 'utf8');
 
-  /* Примеры собираются на клиенте из полей карточки: в статические
-     чанки не уходит ни байта, а без флага их нет вовсе. */
-  assert.ok(/function demoExamples\(p, d\)/.test(app), 'генератор примеров пропал');
-  assert.ok(/var n = Number\(window\.HB_DEMO_REVIEWS\) \|\| 0;\s*\n\s*if \(n <= 0\) return \[\];/.test(app),
-    'примеры перестали зависеть от флага превью');
-  assert.ok(app.includes('window.HB_DEMO_EXAMPLES = demoExamples;'),
+  /* Собираются на клиенте по номеру записи: в статические чанки не
+     уходит ни байта, а без флага превью их нет вовсе. */
+  assert.ok(/function demoReviews\(p, d, from, n\)/.test(app), 'генератор демо-отзывов пропал');
+  assert.ok(/if \(!p \|\| !\(Number\(window\.HB_DEMO_REVIEWS\) > 0\)\) return 0;/.test(app),
+    'количество демо-отзывов перестало зависеть от флага превью');
+  assert.ok(app.includes('window.HB_DEMO_COUNT = demoCount;') && app.includes('window.HB_DEMO_REVIEWS_FOR = demoReviews;'),
     'генератор не вынесен наружу — сплошную проверку по каталогу не прогнать');
+
+  /* Количество выводится из артикула и лежит в 1..1000. */
+  assert.ok(/var DEMO_MAX = 1000;/.test(app), 'верх диапазона изменился без причины');
+  assert.ok(/Math\.pow\(DEMO_MAX, u\)/.test(app), 'разброс количества перестал быть логарифмическим');
+
+  /* Порционная загрузка: тысяча записей не рисуется разом. */
+  assert.ok(/var DEMO_PAGE = \d+;/.test(app), 'размер порции пропал');
+  assert.ok(app.includes('data-demo-more'), 'кнопки «Показать ещё» больше нет');
+  assert.ok(/demoReviews\(item, d, shown, step\)/.test(app), 'следующая порция больше не догружается');
 
   /* Флаг ставит только сборка превью, и только в разметку страницы. */
   assert.ok(artifact.includes("argOf('demo-reviews', null)"), 'флаг превью пропал');
-  assert.ok(/window\.HB_DEMO_REVIEWS = \$\{DEMO_REVIEWS\};/.test(artifact),
-    'флаг не объявляется на странице превью');
-  /* И сборка превью падает, если записи всё-таки оказались в данных. */
+  assert.ok(/window\.HB_DEMO_REVIEWS = \$\{DEMO_REVIEWS\};/.test(artifact), 'флаг не объявляется на странице превью');
   assert.ok(/демонстрационных записей — их там быть не должно/.test(artifact),
     'сборка превью перестала проверять данные на подложенные записи');
-
-  /* Превью не индексируется ни при каких условиях. */
   assert.ok(/name="robots" content="noindex/.test(artifact), 'в превью пропал noindex');
 
-  /* Демо и настоящие отзывы разведены: сводка считает только настоящие,
-     примеры стоят под своим заголовком со счётчиком. */
+  /* Демо и настоящие отзывы разведены, и шапка не спорит с лентой. */
   assert.ok(/var revs = \(d\.reviews \|\| \[\]\)\.filter\(function \(r\) \{ return r && !r\.demo; \}\);/.test(app),
-    'демонстрационные записи снова попадают в ленту отзывов');
-  assert.ok(app.includes('Настоящих отзывов пока нет'), 'сводка снова спорит с видимыми примерами');
-  assert.ok(/Демонстрационные примеры \(' \+ demos\.length \+ '\)/.test(app),
-    'у блока примеров нет отдельного заголовка со счётчиком');
-  assert.ok(app.includes('Демонстрационный пример — не отзыв покупателя'), 'пропала пометка на заголовке блока');
-  assert.ok(app.includes('Не отзыв покупателя'), 'пропала пометка на самой записи');
-  /* Ни рейтинга, ни оценки у примера нет и быть не может. */
-  assert.ok(!/demos[^\n]*rate/.test(app), 'у демонстрационного примера появилась оценка');
+    'демо-записи снова попадают в ленту настоящих отзывов');
+  assert.ok(app.includes('Настоящих отзывов пока нет'), 'сводка снова спорит с видимыми демо-отзывами');
+  assert.ok(app.includes("'Демо-отзывы: ' + fmt(demoCount(p))"), 'в шапке товара нет счётчика демо-отзывов');
+  assert.ok(/<h3>Демо-отзывы <span class="demo-n">/.test(app), 'у блока нет крупного заголовка со счётчиком');
+  assert.ok(app.includes('Вымышленные примеры для предпросмотра, не отзывы покупателей'),
+    'пропало пояснение под заголовком');
+  assert.ok(/<span class="demo-tag">Демо<\/span>/.test(app), 'пропал значок «Демо» на записи');
+  assert.ok(!/Демонстрационный пример №/.test(app), 'вернулась нумерация «Демонстрационный пример №N»');
+  /* Оценка демо-записи помечена и в рейтинг товара не идёт. */
+  assert.ok(app.includes('демо-оценка'), 'оценка демо-отзыва перестала быть помеченной');
+  assert.ok(/rate: shape\.meh \? \(r < 0\.6 \? 4 : 3\) : \(r < 0\.75 \? 5 : 4\)/.test(app),
+    'оценки демо-отзывов вышли из диапазона 3–5');
+
+  /* В текстах нет покупки, доставки, цены и обещаний срока службы. */
+  const pools = app.slice(app.indexOf('var DEMO_TEXT = {'), app.indexOf('var DEMO_SHAPES'));
+  assert.ok(pools.length > 5000, 'словари фраз не найдены');
+  for (const banned of ['приех', 'достав', 'магазин', 'дешев', 'скидк', 'гаранти', 'прослужит', 'хватит на']) {
+    assert.ok(!new RegExp(banned, 'i').test(pools), `в демо-отзывах появилось «${banned}»`);
+  }
 
   /* Микроразметка с рейтингом требует настоящих отзывов. */
   const seo = fs.readFileSync(path.join(process.cwd(), 'tools/build-seo.mjs'), 'utf8');
-  assert.ok(/p\.reviews > 0 && p\.rate > 0/.test(seo),
-    'AggregateRating перестал требовать настоящих отзывов');
+  assert.ok(/p\.reviews > 0 && p\.rate > 0/.test(seo), 'AggregateRating перестал требовать настоящих отзывов');
 
-  /* И в уже собранном предрендере примеров нет. */
+  /* И в уже собранном предрендере демо-отзывов нет. */
   const dir = path.join(process.cwd(), 'seo-pages');
   if (fs.existsSync(dir)) {
     let checked = 0, demo = 0;
@@ -2016,13 +2056,13 @@ test('демонстрационные примеры живут только в
         if (e.isDirectory()) walk(f);
         else if (e.name.endsWith('.html')) {
           checked += 1;
-          if (/Демонстрационн\w+ (?:отзыв|пример)/.test(fs.readFileSync(f, 'utf8'))) demo += 1;
+          if (/Демо-отзыв|HB_DEMO_REVIEWS\s*=\s*[1-9]/.test(fs.readFileSync(f, 'utf8'))) demo += 1;
         }
       }
     };
     walk(dir);
     assert.ok(checked > 100, 'предрендер нечего было проверять');
-    assert.equal(demo, 0, 'демонстрационные примеры попали в индексируемые страницы');
+    assert.equal(demo, 0, 'демо-отзывы попали в индексируемые страницы');
   }
 });
 

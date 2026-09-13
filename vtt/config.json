@@ -7,13 +7,27 @@
   "retryAttempts": 4,
   "retryBaseDelayMs": 1000,
   "publishFilter": {
-    "brands": ["Hi-Black", "NetProduct", "Hi-Image", "Content", "Hi-Color"],
+    "brands": [
+      "Hi-Black",
+      "Hi-Image",
+      "Hi-Color"
+    ],
     "brandFallback": {
-      "whenBrandIn": ["", "Совместимые"],
-      "nameMarks": ["Hi-Black", "NetProduct", "Hi-Image", "Hi-Color"]
+      "whenBrandIn": [
+        "",
+        "Совместимые"
+      ],
+      "nameMarks": [
+        "Hi-Black",
+        "Hi-Image",
+        "Hi-Color"
+      ]
     },
     "categories": [],
-    "excludeBrands": [],
+    "excludeBrands": [
+      "NetProduct",
+      "Content"
+    ],
     "excludeDamagedPackage": true
   }
 }

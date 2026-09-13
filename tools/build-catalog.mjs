@@ -377,7 +377,10 @@ async function readVttStore(storeRoot) {
       byBrand[b] = (byBrand[b] ?? 0) + 1;
     }
     const top = Object.entries(byBrand).sort((a, b) => b[1] - a[1]).slice(0, 6);
-    console.log(`  отсеяно фильтром марок: ${report.filtered} — ` + top.map(([b, n]) => `${b} ${n}`).join(', ') +
+    /* «Марок» в подписи было неточно: сюда же попадает повреждённая
+       упаковка, поэтому у собственной марки тоже ненулевой счёт.
+       Разбор по маркам с основаниями — tools/audit-brands.mjs. */
+    console.log(`  отсеяно фильтром (чужая марка или повреждённая упаковка): ${report.filtered} — ` + top.map(([b, n]) => `${b} ${n}`).join(', ') +
       (Object.keys(byBrand).length > 6 ? ` и ещё ${Object.keys(byBrand).length - 6} марок` : ''));
   }
   if (Object.keys(taxonomy.unknownRoots).length) {
