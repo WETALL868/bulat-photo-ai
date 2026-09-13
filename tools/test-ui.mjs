@@ -347,6 +347,82 @@ for (const device of [
 }
 
 /*
+  «Все характеристики»: один клик — одна реакция.
+
+  Дефект был в двойной обработке. Ссылка вкладки — обычный <a> на
+  ?tab=specs, и её ловили два слушателя: маршрутизатор ссылок (объявлен
+  раньше) начинал переход с перерисовкой #app, а обработчик вкладок
+  переключал вкладку и запускал плавную прокрутку. Кто победит, решала
+  гонка: успеет перерисовка до конца прокрутки — человек останется у
+  характеристик, не успеет — страницу вернёт к началу. Второе нажатие
+  «работало» только потому, что адрес уже совпадал с текущим и переход
+  не начинался.
+
+  Поэтому проверяем не «докрутилось ли», а причину: на первом клике не
+  должно быть ни pushState, ни перерисовки #app, а вкладки обязаны
+  оказаться вверху экрана.
+*/
+for (const [dev, vp] of [['десктоп', { width: 1440, height: 900 }], ['телефон', { width: 390, height: 844 }]]) {
+  const ctx = await browser.newContext({ viewport: vp });
+  const page = await ctx.newPage();
+  for (const slug of ['hb-tk-5230bk', 'hb-tk-8115c-4100603161']) {
+    /* Заходим с каталога: тогда «назад» ведёт на осмысленную страницу. */
+    await page.goto(`${BASE}/catalog/laser`, { waitUntil: 'networkidle' });
+    await page.goto(`${BASE}/product/${slug}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.allspecs', { timeout: 15000 });
+
+    await page.evaluate(() => {
+      window.__nav = { push: 0, render: 0 };
+      const ps = history.pushState.bind(history);
+      history.pushState = (...a) => { window.__nav.push += 1; return ps(...a); };
+      new MutationObserver(() => { window.__nav.render += 1; })
+        .observe(document.getElementById('app'), { childList: true });
+    });
+
+    await page.locator('.allspecs').click();
+    await page.waitForTimeout(1500);
+    const one = await page.evaluate(() => {
+      const t = document.getElementById('ptabs');
+      return { ...window.__nav, y: Math.round(window.scrollY),
+        tabsTop: t ? Math.round(t.getBoundingClientRect().top) : null,
+        tab: document.querySelector('#ptabs button.on')?.dataset.tab,
+        panel: [...document.querySelectorAll('[data-panel]')].filter((p) => !p.hidden).map((p) => p.dataset.panel).join(','),
+        url: location.pathname + location.search };
+    });
+    check(`${dev} ${slug}: первый клик открывает характеристики`,
+      one.tab === 'specs' && one.panel === 'specs', `вкладка ${one.tab}, панель ${one.panel}`);
+    check(`${dev} ${slug}: первый клик не затевает переход и перерисовку`,
+      one.push === 0 && one.render === 0, `pushState ${one.push}, перерисовок ${one.render}`);
+    /* Вкладки у верхней кромки: небольшой допуск на липкую шапку. */
+    check(`${dev} ${slug}: прокрутка осталась у характеристик`,
+      one.y > 0 && one.tabsTop !== null && Math.abs(one.tabsTop) <= 120,
+      `scrollY ${one.y}, вкладки в ${one.tabsTop} px от верха`);
+    check(`${dev} ${slug}: адрес содержит ?tab=specs`, /\?tab=specs$/.test(one.url), one.url);
+
+    /* Повторное нажатие ничего не ломает и никуда не уводит. */
+    await page.locator('.allspecs').click();
+    await page.waitForTimeout(1200);
+    const two = await page.evaluate(() => {
+      const t = document.getElementById('ptabs');
+      return { ...window.__nav, tabsTop: t ? Math.round(t.getBoundingClientRect().top) : null,
+        tab: document.querySelector('#ptabs button.on')?.dataset.tab,
+        url: location.pathname + location.search };
+    });
+    check(`${dev} ${slug}: повторный клик ведёт себя так же`,
+      two.tab === 'specs' && two.push === 0 && two.render === 0 && Math.abs(two.tabsTop) <= 120,
+      `pushState ${two.push}, перерисовок ${two.render}, вкладки в ${two.tabsTop} px`);
+
+    /* «Назад» уводит на предыдущую страницу, а не на переключение вкладки:
+       showTab правит адрес через replaceState и историю не засоряет. */
+    await page.goBack({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(600);
+    const back = await page.evaluate(() => location.pathname + location.search);
+    check(`${dev} ${slug}: «назад» возвращает на каталог`, /\/catalog\/laser$/.test(back), back);
+  }
+  await ctx.close();
+}
+
+/*
   Основное фото карточки: источник, увеличение и доступность.
 
   Проверка появилась после того, как снимок 300972 оказался заметно
