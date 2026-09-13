@@ -360,6 +360,37 @@ async function readVttStore(storeRoot) {
     console.log(`  локальных картинок подставлено: ${withLocal} из ${products.length}`);
   }
 
+  /*
+    Оригиналы снимков, положенные рядом вручную.
+
+    Этап картинок (vtt:images) складывает свои варианты в манифест, но
+    отдельный подлинный файл поставщика может появиться и без него —
+    достаточно положить его в assets/img/vtt под тем же Id, что стоит в
+    выгрузке. Такой файл важнее ячейки атласа: в атласе кадр ужат до 240
+    пикселей, а здесь лежит оригинал, и на карточке видна разница.
+
+    Миниатюры это не трогает: список и галерея по-прежнему берут атлас,
+    а оригинал идёт только в основное фото и в увеличение.
+  */
+  const VTT_IMG_DIR = path.join(ROOT, 'assets/img/vtt');
+  if (fs.existsSync(VTT_IMG_DIR)) {
+    const onDisk = new Map();
+    for (const f of fs.readdirSync(VTT_IMG_DIR)) {
+      if (!/\.(jpe?g|png|webp)$/i.test(f)) continue;
+      onDisk.set(f.replace(/\.[^.]+$/, ''), '/assets/img/vtt/' + f);
+    }
+    let picked = 0;
+    for (const p of products) {
+      const hit = p.vttId != null ? onDisk.get(String(p.vttId)) : null;
+      if (!hit) continue;
+      p.imgOriginal = p.img;
+      p.img = hit;
+      p.photoMissing = false;
+      picked += 1;
+    }
+    if (picked) console.log(`  оригиналов снимков из assets/img/vtt: ${picked}`);
+  }
+
   /* Сводка считается по тому, что реально попало на витрину, а не по
      всему стору: иначе отчёт обещал бы разделы, которых на сайте нет. */
   const publishedIds = new Set(products.map((p) => p.vttId));
@@ -931,14 +962,58 @@ products.forEach((p, i) => {
   }
 });
 
+/*
+  Каталог пересобирается начисто, но карта атласов — не его выход. Её
+  собирает отдельный этап (tools/pack-thumbs.mjs) из скачанных картинок,
+  а лежит она здесь же. Стереть её вместе с каталогом значит потерять все
+  фотографии: файлы атласов останутся на диске, а указателя на ячейки не
+  будет — и витрина молча покажет заглушки. Поэтому карта переживает
+  пересборку.
+*/
+const THUMBS_FILE = [path.join(OUT_CATALOG, 'thumbs.json'), path.join(ROOT, 'data/catalog/thumbs.json')]
+  .find((f) => fs.existsSync(f));
+const keptThumbs = THUMBS_FILE ? JSON.parse(fs.readFileSync(THUMBS_FILE, 'utf8')) : null;
+/* Читаем её до раздела категорий: по ней выбирается картинка раздела. */
+
 /* Категории и бренды с реальными счётчиками. */
 const catCount = {}, brandCount = {};
 for (const p of products) { catCount[p.cat] = (catCount[p.cat] || 0) + 1; brandCount[p.brand] = (brandCount[p.brand] || 0) + 1; }
 const categories = cats.map((c) => ({ ...c, img: (fallback.products?.find?.((x) => x.id === c.img) ? '' : ''), count: catCount[c.id] || 0 }));
-// картинка категории — фото первого товара в ней
+/*
+  Картинка раздела — фото товара из этого раздела, но не любого.
+
+  Прежний выбор «первый товар, у которого заполнен img» давал битые
+  плитки на всех сборках, где у раздела нет прототипных товаров:
+
+    • у «Матричных» и «Печатающей техники» первым шёл товар, у которого
+      img — это сама заглушка no-photo.svg. Значение непустое, проверка
+      проходила, и раздел получал заглушку при живых фотографиях ниже;
+    • у «Бумаги» и «Обслуживания» первым шёл товар VTT, чей img — путь
+      относительно каталога поставщика. Он разворачивается в адрес на
+      b2b.vtt.ru, то есть в горячую ссылку на чужой сервер: в превью её
+      блокирует политика фрейма, на боевом сайте она зависела бы от
+      доступности поставщика.
+
+  Берём то, что действительно нарисуется: сперва локальный файл, затем
+  позицию из атласа миниатюр — её клиент рисует тем же кодом, что и
+  карточки товара. Внешний адрес в categories.json не попадает никогда.
+*/
+const PLACEHOLDER = '/assets/img/no-photo.svg';
+const localImg = (p) => /^\/assets\/img\//.test(String(p.img ?? '')) && p.img !== PLACEHOLDER;
+const inAtlas = (p) => !!(keptThumbs?.items?.[p.id]);
 for (const c of categories) {
-  const first = products.find((p) => p.cat === c.id && p.img);
-  c.img = first ? first.img : '';
+  const pool = products.filter((p) => p.cat === c.id);
+  const byFile = pool.find(localImg);
+  const byAtlas = pool.find(inAtlas);
+  c.img = byFile ? byFile.img : '';
+  /* Адрес товара, а не картинки: ячейку в атласе клиент найдёт сам. */
+  if (!byFile && byAtlas) c.imgId = byAtlas.id;
+  if (!byFile && !byAtlas) c.img = PLACEHOLDER;
+}
+const noPhoto = categories.filter((c) => c.count && !c.imgId && (!c.img || c.img === PLACEHOLDER));
+if (noPhoto.length) {
+  console.log('  разделы без фотографии: ' + noPhoto.map((c) => `${c.id} (${c.count})`).join(', ') +
+    ' — в этих разделах ни у одного товара нет снимка');
 }
 const brands = Object.keys(brandDict)
   .filter((id) => brandCount[id])
@@ -963,17 +1038,6 @@ const featured = products.slice(0, 8).map((p) => p.id);
 
 /* ----------------------------------------------------------------- запись */
 
-/*
-  Каталог пересобирается начисто, но карта атласов — не его выход. Её
-  собирает отдельный этап (tools/pack-thumbs.mjs) из скачанных картинок,
-  а лежит она здесь же. Стереть её вместе с каталогом значит потерять все
-  фотографии: файлы атласов останутся на диске, а указателя на ячейки не
-  будет — и витрина молча покажет заглушки. Поэтому карта переживает
-  пересборку.
-*/
-const THUMBS_FILE = [path.join(OUT_CATALOG, 'thumbs.json'), path.join(ROOT, 'data/catalog/thumbs.json')]
-  .find((f) => fs.existsSync(f));
-const keptThumbs = THUMBS_FILE ? JSON.parse(fs.readFileSync(THUMBS_FILE, 'utf8')) : null;
 fs.rmSync(OUT_CATALOG, { recursive: true, force: true });
 fs.mkdirSync(path.join(OUT_CATALOG, 'chunks'), { recursive: true });
 fs.mkdirSync(OUT_LIVE, { recursive: true });

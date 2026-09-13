@@ -1033,7 +1033,9 @@
   */
   function imgHtml(p, attrs) {
     var a = attrs || {};
-    var t = C.thumb && C.thumb(p.id);
+    /* noAtlas — когда рядом лежит полноразмерный файл: в галерее он
+       важнее ячейки, а миниатюры по-прежнему берутся из атласа. */
+    var t = a.noAtlas ? null : (C.thumb && C.thumb(p.id));
     var view = a.view ? ' data-gview="' + esc(a.view) + '"' : '';
     if (t) {
       var px = t.cols > 1 ? (t.col / (t.cols - 1)) * 100 : 0;
@@ -1169,6 +1171,24 @@
     live/catalog-live.json и нужна для служебных проверок, просто не
     показывается публично.
   */
+  /*
+    Картинка раздела. У части разделов нет ни одного прототипного товара
+    с локальным файлом — там сборщик кладёт адрес товара из атласа, и
+    плитка рисуется тем же способом, что и карточка: фоном по ячейке.
+    Горячих ссылок на сервер поставщика в плитках нет.
+  */
+  function catImg(c) {
+    var t = c.imgId && C.thumb ? C.thumb(c.imgId) : null;
+    if (t) {
+      var px = t.cols > 1 ? (t.col / (t.cols - 1)) * 100 : 0;
+      var py = t.rows > 1 ? (t.row / (t.rows - 1)) * 100 : 0;
+      return '<span class="atimg" role="img" aria-label="' + esc(c.name) + '"' +
+        ' style="background-image:url(' + t.file + ');background-size:' + (t.cols * 100) + '% ' + (t.rows * 100) + '%;' +
+        'background-position:' + px.toFixed(4) + '% ' + py.toFixed(4) + '%"></span>';
+    }
+    return '<img src="' + (c.img || '/assets/img/no-photo.svg') + '" alt="" loading="lazy">';
+  }
+
   function priceStamp() { return ''; }
 
   /* ---------------------------------------------------------- страницы */
@@ -1177,12 +1197,12 @@
     return C.featured().then(function (best) {
       var tags = ['HP LaserJet Pro M125', 'Kyocera M2135dn', 'Canon i-SENSYS MF3010', 'Brother HL-L2300', 'Samsung ML-2160', 'Xerox Phaser 3020', 'Pantum P2207', 'Ricoh SP 3400N', 'HP LaserJet 1018', 'Kyocera FS-1040', 'HP LJ Pro M104', 'Canon LBP6030', 'Brother DCP-L2500', 'Kyocera M2040dn', 'Xerox WorkCentre 3025', 'HP LJ Pro 400 M401', 'Epson L3150', 'Canon PIXMA G3411'];
       var tiles = C.cats.slice(0, 3).map(function (c) {
-        return '<a class="tile" href="' + link.catalog(c.id) + '"><span class="ph"><img src="' + c.img + '" alt="" loading="lazy"></span>' +
+        return '<a class="tile" href="' + link.catalog(c.id) + '"><span class="ph">' + catImg(c) + '</span>' +
           '<span class="tt"><h3>' + esc(c.name) + '</h3><p>' + esc(c.desc) + '</p>' +
           '<span class="cta">' + c.count + ' ' + plural(c.count, 'товар', 'товара', 'товаров') + ic('arrow-right', 16) + '</span></span></a>';
       }).join('');
       var tilesS = C.cats.slice(3).map(function (c) {
-        return '<a class="tile-s" href="' + link.catalog(c.id) + '"><span><b>' + esc(c.name) + '</b><span>' + esc(c.desc) + '</span></span><span class="ph"><img src="' + c.img + '" alt="" loading="lazy"></span></a>';
+        return '<a class="tile-s" href="' + link.catalog(c.id) + '"><span><b>' + esc(c.name) + '</b><span>' + esc(c.desc) + '</span></span><span class="ph">' + catImg(c) + '</span></a>';
       }).join('');
       var strip = C.brands.slice(0, 10).map(function (b) {
         return '<a href="' + link.catalog('laser', b.id) + '" title="' + esc(b.name) + '">' + brandLogo(b.id, 20, '') + '</a>';
@@ -1344,7 +1364,28 @@
       var demoFirst = demoTotal ? demoReviews(p, d, 0, DEMO_PAGE) : [];
       var revAvg = revs.length ? Math.round(revs.reduce(function (a, r) { return a + (r.rate || 0); }, 0) / revs.length * 10) / 10 : 0;
       var src = p.img;
-      var hasAtlas = !!(C.thumb && C.thumb(p.id));
+      /*
+        Для основного снимка атлас — запасной вариант, а не первый.
+
+        В атласе лежит ячейка 240 пикселей: этого хватает карточке в
+        списке, ради чего он и собирался, но в галерее такой кадр
+        занимает всю колонку и выглядит мыльным. Если этап загрузки
+        картинок (vtt:images) положил рядом полноразмерный файл, брать
+        надо его — миниатюры при этом остаются миниатюрами.
+
+        Прежний код смотрел только на наличие ячейки в атласе и потому
+        показывал её даже там, где локальный оригинал уже лежал.
+      */
+      var localFull = /^\/assets\/img\//.test(String(p.img || '')) && !/no-photo/.test(String(p.img));
+      var hasAtlas = !localFull && !!(C.thumb && C.thumb(p.id));
+      /*
+        Оригинал у поставщика — улучшение поверх ячейки, а не замена ей.
+        Кладём его отдельной картинкой над атласом: загрузилась — видно
+        полный снимок, не загрузилась (нет сети, закрыт хост, офлайн) —
+        она убирает себя сама и остаётся ячейка. Список адресов задаёт
+        сборка превью, в боевой сборке его нет.
+      */
+      var fullSrc = hasAtlas && window.HB_FULL_IMG ? window.HB_FULL_IMG[p.id] : null;
       var views = [{ t: 'img' }];
       if (!hasAtlas) views.push({ t: 'zoom', pos: '18% 50%' }, { t: 'zoom', pos: '82% 50%' });
       if (d.models.length) views.push({ t: 'compat' });
@@ -1374,6 +1415,36 @@
          импортированных позиций его здесь нет: подставлять чужому товару
          срок, которого никто не подтверждал, нельзя. */
       if (p.src !== 'vtt') key.push(['Гарантия', '12 месяцев']);
+      /*
+        Дополняем блок «Коротко о товаре» тем, что поставщик действительно
+        передал. Раньше у импортированной позиции здесь стояли три строки
+        (ресурс, цвет, тип), а колонка тянулась во всю высоту фотографии —
+        и под ними зияла пустота в половину экрана.
+
+        Берём из готовых характеристик карточки, а не собираем заново:
+        так в короткий список не попадёт ничего, чего нет в полном. Что
+        сюда не идёт: остатки склада (внутренние данные), габариты и вес
+        (единицы в выгрузке не указаны) и всё, что уже показано выше.
+      */
+      var already = key.map(function (r) { return r[0]; });
+      var pick = function (prefix, label) {
+        for (var i = 0; i < (d.specs || []).length; i++) {
+          var name = String(d.specs[i][0] || ''), val = String(d.specs[i][1] || '').trim();
+          if (name.indexOf(prefix) !== 0 || !val) continue;
+          if (already.indexOf(label) >= 0) return;
+          var comma = name.indexOf(',');
+          var unit = comma > 0 ? name.slice(comma + 1).trim() : '';
+          key.push([label, unit ? val + ' ' + unit : val]);
+          already.push(label);
+          return;
+        }
+      };
+      pick('Артикул', 'Артикул');
+      pick('Для техники', 'Для техники');
+      pick('Особенности', 'Особенности');
+      pick('Объём', 'Объём');
+      pick('В упаковке', 'В упаковке');
+      pick('Штрихкод', 'Штрихкод');
       var compatChips = d.models.map(function (m) {
         return '<a class="chip" href="' + link.printer(printerKey(p.brand, m)) + '">' + esc(C.brandName(p.brand) + ' ' + m) + '</a>';
       }).join('');
@@ -1424,7 +1495,10 @@
            670235, перестал находить товар. Теперь номер выдаётся один раз
            и живёт с товаром. */
         '<span>Артикул: <b>' + esc(p.code) + '</b></span><span>Код товара: <b>' + esc(String(p.no || '')) + '</b></span>' + badge(p) + '</div></header>' +
-        '<div class="gallery"><div class="gmain' + (hasAtlas ? ' has-atlas' : '') + '" id="gmain" data-src="' + (hasAtlas ? '' : src) + '">' + imgHtml(p, { alt: p.name, eager: true, view: 'img', cls: hasAtlas ? 'g-atlas-img' : '' }) + (hasAtlas ? '' : '<div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>') + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span>' + (hasAtlas ? '' : '<span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span>') + '</div><div class="thumbs">' + thumbs + '</div></div>' +
+        '<div class="gallery"><div class="gmain' + (hasAtlas ? ' has-atlas' : '') + '" id="gmain" role="button" tabindex="0"' +
+        ' aria-label="Открыть фото крупнее: ' + esc(p.name) + '" data-src="' + (hasAtlas ? '' : src) + '">' + imgHtml(p, { alt: p.name, eager: true, view: 'img', noAtlas: localFull, cls: hasAtlas ? 'g-atlas-img' : '' }) +
+        (fullSrc ? '<img class="g-full" data-full="' + esc(fullSrc) + '" alt="' + esc(p.name) + '" hidden>' : '') +
+        (hasAtlas ? '' : '<div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>') + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span>' + '<span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span>' + '</div><div class="thumbs">' + thumbs + '</div></div>' +
         '<div class="pinfo"><div class="keyspecs"><h3>Коротко о товаре</h3>' + key.map(function (k) { return '<div class="krow"><span>' + esc(k[0]) + '</span><b>' + esc(k[1]) + '</b></div>'; }).join('') + '</div>' +
         (compatChips ? '<div class="compat"><h3>Подходит для принтеров ' + brandLogo(p.brand, 18, '') + '</h3><div class="tags">' + compatChips + '</div></div>' : '') +
         /*
@@ -1985,6 +2059,27 @@
     руками у человека нельзя. Такое бывает, когда страница перерисовалась
     не от навигации, а сама по себе.
   */
+  /*
+    Догрузка оригинала снимка поверх ячейки атласа.
+
+    Адрес ставится из кода, а не атрибутом в разметке: обработчик onerror
+    в атрибуте блокируется политикой безопасности страницы превью, и
+    вместо тихого отката получалась битая картинка с надписью «Фото не
+    загрузилось» прямо поверх нормального снимка.
+
+    Порядок такой: сначала вешаем обработчики, потом адрес. Не
+    загрузилось — картинка убирает себя, и остаётся ячейка атласа.
+  */
+  function loadFullPhoto() {
+    var el = document.querySelector('.g-full[data-full]');
+    if (!el) return;
+    var url = el.getAttribute('data-full');
+    el.removeAttribute('data-full');
+    el.addEventListener('load', function () { if (el.naturalWidth > 0) el.hidden = false; });
+    el.addEventListener('error', function () { el.remove(); });
+    el.src = url;
+  }
+
   function syncSearchBox(r) {
     var el = document.querySelector('#search-form input[name=q]');
     if (!el || document.activeElement === el) return;
@@ -2052,6 +2147,7 @@
       }
       lastKey = key; lastPath = r.route;
       syncSearchBox(r);
+      loadFullPhoto();
       updateHeader();
       initSlider();
       initBuybar();
@@ -2131,6 +2227,13 @@
   document.addEventListener('error', function (e) {
     var el = e.target;
     if (!el || el.tagName !== 'IMG' || el.getAttribute('data-imgfail')) return;
+    /*
+      Оригинал поставщика поверх атласа — улучшение с собственным
+      откатом: он убирает себя сам, и остаётся ячейка. Общий обработчик
+      сюда лезть не должен — он помечает родителя, и плашка «Фото не
+      загрузилось» ложилась поверх нормального снимка.
+    */
+    if (el.classList.contains('g-full')) return;
     if (!el.getAttribute('src')) return;
     if (!el.getAttribute('data-retried')) {
       var direct = directFromProxy(el.getAttribute('src'));
@@ -2374,12 +2477,7 @@
     if (t) { slideTo(slideIdx + (+t.dataset.sl)); restartSlider(); return; }
     t = e.target.closest('[data-dot]');
     if (t) { slideTo(+t.dataset.dot); restartSlider(); return; }
-    if (e.target.closest('#gmain') && !e.target.closest('.gcompat')) {
-      var g = document.getElementById('gmain');
-      if (!g.dataset.src) return;
-      lb.querySelector('img').src = g.dataset.src; lb.classList.add('open');
-      return;
-    }
+    if (e.target.closest('#gmain') && !e.target.closest('.gcompat')) { openPhoto(); return; }
     if (e.target.closest('.thumb.video')) { showToast('Видеообзор — заглушка для прототипа'); return; }
   });
 
@@ -2405,7 +2503,7 @@
     }
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { closeMenu(); closeMob(); lb.classList.remove('open'); }
+    if (e.key === 'Escape') { closeMenu(); closeMob(); }
     if (e.key === 'Enter' && e.target.matches('[data-f]') && e.target.tagName === 'INPUT') { e.preventDefault(); e.target.dispatchEvent(new Event('change', { bubbles: true })); }
   });
   function formData(f) {
@@ -2810,7 +2908,65 @@
   }
 
   var lb = document.getElementById('lightbox');
-  lb.addEventListener('click', function () { lb.classList.remove('open'); });
+  var lbFrom = null;
+  /*
+    Увеличение фотографии.
+
+    Открывается и нажатием, и с клавиатуры: у площадки роль кнопки и
+    свой tabindex, поэтому Enter и пробел работают так же, как щелчок.
+    Закрывается щелчком по фону, крестиком и Esc, после чего фокус
+    возвращается туда, откуда пришёл, — иначе человек с клавиатурой
+    остаётся в начале страницы.
+
+    Картинка показывается в том размере, какой есть в источнике. У
+    позиций из атласа это 240 пикселей: крупнее снимка поставщика здесь
+    нет, и растягивать его, изображая чёткость, нечестно — вместо этого
+    под фотографией стоит прямая оговорка.
+  */
+  function openPhoto() {
+    var g = document.getElementById('gmain');
+    if (!g) return;
+    var img = lb.querySelector('img'), at = lb.querySelector('.lb-atlas'), note = lb.querySelector('.lb-note');
+    var cell = g.querySelector('.atimg');
+    var full = g.querySelector('.g-full');
+    if (full && full.complete && full.naturalWidth > 0) {
+      img.src = full.currentSrc || full.src; img.hidden = false; at.hidden = true;
+      note.hidden = true; note.textContent = '';
+    } else if (g.dataset.src) {
+      img.src = g.dataset.src; img.hidden = false; at.hidden = true;
+      note.hidden = true; note.textContent = '';
+    } else if (cell) {
+      img.hidden = true; img.removeAttribute('src');
+      at.hidden = false;
+      at.style.backgroundImage = cell.style.backgroundImage;
+      at.style.backgroundSize = cell.style.backgroundSize;
+      at.style.backgroundPosition = cell.style.backgroundPosition;
+      at.setAttribute('aria-label', g.getAttribute('aria-label') || 'Фото товара');
+      note.hidden = false;
+      note.textContent = 'Снимок поставщика доступен только в размере 240 пикселей — более крупного исходника у этой позиции нет.';
+    } else { return; }
+    lbFrom = g;
+    lb.hidden = false;
+    lb.classList.add('open');
+    var x = lb.querySelector('.x'); if (x) x.focus();
+  }
+  function closePhoto() {
+    if (!lb.classList.contains('open')) return;
+    lb.classList.remove('open');
+    lb.hidden = true;
+    if (lbFrom && document.contains(lbFrom)) lbFrom.focus();
+    lbFrom = null;
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closePhoto(); return; }
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var g = e.target.closest && e.target.closest('#gmain');
+    if (!g) return;
+    /* Пробел на площадке фото не должен заодно прокручивать страницу. */
+    e.preventDefault();
+    openPhoto();
+  });
+  lb.addEventListener('click', closePhoto);
 
   function showView(i) {
     var g = document.getElementById('gmain'); if (!g) return;

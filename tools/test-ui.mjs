@@ -345,6 +345,177 @@ for (const device of [
 }
 
 /*
+  Основное фото карточки: источник, увеличение и доступность.
+
+  Проверка появилась после того, как снимок 300972 оказался заметно
+  мыльным: ячейка атласа 240 пикселей растягивалась правилом CSS на 520,
+  то есть в 2,2 раза. Ни «шарпом», ни апскейлом подробностей в источнике
+  не прибавится, поэтому проверяем ровно две вещи: снимок не растянут
+  сверх исходника и увеличение открывается — мышью и с клавиатуры.
+*/
+{
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const page = await ctx.newPage();
+  for (const slug of ['hb-tk-8115bk', 'hb-paper-mat2s-a4-160g-m-100l', 'hb-tk-1150', 'hb-servm-isopr-hl-spr-250ml']) {
+    await page.goto(`${BASE}/product/${slug}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#gmain', { timeout: 15000 });
+    const info = await page.evaluate(() => {
+      const g = document.getElementById('gmain');
+      const cell = g.querySelector('.atimg'), img = g.querySelector('img');
+      const box = (cell || img)?.getBoundingClientRect();
+      return {
+        atlas: !!cell, hasImg: !!img, src: img?.getAttribute('src') || '',
+        w: box ? Math.round(box.width) : 0,
+        natural: img ? img.naturalWidth : 0,
+        role: g.getAttribute('role'), tab: g.getAttribute('tabindex'), label: g.getAttribute('aria-label') || '',
+      };
+    });
+    /* Ячейка атласа — ровно 240 пикселей; шире её не растягиваем. */
+    if (info.atlas) {
+      check(`${slug}: снимок из атласа не растянут сверх 240 px`, info.w <= 240, `ширина ${info.w} px`);
+    } else {
+      check(`${slug}: снимок из файла не растянут сверх исходника`,
+        !info.natural || info.w <= info.natural + 1, `ширина ${info.w} px при исходнике ${info.natural} px`);
+    }
+    check(`${slug}: фото доступно с клавиатуры`, info.role === 'button' && info.tab === '0' && /Открыть фото/.test(info.label),
+      `role=${info.role} tabindex=${info.tab}`);
+
+    /* Открытие нажатием и закрытие по Esc с возвратом фокуса. */
+    await page.locator('#gmain').click();
+    await page.waitForTimeout(300);
+    let open = await page.evaluate(() => document.getElementById('lightbox').classList.contains('open'));
+    check(`${slug}: увеличение открывается нажатием`, open);
+    const shown = await page.evaluate(() => {
+      const lb = document.getElementById('lightbox');
+      const at = lb.querySelector('.lb-atlas'), im = lb.querySelector('img'), note = lb.querySelector('.lb-note');
+      return { atlas: !at.hidden, img: !im.hidden, note: note.hidden ? '' : note.textContent };
+    });
+    check(`${slug}: в увеличении показан снимок`, shown.atlas || shown.img,
+      shown.atlas ? 'из атласа, с оговоркой: ' + shown.note.slice(0, 48) : 'из файла');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(250);
+    open = await page.evaluate(() => document.getElementById('lightbox').classList.contains('open'));
+    const focused = await page.evaluate(() => document.activeElement && document.activeElement.id === 'gmain');
+    check(`${slug}: Esc закрывает и возвращает фокус`, !open && focused, `открыт=${open}, фокус на фото=${focused}`);
+
+    /* Клавиатура: Enter на площадке открывает то же окно. */
+    await page.evaluate(() => document.getElementById('gmain').focus());
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(300);
+    open = await page.evaluate(() => document.getElementById('lightbox').classList.contains('open'));
+    check(`${slug}: Enter с клавиатуры открывает увеличение`, open);
+    await page.keyboard.press('Escape');
+  }
+
+  /* Колонка «Коротко о товаре» не должна быть из трёх строк при живых
+     полях выгрузки — и не должна показывать остатки склада. */
+  await page.goto(`${BASE}/product/hb-tk-8115bk`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.keyspecs', { timeout: 15000 });
+  const keys = await page.evaluate(() => [...document.querySelectorAll('.keyspecs .krow')].map((r) => ({
+    k: r.querySelector('span')?.textContent?.trim() || '', v: r.querySelector('b')?.textContent?.trim() || '',
+  })));
+  check('300972: в «Коротко о товаре» больше трёх строк', keys.length > 3,
+    `строк ${keys.length}: ` + keys.map((x) => x.k).join(', '));
+  const names = keys.map((x) => x.k);
+  check('300972: подтверждённые поля B2B на месте',
+    names.includes('Артикул') && names.includes('Особенности') && names.includes('В упаковке'),
+    names.join(', '));
+  check('300972: строки не повторяются', new Set(names).size === names.length);
+  check('300972: остатков склада в блоке нет',
+    !keys.some((x) => /остат|склад|шт\. в наличии/i.test(x.k + ' ' + x.v)));
+
+  await ctx.close();
+}
+
+/*
+  Картинки главной: плитки разделов, «Лучшие предложения» и карточки.
+
+  Проверка появилась после того, как четыре плитки («Матричные»,
+  «Бумага и плёнки», «Обслуживание и инструмент», «Печатающая техника»)
+  оказались с заглушками при живых фотографиях в этих разделах. Причин
+  было две, и обе тихие: у одних разделов первым шёл товар, у которого
+  картинка — сама заглушка, у других — товар VTT с адресом на сервере
+  поставщика, который в превью не грузится.
+
+  Поэтому проверяем не «есть ли src», а результат: в categories.json нет
+  внешних адресов, а на отрисованной странице каждая картинка либо
+  реально загрузилась, либо честно относится к разделу без единой
+  фотографии.
+*/
+{
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const page = await ctx.newPage();
+
+  const cats = await page.evaluate(async (base) => (await (await fetch(base + '/data/catalog/categories.json')).json()), BASE)
+    .catch(() => null) || await (await fetch(`${BASE}/data/catalog/categories.json`)).json();
+  const external = cats.filter((c) => /^https?:/i.test(String(c.img || '')));
+  check('в разделах нет горячих ссылок на сервер поставщика', external.length === 0,
+    external.map((c) => `${c.id} → ${c.img}`).join(', '));
+  const noPic = cats.filter((c) => c.count > 0 && !c.imgId && (!c.img || /no-photo/.test(c.img)));
+  check('заглушка осталась только там, где фотографий нет вовсе',
+    noPic.every((c) => c.count <= 1), noPic.map((c) => `${c.id} (${c.count} товаров)`).join(', ') || 'таких разделов нет');
+
+  for (const [name, width] of [['десктоп', 1440], ['телефон', 390]]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.tiles .tile', { timeout: 15000 });
+    /* Ленивые картинки за экраном не грузятся — доскроллим до низа. */
+    await page.evaluate(async () => {
+      for (let y = 0; y < document.body.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); }
+      window.scrollTo(0, 0);
+    });
+    await page.waitForTimeout(900);
+
+    const shot = await page.evaluate(() => {
+      const box = (sel) => [...document.querySelectorAll(sel)];
+      const stat = (sel) => {
+        const out = { total: 0, broken: [], placeholder: 0, atlas: 0 };
+        for (const el of box(sel)) {
+          const img = el.querySelector('img'), at = el.querySelector('.atimg');
+          out.total += 1;
+          if (at) { out.atlas += 1; continue; }
+          if (!img) { out.broken.push('нет картинки вовсе'); continue; }
+          if (/no-photo/.test(img.getAttribute('src') || '')) { out.placeholder += 1; continue; }
+          if (!img.complete || img.naturalWidth === 0) out.broken.push(img.getAttribute('src') || '(пусто)');
+        }
+        return out;
+      };
+      return { tiles: stat('.tiles .tile .ph'), tilesS: stat('.tiles-s .tile-s .ph'), cards: stat('.grid4 .card .cmedia') };
+    });
+    for (const [label, st] of [['плитки разделов', shot.tiles], ['мелкие плитки', shot.tilesS], ['лучшие предложения', shot.cards]]) {
+      check(`${name}: ${label} — картинки загрузились`, st.broken.length === 0,
+        st.broken.length ? 'битые: ' + st.broken.slice(0, 3).join(', ')
+          : `всего ${st.total}, из атласа ${st.atlas}, заглушек ${st.placeholder}`);
+    }
+    check(`${name}: заглушек в плитках не больше одной`,
+      shot.tiles.placeholder + shot.tilesS.placeholder <= 1,
+      `заглушек ${shot.tiles.placeholder + shot.tilesS.placeholder}`);
+  }
+
+  /* Выборка карточек каталога: те же картинки, но на странице списка. */
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${BASE}/catalog/paper`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.card', { timeout: 15000 });
+  await page.waitForTimeout(700);
+  const list = await page.evaluate(() => {
+    const out = { total: 0, broken: [], atlas: 0, placeholder: 0 };
+    for (const el of [...document.querySelectorAll('.card .cmedia')].slice(0, 24)) {
+      out.total += 1;
+      const at = el.querySelector('.atimg'), img = el.querySelector('img');
+      if (at) { out.atlas += 1; continue; }
+      if (!img) { out.broken.push('нет картинки'); continue; }
+      if (/no-photo/.test(img.getAttribute('src') || '')) { out.placeholder += 1; continue; }
+      if (!img.complete || img.naturalWidth === 0) out.broken.push(img.getAttribute('src') || '(пусто)');
+    }
+    return out;
+  });
+  check('карточки раздела «Бумага» — картинки загрузились', list.broken.length === 0,
+    list.broken.length ? 'битые: ' + list.broken.slice(0, 3).join(', ') : `всего ${list.total}, из атласа ${list.atlas}, заглушек ${list.placeholder}`);
+
+  await ctx.close();
+}
+
+/*
   Демо-отзывы — сплошная проверка по всему каталогу.
 
   Открывать тысячи страниц бессмысленно: генератор чистый и вынесен на

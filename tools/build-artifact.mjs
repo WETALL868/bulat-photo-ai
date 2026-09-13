@@ -49,6 +49,26 @@ const IMAGE_PROXY = argOf('image-proxy', 'wsrv');
   чанки не растут ни на байт, а в боевой сборке этой строки нет и брать
   записи неоткуда.
 */
+/*
+  Опыт с оригиналом снимка: --full-image=<адрес товара через запятую>.
+
+  В атласе лежит ячейка 240 пикселей — этого мало для основного фото на
+  карточке. Полноразмерный снимок есть у поставщика по прямому адресу
+  (b2b.vtt.ru/images/<Id>.jpg) и отдаётся без авторизации, но брать его
+  на витрину массово нельзя: три с половиной тысячи горячих ссылок на
+  чужой сервер — это и зависимость от его доступности, и мгновенно
+  битая витрина без сети.
+
+  Поэтому адрес подставляется поимённо и только как улучшение поверх
+  атласа: не загрузился — остаётся ячейка, и карточка выглядит ровно
+  так же, как без него. Офлайн от этого не ломается.
+*/
+/* По умолчанию пусто: подлинный файл лежит рядом (assets/img/vtt), и
+   горячая ссылка на сервер поставщика больше не нужна. Флаг остался на
+   случай, когда локального оригинала нет, а показать его надо. */
+const FULL_IMAGE = String(argOf('full-image', '') || '')
+  .split(',').map((x) => x.trim()).filter(Boolean);
+
 const DEMO_REVIEWS = (() => {
   const raw = argOf('demo-reviews', null);
   if (raw === null) return 0;
@@ -197,6 +217,35 @@ put('data/catalog/meta.json', JSON.stringify(meta));
   в assets/img лежат и исходники, и то, что нужно другим сборкам, а
   лимит файлов один на всю публикацию.
 */
+/*
+  Адреса оригиналов берём из исходного индекса, до того как сборка
+  превью перепишет базы картинок: нужен прямой адрес поставщика, а не
+  его проксированный вариант.
+*/
+const fullImages = (() => {
+  if (!FULL_IMAGE.length) return {};
+  const raw = readJson('data/catalog/index.json');
+  const col = Object.fromEntries(raw.fields.map((f, i) => [f, i]));
+  const bases = raw.imgBases ?? [];
+  const out = {};
+  for (const row of unpackRows(raw)) {
+    const id = row[col.id];
+    if (!FULL_IMAGE.includes(id)) continue;
+    const v = row[col.img];
+    if (typeof v !== 'string' || !v) continue;
+    /* Упакованный вид: первый символ — номер базы адресов. */
+    const code = v.charCodeAt(0);
+    const url = code < 32 && bases[code - 1] ? bases[code - 1] + v.slice(1) : v;
+    if (/^https?:\/\//i.test(url)) out[id] = url;
+  }
+  return out;
+})();
+if (Object.keys(fullImages).length) {
+  console.log('  оригиналы снимков поверх атласа: ' +
+    Object.entries(fullImages).map(([k, v]) => `${k} → ${v}`).join(', '));
+  console.log('  это улучшение, а не зависимость: не загрузился — остаётся ячейка атласа.');
+}
+
 const idx = readJson('data/catalog/index.json');
 const site = readJson('data/site.json');
 const needed = new Set();
@@ -204,10 +253,20 @@ const collect = (value) => {
   if (typeof value === 'string') {
     const m = value.match(/\/assets\/img\/[^"')\s]+/g);
     if (m) for (const one of m) {
-      /* Когда карта атласов собрана, индивидуальные VTT-миниатюры уже
-         представлены ячейками внутри неё. Публикация тысяч исходных
-         файлов поверх атласов снова превысила бы лимит 255 файлов. */
-      if (atlasFiles && one.startsWith('/assets/img/vtt/')) continue;
+      /*
+        Когда карта атласов собрана, миниатюры VTT уже представлены
+        ячейками внутри неё, и публиковать тысячи исходных файлов поверх
+        атласов нельзя — это снова упёрлось бы в лимит 255 файлов.
+
+        Но подлинные оригиналы, положенные в assets/img/vtt вручную, —
+        другое дело: их единицы, и именно ради них карточка показывает
+        снимок крупнее ячейки. Считаем их отдельно и с потолком, чтобы
+        случайно вывалившаяся в эту папку выгрузка не сломала сборку.
+      */
+      if (atlasFiles && one.startsWith('/assets/img/vtt/')) {
+        if (fs.existsSync(path.join(ROOT, one.slice(1)))) originals.add(one.slice(1));
+        continue;
+      }
       needed.add(one.slice(1));
     }
     return;
@@ -215,12 +274,26 @@ const collect = (value) => {
   if (Array.isArray(value)) { value.forEach(collect); return; }
   if (value && typeof value === 'object') Object.values(value).forEach(collect);
 };
+const originals = new Set();
 collect(idx.rows);
 collect(readJson('data/catalog/categories.json'));
 collect(site);
 collect(read('index.html'));
 collect(read('assets/css/styles.css'));
 for (const rel of needed) copy(rel);
+/* Оригиналы — после всего остального: они добираются из запаса файлов, а
+   не вытесняют данные каталога. */
+const ORIGINALS_MAX = 20;
+let originalsCopied = 0;
+for (const rel of [...originals].sort()) {
+  if (originalsCopied >= ORIGINALS_MAX) break;
+  if (copy(rel)) originalsCopied += 1;
+}
+if (originals.size) {
+  console.log(`  подлинных оригиналов снимков: ${originalsCopied} из ${originals.size}` +
+    (originals.size > ORIGINALS_MAX ? ` (потолок ${ORIGINALS_MAX})` : '') +
+    ' — основное фото и увеличение берут их, миниатюры остаются из атласа.');
+}
 
 /* Шрифты и иконки из CSS: они грузятся из стилей, а не из разметки. */
 const cssText = read('assets/css/fonts.css') + '\n' + read('assets/css/styles.css');
@@ -250,6 +323,7 @@ html = html
     /<script src="\/assets\/js\/icons.js"><\/script>\s*<script src="\/assets\/js\/catalog.js"><\/script>\s*<script src="\/assets\/js\/app.js"><\/script>/,
     '<script>window.HB_DATA_BASE = "./"; window.HB_HASH_ROUTING = true;' +
     (DEMO_REVIEWS ? ` window.HB_DEMO_REVIEWS = ${DEMO_REVIEWS};` : '') +
+    (Object.keys(fullImages).length ? ` window.HB_FULL_IMG = ${JSON.stringify(fullImages)};` : '') +
     '</script>\n<script>\n' + js + '\n</script>',
   );
 /* Ссылки на картинки в разметке тоже становятся относительными. */
