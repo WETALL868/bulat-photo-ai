@@ -15,6 +15,8 @@
   Запуск: node tools/test-ui.mjs [--slug=hb-tk-8115c] [--port=8098]
 */
 import { spawn } from 'node:child_process';
+import http from 'node:http';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -632,6 +634,76 @@ for (const device of [
     (await page.locator('#rev-form input[name=rate]:checked').count()) === 0);
 
   await ctx.close();
+}
+
+/*
+  Проверка на СОБРАННОМ превью, а не только на сайте.
+
+  Здесь ловится целый класс расхождений: сборка артефакта переписывает
+  адреса ресурсов в относительные, потому что корневые пути («/assets/…»)
+  артефакт не отдаёт. Код, проверявший путь как «^/assets/img/», на
+  dev-сервере работал, а в опубликованном превью молча выбирал ячейку
+  атласа вместо полноразмерного файла — и на витрине это выглядело как
+  «фото не обновилось».
+
+  Поэтому поднимаем dist/artifact как статику, ходим по hash-маршрутам и
+  смотрим на то, что реально попадёт к людям.
+*/
+if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
+  const DIST = path.join(ROOT, 'dist/artifact');
+  const TYPES2 = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.webp': 'image/webp',
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
+  const art = http.createServer((req, res) => {
+    let p = decodeURIComponent(req.url.split('?')[0].split('#')[0]);
+    if (p === '/' || !path.extname(p)) p = '/index.html';
+    const abs = path.join(DIST, p);
+    if (!abs.startsWith(DIST) || !fs.existsSync(abs) || fs.statSync(abs).isDirectory()) { res.writeHead(404); return res.end('404'); }
+    res.writeHead(200, { 'Content-Type': TYPES2[path.extname(abs)] || 'application/octet-stream' });
+    res.end(fs.readFileSync(abs));
+  });
+  await new Promise((r) => art.listen(0, r));
+  const ART = `http://127.0.0.1:${art.address().port}`;
+
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const page = await ctx.newPage();
+  await page.goto(`${ART}/index.html#/product/hb-tk-8115bk`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => { location.hash = '#/product/hb-tk-8115bk'; });
+  await page.waitForSelector('#gmain', { timeout: 15000 });
+  await page.waitForTimeout(900);
+
+  const seen = await page.evaluate(() => {
+    const g = document.getElementById('gmain');
+    const img = g.querySelector('img'), cell = g.querySelector('.atimg');
+    return { src: img ? img.getAttribute('src') : null, atlas: !!cell, natural: img ? img.naturalWidth : 0 };
+  });
+  check('превью: основное фото 300972 — полноразмерный файл, не атлас',
+    !seen.atlas && /4100603160\.jpg$/.test(String(seen.src)), `src=${seen.src}, атлас=${seen.atlas}`);
+  check('превью: файл действительно загрузился', seen.natural >= 600, `исходник ${seen.natural} px`);
+
+  await page.locator('#gmain').click();
+  await page.waitForTimeout(500);
+  const zoom = await page.evaluate(() => {
+    const lb = document.getElementById('lightbox');
+    const at = lb.querySelector('.lb-atlas'), im = lb.querySelector('img'), note = lb.querySelector('.lb-note');
+    return { open: lb.classList.contains('open'), atlas: !at.hidden, src: im.hidden ? null : im.getAttribute('src'),
+      note: note.hidden ? '' : note.textContent };
+  });
+  check('превью: увеличение 300972 показывает тот же файл',
+    zoom.open && !zoom.atlas && /4100603160\.jpg$/.test(String(zoom.src)), `src=${zoom.src}, атлас=${zoom.atlas}`);
+  check('превью: фразы про 240 пикселей у 300972 нет', !/240/.test(zoom.note), zoom.note.slice(0, 60) || 'оговорки нет');
+
+  /* У соседнего товара без оригинала всё должно остаться как было. */
+  await page.keyboard.press('Escape');
+  await page.goto(`${ART}/index.html#/product/hb-tk-8115m`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => { location.hash = '#/product/hb-tk-8115m'; });
+  await page.waitForSelector('#gmain', { timeout: 15000 });
+  await page.waitForTimeout(700);
+  const other = await page.evaluate(() => !!document.querySelector('#gmain .atimg'));
+  check('превью: у товара без оригинала по-прежнему ячейка атласа', other);
+
+  await ctx.close();
+  art.close();
 }
 
 await browser.close();
