@@ -37,8 +37,11 @@ export const contacts = {
 */
 export const messengers = {
   max: {
-    url: '',
-    confirmed: false,
+    /* Адрес канала уже опубликован на сайте и в data/site.json: это
+       публичная ссылка, а не секрет. Без неё сборка гасит блоки MAX и
+       откатывает боевой сайт к заглушке «Ссылка будет добавлена». */
+    url: 'https://max.ru/u/f9LHodD0cOLU5ccm4oZTd_hoCgtVAdBgiYyLEeh3baI7q5n0_7kD0em7ANg',
+    confirmed: true,
     label: 'Написать в MAX',
     name: 'MAX',
     note: 'Ответим в мессенджере в рабочее время',

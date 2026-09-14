@@ -9,19 +9,19 @@
 
   # Одна каноническая версия: HTTPS без www.
   # X-Forwarded-Proto нужен, когда SSL завершает nginx перед Apache.
-  RewriteCond %{HTTP_HOST} !^hi-black\.ru$ [NC]
-  RewriteRule ^ https://hi-black.ru%{REQUEST_URI} [R=301,L,NE]
+  RewriteCond %{HTTP_HOST} !^hiblack-msk\.ru$ [NC]
+  RewriteRule ^ https://hiblack-msk.ru%{REQUEST_URI} [R=301,L,NE]
   RewriteCond %{HTTPS} !=on
   RewriteCond %{HTTP:X-Forwarded-Proto} !^https$ [NC]
-  RewriteRule ^ https://hi-black.ru%{REQUEST_URI} [R=301,L,NE]
+  RewriteRule ^ https://hiblack-msk.ru%{REQUEST_URI} [R=301,L,NE]
 
   # Технические адреса не должны создавать дубли публичных страниц.
   RewriteCond %{THE_REQUEST} \s/+index\.html(?:[?\s]) [NC]
-  RewriteRule ^index\.html$ https://hi-black.ru/ [R=301,L,NE]
+  RewriteRule ^index\.html$ https://hiblack-msk.ru/ [R=301,L,NE]
   RewriteCond %{THE_REQUEST} \s/+seo-pages/home\.html(?:[?\s]) [NC]
-  RewriteRule ^seo-pages/home\.html$ https://hi-black.ru/ [R=301,L,NE]
+  RewriteRule ^seo-pages/home\.html$ https://hiblack-msk.ru/ [R=301,L,NE]
   RewriteCond %{THE_REQUEST} \s/+seo-pages/(.+)\.html(?:[?\s]) [NC]
-  RewriteRule ^seo-pages/(.+)\.html$ https://hi-black.ru/$1 [R=301,L,NE]
+  RewriteRule ^seo-pages/(.+)\.html$ https://hiblack-msk.ru/$1 [R=301,L,NE]
 
   # Заказы и прочие серверные операции.
   RewriteRule ^api(/.*)?$ api/index.php [L,QSA]
@@ -37,17 +37,22 @@
   # Канонические адреса записаны без завершающего слеша.
   RewriteCond %{REQUEST_URI} !^/$
   RewriteCond %{REQUEST_URI} /+$
-  RewriteRule ^(.+?)/+$ https://hi-black.ru/$1 [R=301,L,NE]
+  RewriteRule ^(.+?)/+$ https://hiblack-msk.ru/$1 [R=301,L,NE]
 
   # Публичный адрес отдаём готовой страницей.
   RewriteCond %{DOCUMENT_ROOT}/seo-pages/$1.html -f
   RewriteRule ^(.+)$ seo-pages/$1.html [L]
 
+  # Старые адреса товаров, которых уже нет среди готовых канонических страниц,
+  # проверяет короткая карта перенаправлений. Обработчик отдаёт ровно один 301
+  # на новый ЧПУ или настоящий 404, если такого прежнего адреса не было.
+  RewriteRule ^product/([a-z0-9]+(?:-[a-z0-9]+)*)$ api/product-redirect.php?slug=$1 [END,QSA]
+
   # Служебные разделы — оболочка приложения, закрытая от индексации.
   RewriteRule ^(cart|checkout|order|favorites|compare|login|search)(/.*)?$ seo-pages/app.html [L]
 
   # Неизвестный адрес обязан быть настоящим 404, а не пустой успешной страницей.
-  RewriteRule ^ seo-pages/404.html [L]
+  RewriteRule ^ - [R=404,L]
 </IfModule>
 
 <IfModule mod_headers.c>

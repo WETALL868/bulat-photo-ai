@@ -1,8 +1,8 @@
 # Единая каноническая версия сайта для статических хостингов (Netlify, Cloudflare Pages).
 # На обычном сервере эти же правила выполняет .htaccess.
-http://hi-black.ru/*       https://hi-black.ru/:splat   301!
-http://www.hi-black.ru/*   https://hi-black.ru/:splat   301!
-https://www.hi-black.ru/*  https://hi-black.ru/:splat   301!
+http://hiblack-msk.ru/*       https://hiblack-msk.ru/:splat   301!
+http://www.hiblack-msk.ru/*   https://hiblack-msk.ru/:splat   301!
+https://www.hiblack-msk.ru/*  https://hiblack-msk.ru/:splat   301!
 
 # Готовые страницы отдаются напрямую.
 /                 /seo-pages/home.html        200

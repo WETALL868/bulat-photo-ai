@@ -39,7 +39,7 @@
     if (window.HB_INLINE && Object.prototype.hasOwnProperty.call(window.HB_INLINE, url)) {
       return Promise.resolve(window.HB_INLINE[url]);
     }
-    return fetch(dataUrl(url), { credentials: 'same-origin' }).then(function (r) {
+    return fetch(dataUrl(url), { credentials: 'same-origin', cache: url.indexOf('/live/') === 0 ? 'no-store' : 'default' }).then(function (r) {
       if (!r.ok) throw new Error('Не удалось загрузить ' + url + ' (' + r.status + ')');
       return r.json();
     });
@@ -94,7 +94,12 @@
     if (!t || !t.items) return null;
     var e = t.items[id];
     if (!e) return null;
-    return { file: t.files[e[0]], col: e[1], row: e[2], cols: t.cols, rows: t.rows };
+    /* В каталоге относительный путь работает, а в /product/ он ошибочно
+       превращается в /product/assets/.... На сайте нужен корневой адрес;
+       автономная публикация с hash-маршрутами сохраняет относительный. */
+    var file = t.files[e[0]];
+    if (!window.HB_INLINE && !window.HB_HASH_ROUTING && file.charAt(0) !== '/') file = '/' + file;
+    return { file: file, col: e[1], row: e[2], cols: t.cols, rows: t.rows };
   }
 
   /* Слаг нужен и до разбора всей строки: по нему ищется карточка. */
@@ -116,6 +121,88 @@
     p.stock = !!l.available;
     p.chip = p.chip === null ? null : !!p.chip;
     return p;
+  }
+
+  /* Search accepts a pasted article with separators, a different keyboard
+     layout, and common Russian spellings of Latin names. Alternatives are
+     consulted only when the original token has no matches, so an exact SKU
+     never gets buried under loose transliterations. */
+  var EN_KEYS = "qwertyuiop[]asdfghjkl;'zxcvbnm,./`";
+  var RU_KEYS = 'йцукенгшщзхъфывапролджэячсмитьбю.ё';
+  function keyboard(s, from, to) {
+    return s.split('').map(function (c) { var i = from.indexOf(c); return i < 0 ? c : to.charAt(i); }).join('');
+  }
+  var ROMAN = {
+    а:'a', б:'b', в:'v', г:'g', д:'d', е:'e', ё:'yo', ж:'zh', з:'z', и:'i', й:'y',
+    к:'k', л:'l', м:'m', н:'n', о:'o', п:'p', р:'r', с:'s', т:'t', у:'u', ф:'f',
+    х:'kh', ц:'ts', ч:'ch', ш:'sh', щ:'shch', ъ:'', ы:'y', ь:'', э:'e', ю:'yu', я:'ya'
+  };
+  var CYR_FROM_ROMAN = {
+    shch:'щ', sch:'щ', dzh:'дж', zh:'ж', kh:'х', ts:'ц', ch:'ч', sh:'ш',
+    yo:'ё', yu:'ю', ya:'я', ye:'е', a:'а', b:'б', c:'к', d:'д', e:'е', f:'ф',
+    g:'г', h:'х', i:'и', j:'й', k:'к', l:'л', m:'м', n:'н', o:'о', p:'п',
+    q:'к', r:'р', s:'с', t:'т', u:'у', v:'в', w:'в', x:'кс', y:'й', z:'з'
+  };
+  var ROMAN_PARTS = Object.keys(CYR_FROM_ROMAN).sort(function (a, b) { return b.length - a.length; });
+  function romanize(s) { return s.replace(/[а-яё]/g, function (c) { return ROMAN[c]; }); }
+  function cyrillize(s) {
+    return s.replace(/[a-z]+/g, function (word) {
+      var out = '';
+      while (word) {
+        var piece = ROMAN_PARTS.filter(function (p) { return word.indexOf(p) === 0; })[0];
+        out += CYR_FROM_ROMAN[piece];
+        word = word.slice(piece.length);
+      }
+      return out;
+    });
+  }
+  var LOOKALIKE = {а:'a',в:'b',с:'c',е:'e',н:'h',к:'k',м:'m',о:'o',р:'p',т:'t',х:'x',у:'y'};
+  var SEARCH_NAMES = {
+    хп:'hp', нр:'hp', эйчпи:'hp', канон:'canon', кэнон:'canon',
+    бразер:'brother', бразерс:'brother', бродер:'brother',
+    киосера:'kyocera', киоцера:'kyocera', кёцера:'kyocera',
+    ксерокс:'xerox', самсунг:'samsung', эпсон:'epson', епсон:'epson',
+    пантум:'pantum', пантом:'pantum', рико:'ricoh', панасоник:'panasonic',
+    лексмарк:'lexmark', шарп:'sharp', тошиба:'toshiba'
+  };
+  function searchWords(s) {
+    var before;
+    do {
+      before = s;
+      s = s.replace(/(\d)[\s\-‐‑–—]+(?=\d)/g, '$1');
+    } while (s !== before);
+    return s.split(/[^0-9a-zа-яё]+/i).filter(function (w) { return w.length >= 2; });
+  }
+  function searchAlternatives(term) {
+    var out = [term, keyboard(term, EN_KEYS, RU_KEYS), keyboard(term, RU_KEYS, EN_KEYS),
+      romanize(term), cyrillize(term), SEARCH_NAMES[term]];
+    if (/\d/.test(term)) out.push(term.replace(/[авсенкмортху]/g, function (c) { return LOOKALIKE[c]; }));
+    return out.filter(function (x, i) { return x && x.length >= 2 && out.indexOf(x) === i; });
+  }
+  function tokenHits(idx, term) {
+    var hit = {};
+    for (var tok in idx) if (tok.indexOf(term) === 0) idx[tok].forEach(function (i) { hit[i] = 1; });
+    return hit;
+  }
+  function searchHits(idx, term) {
+    var direct = tokenHits(idx, term);
+    if (Object.keys(direct).length) return direct;
+    var out = {};
+    searchAlternatives(term).slice(1).forEach(function (alt) {
+      var h = tokenHits(idx, alt);
+      for (var i in h) out[i] = 1;
+    });
+    /* A substantial article core can identify C7115A or C13S051127
+       even when the leading C was omitted. It must start with two digits
+       and have at least four characters; "15" stays a normal query. */
+    if (/^\d{2}[0-9a-zа-яё]{2,}$/i.test(term)) {
+      for (var tok in idx) {
+        var prefixed = tok.match(/^[a-zа-яё]{1,3}(?=\d)/i);
+        if (prefixed && tok.slice(prefixed[0].length).indexOf(term) === 0)
+          idx[tok].forEach(function (i) { out[i] = 1; });
+      }
+    }
+    return out;
   }
 
   var API = {
@@ -190,21 +277,23 @@
       });
     },
 
-    /* Поиск по индексу токенов: слово запроса совпадает с началом токена. */
+    /* Поиск по индексу токенов: AND между словами, OR между вариантами
+       раскладки. Цифры внутри артикула склеиваются до поиска. */
     search: function (q) {
-      var query = String(q || '').toLowerCase().split(/[^0-9a-zа-яё]+/i).filter(function (t) { return t.length >= 2; });
-      if (!query.length) return Promise.resolve([]);
+      var raw = String(q || '').toLowerCase().normalize('NFKC').trim();
+      var forms = [raw, keyboard(raw, EN_KEYS, RU_KEYS), keyboard(raw, RU_KEYS, EN_KEYS)]
+        .map(searchWords).filter(function (words) { return words.length; });
+      if (!forms.length) return Promise.resolve([]);
       if (!state.search) state.search = json(BASE + 'search-index.json');
       return state.search.then(function (idx) {
-        var sets = query.map(function (term) {
-          var hit = {};
-          for (var tok in idx) if (tok.indexOf(term) === 0) idx[tok].forEach(function (i) { hit[i] = 1; });
-          return hit;
+        var all = {};
+        forms.forEach(function (words) {
+          var sets = words.map(function (term) { return searchHits(idx, term); });
+          Object.keys(sets[0] || {}).forEach(function (i) {
+            if (sets.every(function (set) { return set[i]; })) all[i] = 1;
+          });
         });
-        return Object.keys(sets[0] || {})
-          .filter(function (i) { return sets.every(function (s) { return s[i]; }); })
-          .map(Number)
-          .map(hydrate);
+        return Object.keys(all).map(Number).sort(function (a, b) { return a - b; }).map(hydrate);
       });
     },
 

@@ -258,12 +258,13 @@ const collect = (value) => {
         ячейками внутри неё, и публиковать тысячи исходных файлов поверх
         атласов нельзя — это снова упёрлось бы в лимит 255 файлов.
 
-        Но подлинные оригиналы, положенные в assets/img/vtt вручную, —
-        другое дело: их единицы, и именно ради них карточка показывает
-        снимок крупнее ячейки. Считаем их отдельно и с потолком, чтобы
-        случайно вывалившаяся в эту папку выгрузка не сломала сборку.
+        Но полноразмерные снимки (assets/img/vtt-full и положенные
+        вручную assets/img/vtt) — другое дело: именно ради них карточка
+        показывает фото крупнее ячейки. Считаем их отдельно и с потолком:
+        на боевом сайте их три с лишним тысячи, а в артефакт помещается
+        255 файлов на всё вместе с данными каталога.
       */
-      if (atlasFiles && one.startsWith('/assets/img/vtt/')) {
+      if (atlasFiles && /^\/assets\/img\/vtt(-full)?\//.test(one)) {
         if (fs.existsSync(path.join(ROOT, one.slice(1)))) originals.add(one.slice(1));
         continue;
       }
@@ -285,7 +286,12 @@ for (const rel of needed) copy(rel);
    не вытесняют данные каталога. */
 const ORIGINALS_MAX = 20;
 let originalsCopied = 0;
-for (const rel of [...originals].sort()) {
+/* Положенный руками снимок из assets/img/vtt идёт первым: таких единицы,
+   и они появились ровно потому, что кто-то счёл их важными. Сортировка
+   по имени отдала бы весь запас первым файлам из vtt-full, а ручной
+   оригинал в превью не попал бы вовсе. */
+const handPlaced = (rel) => (rel.startsWith('assets/img/vtt/') ? 0 : 1);
+for (const rel of [...originals].sort((a, b) => handPlaced(a) - handPlaced(b) || a.localeCompare(b))) {
   if (originalsCopied >= ORIGINALS_MAX) break;
   if (copy(rel)) originalsCopied += 1;
 }
@@ -293,6 +299,36 @@ if (originals.size) {
   console.log(`  подлинных оригиналов снимков: ${originalsCopied} из ${originals.size}` +
     (originals.size > ORIGINALS_MAX ? ` (потолок ${ORIGINALS_MAX})` : '') +
     ' — основное фото и увеличение берут их, миниатюры остаются из атласа.');
+}
+
+/*
+  Товары, чей полноразмерный файл в лимит не влез.
+
+  Витрина считает локальный путь обещанием: раз у товара стоит
+  assets/img/…, значит файл рядом есть, и ячейку атласа она не берёт. В
+  превью файла может не быть — помещается два десятка из трёх тысяч, — и
+  карточка показывала пустую рамку вместо снимка.
+
+  Поэтому у таких товаров адрес в индексе превью стирается: витрина
+  видит, что локального файла нет, и честно рисует ячейку атласа. Данные
+  каталога это не трогает — правка живёт только внутри dist/artifact.
+*/
+{
+  const idxRaw = JSON.parse(fs.readFileSync(path.join(OUT, 'data/catalog/index.json'), 'utf8'));
+  const rows = unpackRows(idxRaw);
+  const col = Object.fromEntries(idxRaw.fields.map((f, i) => [f, i]));
+  let dropped = 0;
+  for (const row of rows) {
+    const img = String(row[col.img] ?? '');
+    if (!/^\.?\/?assets\/img\/vtt(-full)?\//.test(img)) continue;
+    if (fs.existsSync(path.join(OUT, img.replace(/^\.?\//, '')))) continue;
+    row[col.img] = '';
+    dropped += 1;
+  }
+  if (dropped) {
+    put('data/catalog/index.json', JSON.stringify(packIndex(idxRaw.fields, rows, { imgBases: idxRaw.imgBases })));
+    console.log(`  без файла рядом, отданы атласу: ${dropped} товаров`);
+  }
 }
 
 /* Шрифты и иконки из CSS: они грузятся из стилей, а не из разметки. */
@@ -315,12 +351,28 @@ const css = (read('assets/css/fonts.css') + '\n' + read('assets/css/styles.css')
 const js = read('assets/js/icons.js') + '\n' + read('assets/js/catalog.js') + '\n' + read('assets/js/app.js');
 
 let html = read('index.html');
+/*
+  Три тега скриптов заменяются одной встроенной сборкой.
+
+  Адрес в теге может нести версию для сброса кэша («app.js?v=…»), и
+  раньше выражение её не допускало: замена молча не срабатывала, а
+  превью уезжало со ссылками на файлы, которых в артефакте нет — белая
+  страница без единой ошибки в сборке. Поэтому «?…» разрешён, а
+  несработавшая замена теперь останавливает сборку.
+*/
+const SCRIPTS = /<script src="\/assets\/js\/icons\.js(?:\?[^"]*)?"><\/script>\s*<script src="\/assets\/js\/catalog\.js(?:\?[^"]*)?"><\/script>\s*<script src="\/assets\/js\/app\.js(?:\?[^"]*)?"><\/script>/;
+if (!SCRIPTS.test(html)) {
+  throw new Error('в index.html не найдены три тега скриптов витрины — встраивать нечего, ' +
+    'превью уехало бы со ссылками на файлы, которых в артефакте нет');
+}
+const STYLES = '<link rel="stylesheet" href="/assets/css/styles.css">';
+if (!html.includes(STYLES)) throw new Error('в index.html не найден тег стилей — встраивать нечего');
 html = html
   .replace(/<link rel="preload"[^>]*>\s*/g, '')
   .replace(/<link rel="stylesheet" href="\/assets\/css\/fonts.css">\s*/, '')
-  .replace('<link rel="stylesheet" href="/assets/css/styles.css">', '<style>\n' + css + '\n</style>')
+  .replace(STYLES, '<style>\n' + css + '\n</style>')
   .replace(
-    /<script src="\/assets\/js\/icons.js"><\/script>\s*<script src="\/assets\/js\/catalog.js"><\/script>\s*<script src="\/assets\/js\/app.js"><\/script>/,
+    SCRIPTS,
     '<script>window.HB_DATA_BASE = "./"; window.HB_HASH_ROUTING = true;' +
     (DEMO_REVIEWS ? ` window.HB_DEMO_REVIEWS = ${DEMO_REVIEWS};` : '') +
     (Object.keys(fullImages).length ? ` window.HB_FULL_IMG = ${JSON.stringify(fullImages)};` : '') +

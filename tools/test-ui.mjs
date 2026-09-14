@@ -26,7 +26,18 @@ const arg = (n, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${n}=`));
   return hit ? hit.slice(n.length + 3) : d;
 };
-const SLUG = arg('slug', 'hb-tk-8115c-4100603161');
+/*
+  Адреса товаров берутся из реестра, а не пишутся в тесте руками.
+
+  У товара есть идентификатор (hb-tk-8115bk) и выданный ему ЧПУ
+  (toner-kartridzh-hi-black-hb-tk-8115bk-kyocera). Витрина понимает оба,
+  а предрендер и sitemap знают только второй. Тест обязан ходить туда же,
+  куда пойдёт поисковик и покупатель по ссылке, поэтому идентификатор
+  здесь разворачивается в действующий адрес.
+*/
+const slugRegistry = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/product-slugs.json'), 'utf8')).items;
+const prod = (id) => (slugRegistry[id] ? slugRegistry[id].slug : id);
+const SLUG = prod(arg('slug', 'hb-tk-8115c-4100603161'));
 const PORT = Number(arg('port', 8098));
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -146,7 +157,7 @@ for (const device of [
   }
 
   /* ---------- цвета серии: один блок, свои кнопки ---------- */
-  await page.goto(`${BASE}/product/hb-tk-8115bk`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/product/${prod('hb-tk-8115bk')}`, { waitUntil: 'networkidle' });
   await page.waitForSelector('.vars');
   const vars = await page.evaluate(() => ({
     top: document.querySelectorAll('.cpick').length,
@@ -188,7 +199,7 @@ for (const device of [
   check(`${device.name}: липкая панель покупки появляется`, barOn);
 
   /* ---------- характеристики без складских количеств ---------- */
-  await page.goto(`${BASE}/product/hb-tk-8115bk?tab=specs`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/product/${prod('hb-tk-8115bk')}?tab=specs`, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-panel="specs"]');
   const specText = await page.locator('[data-panel="specs"]').innerText();
   check(`${device.name}: в характеристиках нет остатков со склада`,
@@ -224,7 +235,10 @@ for (const device of [
   check(`${device.name}: поиск по 670235 находит товар`,
     /HB-TK-8115C/i.test(foundText), (found[0] || foundText.split('\n').slice(0, 3).join(' | ')).slice(0, 80));
 
-  /* Адрес удалённой повреждённой позиции не должен показывать чужой товар. */
+  /* Адрес удалённой повреждённой позиции не должен показывать чужой
+     товар. Адрес здесь записан буквально: он никому не выдан, и в
+     реестре его нет — подставлять его через prod() значило бы открыть
+     живую карточку и проверить не то. */
   await page.goto(`${BASE}/product/hb-tk-8115c`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(600);
   const gone = await page.locator('#app').innerText();
@@ -236,12 +250,12 @@ for (const device of [
 
   /* ---------- отзывы ---------- */
   const honest = await page.locator('[data-panel="reviews"]').innerText();
-  /* Формулировка важна дословно: «настоящих» отделяет отзывы от
-     демонстрационных примеров, которые на превью стоят ниже. */
-  check(`${device.name}: блок отзывов честно пуст`, honest.includes('Настоящих отзывов пока нет'),
+  /* Настоящих отзывов у товара нет, и вкладка обязана это сказать —
+     либо пустым состоянием, либо пометкой над лентой примеров. */
+  check(`${device.name}: вкладка не выдаёт примеры за отзывы покупателей`,
+    /Отзывов пока нет/.test(honest) || /вымышленных примеров, не отзывов покупателей/.test(honest),
     honest.split('\n')[0]);
   check(`${device.name}: нет выдуманных отзывов`, !/Покупка подтверждена/.test(honest));
-  check(`${device.name}: нет пометки ДЕМО`, !/ДЕМО/.test(await page.locator('#app').innerText()));
   const headNone = await page.locator('.pmeta').innerText();
   check(`${device.name}: в шапке не стоит оценка 0,0`, !/0,0/.test(headNone), headNone.replace(/\n/g, ' '));
 
@@ -365,7 +379,7 @@ for (const device of [
 for (const [dev, vp] of [['десктоп', { width: 1440, height: 900 }], ['телефон', { width: 390, height: 844 }]]) {
   const ctx = await browser.newContext({ viewport: vp });
   const page = await ctx.newPage();
-  for (const slug of ['hb-tk-5230bk', 'hb-tk-8115c-4100603161']) {
+  for (const slug of ['hb-tk-5230bk', 'hb-tk-8115c-4100603161'].map(prod)) {
     /* Заходим с каталога: тогда «назад» ведёт на осмысленную страницу. */
     await page.goto(`${BASE}/catalog/laser`, { waitUntil: 'networkidle' });
     await page.goto(`${BASE}/product/${slug}`, { waitUntil: 'networkidle' });
@@ -434,7 +448,7 @@ for (const [dev, vp] of [['десктоп', { width: 1440, height: 900 }], ['т�
 {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await ctx.newPage();
-  for (const slug of ['hb-tk-8115bk', 'hb-paper-mat2s-a4-160g-m-100l', 'hb-tk-1150', 'hb-servm-isopr-hl-spr-250ml']) {
+  for (const slug of ['hb-tk-8115bk', 'hb-paper-mat2s-a4-160g-m-100l', 'hb-tk-1150', 'hb-servm-isopr-hl-spr-250ml'].map(prod)) {
     await page.goto(`${BASE}/product/${slug}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#gmain', { timeout: 15000 });
     const info = await page.evaluate(() => {
@@ -487,7 +501,7 @@ for (const [dev, vp] of [['десктоп', { width: 1440, height: 900 }], ['т�
 
   /* Колонка «Коротко о товаре» не должна быть из трёх строк при живых
      полях выгрузки — и не должна показывать остатки склада. */
-  await page.goto(`${BASE}/product/hb-tk-8115bk`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/product/${prod('hb-tk-8115bk')}`, { waitUntil: 'networkidle' });
   await page.waitForSelector('.keyspecs', { timeout: 15000 });
   const keys = await page.evaluate(() => [...document.querySelectorAll('.keyspecs .krow')].map((r) => ({
     k: r.querySelector('span')?.textContent?.trim() || '', v: r.querySelector('b')?.textContent?.trim() || '',
@@ -598,9 +612,16 @@ for (const [dev, vp] of [['десктоп', { width: 1440, height: 900 }], ['т�
 
   Открывать тысячи страниц бессмысленно: генератор чистый и вынесен на
   window, поэтому гоняем его прямо в браузере по всем карточкам разом.
-  Проверяем то, что обещано владельцу: отзывы есть у каждого товара,
-  количество лежит в 1..1000 и реально разбросано, оценки только 3–5,
-  внутри карточки тексты не повторяются.
+  Проверяем то, за что отвечает код: примеры есть у каждого товара,
+  количество на артикул лежит в 1..DEMO_MAX и реально разбросано, оценки
+  только 3–5, внутри карточки тексты не повторяются, а в рейтинг,
+  счётчик отзывов и микроразметку ни одна запись не попадает.
+
+  Про сами записи. На боевом сайте у примера есть вымышленные имя и
+  дата, и признака «демо» на карточке записи нет. Значит, единственное,
+  что отделяет ленту от настоящих отзывов, — пометка над ней. Её и
+  проверяем дословно: пропадёт строка — посетитель примет примеры за
+  отзывы покупателей, и тест обязан на это упасть.
 */
 {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -608,28 +629,20 @@ for (const [dev, vp] of [['десктоп', { width: 1440, height: 900 }], ['т�
   await page.goto(`${BASE}/product/${SLUG}`, { waitUntil: 'networkidle' });
   await page.waitForSelector('#ptabs', { timeout: 15000 });
 
-  /* Боевая витрина флага не ставит — демо-отзывов на ней нет вовсе. */
-  const flagOff = await page.evaluate(() => !window.HB_DEMO_REVIEWS);
-  check('боевая сборка: флаг демо-отзывов выключен', flagOff);
-  const noneByDefault = await page.evaluate(() => document.querySelectorAll('.rev-demo, .demo-block').length);
-  check('боевая сборка: на странице нет ни одного демо-отзыва', noneByDefault === 0, `найдено ${noneByDefault}`);
-  const headHonest = await page.locator('.pmeta').innerText();
-  check('боевая сборка: в шапке нет счётчика демо-отзывов', !/Демо-отзывы/.test(headHonest));
-
   const stat = await page.evaluate(async () => {
-    window.HB_DEMO_REVIEWS = 3;
     const C = window.HBCatalog;
-    const count = window.HB_DEMO_COUNT, gen = window.HB_DEMO_REVIEWS_FOR;
+    const countOne = window.HB_DEMO_COUNT_ONE || window.HB_DEMO_COUNT;
+    const gen = window.HB_DEMO_REVIEWS_FOR;
     const items = C.all();
     const out = {
       total: items.length, without: [], dup: [], badRate: [], empty: [],
       totals: [], hist: { one: 0, small: 0, mid: 0, big: 0 }, byType: {},
     };
     for (const p of items) {
-      const n = count(p);
+      const n = countOne(p);
       out.totals.push(n);
       if (!n) { if (out.without.length < 5) out.without.push(p.id); continue; }
-      out.hist[n === 1 ? 'one' : n < 10 ? 'small' : n < 100 ? 'mid' : 'big'] += 1;
+      out.hist[n === 1 ? 'one' : n < 10 ? 'small' : n < 50 ? 'mid' : 'big'] += 1;
       const d = await C.detail(p.id);
       const got = gen(p, d, 0, 12);
       const texts = got.map((r) => r.text);
@@ -639,47 +652,46 @@ for (const [dev, vp] of [['десктоп', { width: 1440, height: 900 }], ['т�
       out.byType[p.type || '—'] = (out.byType[p.type || '—'] || 0) + 1;
     }
     const live = out.totals.filter(Boolean);
-    out.min = Math.min(...live); out.max = Math.max(...live);
+    out.min = Math.min(...live); out.top = Math.max(...live);
     out.sum = live.reduce((a, b) => a + b, 0);
     return out;
   });
 
+  /* Потолок читаем из самого кода витрины, а не держим второй копией в
+     тесте: разойдутся — и тест начнёт проверять несуществующее число. */
+  const appSrc = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  const DEMO_MAX = Number((appSrc.match(/var DEMO_MAX = (\d+);/) || [])[1]);
+
   check(`демо-отзывы есть у каждого из ${stat.total} товаров каталога`, stat.without.length === 0,
     stat.without.length ? 'без отзывов: ' + stat.without.join(', ') : `типов товара: ${Object.keys(stat.byType).length}`);
-  check('количество в диапазоне 1–1000', stat.min >= 1 && stat.max <= 1000, `от ${stat.min} до ${stat.max}, всего ${stat.sum}`);
-  /* Разброс, а не одно число на весь каталог: должны встречаться и
-     единицы, и десятки, и сотни. */
+  check(`количество на артикул в диапазоне 1–${DEMO_MAX}`, stat.min >= 1 && stat.top <= DEMO_MAX,
+    `от ${stat.min} до ${stat.top}, всего ${stat.sum}`);
+  /* Разброс, а не одно число на весь каталог. */
   const h = stat.hist;
   check('разброс количества реально используется', h.one > 0 && h.small > 0 && h.mid > 0 && h.big > 0,
-    `1 → ${h.one}, 2–9 → ${h.small}, 10–99 → ${h.mid}, 100+ → ${h.big}`);
+    `1 → ${h.one}, 2–9 → ${h.small}, 10–49 → ${h.mid}, 50+ → ${h.big}`);
   check('оценки только 3–5', stat.badRate.length === 0, stat.badRate.join(', '));
   check('внутри карточки тексты не повторяются', stat.dup.length === 0, stat.dup.join(', '));
   check('пустых и обрубленных текстов нет', stat.empty.length === 0, stat.empty.join(', '));
 
-  /*
-    Разметка блока в собранном виде: заголовок, пояснение, значок на
-    каждой записи и порционная загрузка. Флаг ставим руками и
-    перерисовываем страницу — на боевой витрине его нет.
-  */
-  /* Флаг надо объявить до того, как отработает app.js: обычный evaluate
-     после загрузки его уже не застанет, а goto стирает window. */
-  await page.addInitScript(() => { window.HB_DEMO_REVIEWS = 3; });
-  await page.goto(`${BASE}/product/hb-tk-8115bk?tab=reviews`, { waitUntil: 'networkidle' });
+  /* Разметка блока в собранном виде: пометка над лентой и порционная загрузка. */
+  await page.goto(`${BASE}/product/${prod('hb-tk-8115bk')}?tab=reviews`, { waitUntil: 'networkidle' });
   await page.waitForSelector('.demo-block', { timeout: 15000 }).catch(() => {});
   const block = await page.locator('.demo-block').count();
-  check('демо-блок отрисовался', block === 1, `найдено ${block}`);
+  check('лента примеров отрисовалась', block === 1, `найдено ${block}`);
   if (block) {
     const head = await page.locator('.demo-head').innerText();
-    check('крупный заголовок «Демо-отзывы» со счётчиком', /Демо-отзывы/.test(head) && /\d/.test(head), head.split('\n')[0]);
-    check('пояснение под заголовком на месте',
-      /Вымышленные примеры для предпросмотра, не отзывы покупателей/.test(head));
-    const shown = await page.locator('.demo-block .rev-demo').count();
-    const badges = await page.locator('.demo-block .demo-tag').count();
-    check('значок «Демо» стоит на каждой записи', shown > 0 && badges === shown, `записей ${shown}, значков ${badges}`);
-    const rated = await page.locator('.demo-block .demo-rate').count();
-    check('оценка помечена как демонстрационная', rated === shown, `оценок ${rated} на ${shown} записей`);
+    check('над лентой сказано, что это вымышленные примеры',
+      /вымышленных примеров, не отзывов покупателей/.test(head), head.replace(/\n/g, ' ').slice(0, 120));
+    check('сказано, что имена, даты и оценки вымышлены', /Имена, даты и оценки вымышлены/.test(head));
+    check('сказано, что записи не идут в рейтинг и счётчик',
+      /в рейтинг товара и число отзывов они не входят/.test(head));
     check('нумерации «Демонстрационный пример №» больше нет',
       !/Демонстрационный пример №/.test(await page.locator('.demo-block').innerText()));
+    const shown = await page.locator('.demo-block .rev-demo').count();
+    const rated = await page.locator('.demo-block .demo-rate').count();
+    check('у каждой записи есть помеченная оценка', shown > 0 && rated === shown,
+      `записей ${shown}, оценок ${rated}`);
 
     const total = Number(await page.locator('.demo-block').getAttribute('data-total'));
     const before = await page.locator('.demo-block .rev-demo').count();
@@ -690,19 +702,26 @@ for (const [dev, vp] of [['десктоп', { width: 1440, height: 900 }], ['т�
       const after = await page.locator('.demo-block .rev-demo').count();
       check('«Показать ещё» догружает следующую порцию', after > before, `${before} → ${after} из ${total}`);
       const foot = await page.locator('.demo-more').innerText();
-      check('счётчик показанного обновился', new RegExp(String(after)).test(foot.replace(/ /g, ' ')), foot.replace(/\n/g, ' '));
+      check('счётчик показанного обновился', new RegExp(String(after)).test(foot.replace(/\u00a0/g, ' ')), foot.replace(/\n/g, ' '));
     } else {
       check('«Показать ещё» не нужна: записи уместились целиком', true, `всего ${total}`);
     }
   }
 
-  /* Шапка называет демо-отзывы своим именем и не спорит с лентой. */
+  /*
+    Ни одна вымышленная запись не считается отзывом.
+
+    Шапка и сводка берут число из настоящих отзывов, а их нет, — значит
+    ни счётчика, ни звёзд, ни средней оценки на странице быть не должно,
+    сколько бы примеров ни стояло ниже.
+  */
   const headDemo = await page.locator('.pmeta').innerText();
-  check('в шапке стоит «Демо-отзывы: N» и оговорка про настоящие',
-    /Демо-отзывы:\s*[\d  ]+/.test(headDemo) && /настоящих отзывов пока нет/i.test(headDemo),
+  check('в шапке нет счётчика отзывов и оценки', !/\d+\s+отзыв/.test(headDemo) && !/\d,\d/.test(headDemo),
     headDemo.replace(/\n/g, ' ').slice(0, 90));
-  const sum = await page.locator('.rev-sum').innerText();
-  check('сводка по-прежнему говорит, что настоящих отзывов нет', /Настоящих отзывов пока нет/.test(sum));
+  const tabLabel = await page.locator('#tab-reviews').innerText();
+  check('на вкладке «Отзывы» нет числа примеров', !/\d/.test(tabLabel), tabLabel.replace(/\n/g, ' '));
+  const micro = await page.evaluate(() => document.documentElement.innerHTML.includes('aggregateRating'));
+  check('микроразметки с рейтингом нет', micro === false);
 
   /* Форма настоящего отзыва на месте и не тронута. */
   check('форма настоящего отзыва осталась', (await page.locator('#rev-form input[name=email]').count()) === 1);
@@ -743,8 +762,8 @@ if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
 
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await ctx.newPage();
-  await page.goto(`${ART}/index.html#/product/hb-tk-8115bk`, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(() => { location.hash = '#/product/hb-tk-8115bk'; });
+  await page.goto(`${ART}/index.html#/product/${prod('hb-tk-8115bk')}`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate((slug) => { location.hash = '#/product/' + slug; }, prod('hb-tk-8115bk'));
   await page.waitForSelector('#gmain', { timeout: 15000 });
   await page.waitForTimeout(900);
 
@@ -769,14 +788,37 @@ if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
     zoom.open && !zoom.atlas && /4100603160\.jpg$/.test(String(zoom.src)), `src=${zoom.src}, атлас=${zoom.atlas}`);
   check('превью: фразы про 240 пикселей у 300972 нет', !/240/.test(zoom.note), zoom.note.slice(0, 60) || 'оговорки нет');
 
-  /* У соседнего товара без оригинала всё должно остаться как было. */
+  /*
+    Товар, чей полноразмерный файл в артефакт не поместился.
+
+    На сайте снимок есть у 3 339 товаров, а в превью помещается два
+    десятка файлов: остальные обязаны честно откатываться на ячейку
+    атласа, а не показывать пустую рамку. Товар выбираем по факту —
+    берём тот, чьего файла в собранном артефакте нет.
+  */
   await page.keyboard.press('Escape');
-  await page.goto(`${ART}/index.html#/product/hb-tk-8115m`, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(() => { location.hash = '#/product/hb-tk-8115m'; });
-  await page.waitForSelector('#gmain', { timeout: 15000 });
-  await page.waitForTimeout(700);
-  const other = await page.evaluate(() => !!document.querySelector('#gmain .atimg'));
-  check('превью: у товара без оригинала по-прежнему ячейка атласа', other);
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/catalog/index.json'), 'utf8'));
+  const iImg = idx.fields.indexOf('img'), iSlug = idx.fields.indexOf('slug');
+  const missing = idx.rows.find((r) => {
+    const img = String(r[iImg] || '');
+    return /^\/assets\/img\/vtt(-full)?\//.test(img) &&
+      !fs.existsSync(path.join(DIST, img.slice(1)));
+  });
+  if (missing) {
+    const slug = typeof missing[iSlug] === 'string' ? missing[iSlug] : missing[0];
+    await page.goto(`${ART}/index.html#/product/${slug}`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate((s2) => { location.hash = '#/product/' + s2; }, slug);
+    await page.waitForSelector('#gmain', { timeout: 15000 });
+    await page.waitForTimeout(700);
+    const other = await page.evaluate(() => ({
+      atlas: !!document.querySelector('#gmain .atimg'),
+      broken: [...document.querySelectorAll('#gmain img')].some((i) => i.complete && i.naturalWidth === 0),
+    }));
+    check('превью: не поместившийся снимок откатился на ячейку атласа', other.atlas && !other.broken,
+      `${slug}: атлас=${other.atlas}, битых img=${other.broken}`);
+  } else {
+    check('превью: все полноразмерные снимки поместились в артефакт', true);
+  }
 
   await ctx.close();
   art.close();

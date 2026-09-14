@@ -220,6 +220,89 @@ if ($route === 'review') {
     exit;
 }
 
+/* Одно письмо, когда отсутствующий товар снова появится в живых остатках. */
+if ($route === 'stock-alert') {
+    if ($method !== 'POST') {
+        header('Allow: POST');
+        fail(405, 'Подписка отправляется методом POST');
+    }
+    $raw = file_get_contents('php://input', false, null, 0, 2049);
+    if ($raw === false || strlen($raw) > 2048) {
+        fail(413, 'Слишком большой запрос');
+    }
+    $in = json_decode($raw, true);
+    $id = is_array($in) ? (string) ($in['product'] ?? '') : '';
+    $email = is_array($in) ? mb_strtolower(trim((string) ($in['email'] ?? ''))) : '';
+    if (!preg_match('/^[a-z0-9-]{1,160}$/', $id) || strlen($email) > 254 ||
+        !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        fail(422, 'Укажите действующий адрес почты');
+    }
+    $catalogFile = __DIR__ . '/../data/catalog/index.json';
+    $catalog = is_file($catalogFile) ? json_decode((string) file_get_contents($catalogFile), true) : null;
+    $product = null;
+    foreach (($catalog['rows'] ?? []) as $row) {
+        if (is_array($row) && ($row[0] ?? '') === $id) {
+            $product = $row;
+            break;
+        }
+    }
+    if ($product === null) {
+        fail(404, 'Товар не найден');
+    }
+    $liveFile = __DIR__ . '/../live/catalog-live.json';
+    $live = is_file($liveFile) ? json_decode((string) file_get_contents($liveFile), true) : null;
+    $stock = $live['items'][$id]['stock'] ?? null;
+    if ($stock === null) {
+        fail(503, 'Сейчас не можем проверить остаток. Попробуйте позже.');
+    }
+    if ((float) $stock > 0) {
+        fail(409, 'Товар уже в наличии — обновите страницу');
+    }
+    $dir = dirname(__DIR__, 3) . '/hiblack-stock-alerts';
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+        error_log('[hi-black] нет папки подписок');
+        fail(503, 'Не удалось сохранить подписку. Попробуйте позже.');
+    }
+    $ipKey = hash('sha256', (string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    $rateFile = $dir . '/.rate-' . $ipKey;
+    $rate = fopen($rateFile, 'c+');
+    if ($rate === false || !flock($rate, LOCK_EX)) {
+        fail(503, 'Не удалось сохранить подписку. Попробуйте позже.');
+    }
+    $times = json_decode((string) stream_get_contents($rate), true);
+    $times = is_array($times) ? array_values(array_filter($times, static fn ($x) => is_int($x) && $x > time() - 3600)) : [];
+    if (count($times) >= 10) {
+        flock($rate, LOCK_UN);
+        fclose($rate);
+        fail(429, 'Слишком много подписок. Попробуйте через час.');
+    }
+    $times[] = time();
+    ftruncate($rate, 0);
+    rewind($rate);
+    fwrite($rate, json_encode($times));
+    fflush($rate);
+    flock($rate, LOCK_UN);
+    fclose($rate);
+    @chmod($rateFile, 0600);
+    $key = hash('sha256', $id . "\0" . $email);
+    $file = $dir . '/' . $key . '.json';
+    $record = [
+        'product' => $id,
+        'email' => $email,
+        'name' => (string) ($product[2] ?? ''),
+        'slug' => (string) ($product[1] ?? ''),
+        'createdAt' => date('c'),
+        'expiresAt' => time() + 180 * 86400,
+    ];
+    if (!is_file($file) && file_put_contents($file, json_encode($record, JSON_UNESCAPED_UNICODE), LOCK_EX) === false) {
+        error_log('[hi-black] не удалось сохранить подписку');
+        fail(503, 'Не удалось сохранить подписку. Попробуйте позже.');
+    }
+    @chmod($file, 0600);
+    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if ($route !== 'order') {
     fail(404, 'Неизвестный запрос');
 }
@@ -274,6 +357,9 @@ foreach ($items as $item) {
         fail(422, 'Товар ' . mb_substr($id, 0, 40) . ' больше не продаётся, обновите корзину');
     }
     $price = (float) ($prices[$id]['price'] ?? 0);
+    if ($price <= 0 || (float) ($prices[$id]['stock'] ?? 0) <= 0) {
+        fail(422, 'Товар ' . mb_substr($id, 0, 40) . ' сейчас недоступен, обновите корзину');
+    }
     $lines[] = [
         'id' => $id,
         'code' => mb_substr((string) ($item['code'] ?? ''), 0, 64),
@@ -287,6 +373,32 @@ foreach ($items as $item) {
 if (!$lines) {
     fail(422, 'В заказе нет доступных товаров');
 }
+
+/* Промокод и доставку считаем заново по серверным ценам. Итог из браузера
+ * намеренно не принимаем: его можно изменить перед отправкой. */
+$subtotal = $total;
+$promo = strtoupper(trim((string) ($data['promo'] ?? '')));
+if ($promo !== '' && $promo !== 'HIBLACK5') {
+    fail(422, 'Промокод не действует, обновите корзину');
+}
+$discount = 0;
+$runningGross = 0;
+foreach ($lines as &$line) {
+    $runningGross += $line['sum'];
+    $nextDiscount = $promo === 'HIBLACK5' ? (int) round($runningGross * 0.05) : 0;
+    $line['discount'] = $nextDiscount - $discount;
+    $line['gross'] = $line['sum'];
+    $line['sum'] -= $line['discount'];
+    $discount = $nextDiscount;
+}
+unset($line);
+$deliveryMethod = $clean('deliv', 32);
+$deliveryCost = match ($deliveryMethod) {
+    'courier' => 500,
+    'pickup' => 0,
+    default => null, // за МКАД и СДЭК рассчитывает менеджер
+};
+$total = $subtotal - $discount + ($deliveryCost ?? 0);
 
 $config = settings();
 $dir = (string) $config['orders_dir'];
@@ -322,12 +434,16 @@ $order = [
         'biz' => ($customer['biz'] ?? '0') === '1',
     ],
     'delivery' => [
-        'method' => $clean('deliv', 32),
+        'method' => $deliveryMethod,
+        'cost' => $deliveryCost,
         'address' => $clean('address', 300),
         'comment' => $clean('comment', 500),
     ],
     'payment' => $clean('pay', 32),
     'items' => $lines,
+    'subtotal' => $subtotal,
+    'discount' => $discount,
+    'promo' => $promo,
     'total' => $total,
     'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
 ];
@@ -341,8 +457,16 @@ if (file_put_contents($dir . '/' . $number . '.json', json_encode($order, JSON_U
 if ($config['manager_email'] !== '') {
     $text = "Заказ №{$number}\n{$name}, {$phone}" . ($email !== '' ? ", {$email}" : '') . "\n\n";
     foreach ($lines as $l) {
-        $text .= "{$l['code']} — {$l['name']}\n  {$l['qty']} × {$l['price']} = {$l['sum']} ₽\n";
+        $text .= "{$l['code']} — {$l['name']}\n  {$l['qty']} × {$l['price']} = {$l['gross']} ₽";
+        if ($l['discount'] > 0) {
+            $text .= " − {$l['discount']} ₽ (скидка 5%)";
+        }
+        $text .= " = {$l['sum']} ₽\n";
     }
+    if ($discount > 0) {
+        $text .= "\nПромокод {$promo}: −{$discount} ₽\n";
+    }
+    $text .= $deliveryCost === null ? "Доставка: по расчёту менеджера\n" : "Доставка: {$deliveryCost} ₽\n";
     $text .= "\nИтого: {$total} ₽\n";
     @mail(
         (string) $config['manager_email'],

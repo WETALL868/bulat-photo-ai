@@ -15,6 +15,7 @@
 
   var C = window.HBCatalog, ICONS = window.HB_ICONS;
   var app = document.getElementById('app');
+  if (window.HB_DEMO_REVIEWS == null) window.HB_DEMO_REVIEWS = 1;
 
   /* ------------------------------------------------------------- мелочи */
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -22,7 +23,7 @@
   function hash(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
   function ratef(r) { return String(Number(r).toFixed(1)).replace('.', ','); }
   /*
-    ДЕМО-ОТЗЫВЫ ПРЕВЬЮ. Вымышленные тексты, не отзывы покупателей.
+    ДЕМО-ОТЗЫВЫ. Вымышленные примеры, не отзывы покупателей.
 
     Зачем. У поставщика отзывов нет ни одного, и владелец не видит, как
     вкладка выглядит с наполнением: как читается лента, как ведёт себя
@@ -32,38 +33,48 @@
     Что это такое и чем не является. Тексты вымышлены целиком. За ними нет
     ни покупателей, ни заказов, ни опыта эксплуатации. Поэтому:
 
-      • они собираются в браузере и в данные не пишутся: в боевой сборке
-        флага HB_DEMO_REVIEWS нет, и брать их неоткуда;
+      • они собираются в браузере и в данные настоящих отзывов не пишутся;
       • ни одна запись не идёт в рейтинг товара, в счётчик настоящих
         отзывов, в микроразметку и в карту сайта;
-      • пометка стоит трижды: заголовок «Демо-отзывы», пояснение под ним
-        и компактный значок «Демо» на каждой записи;
+      • над всей лентой есть ясная пометка «Вымышленные примеры»,
+        не позволяющая принять записи за отзывы покупателей;
       • в текстах нет имён, нет утверждений о покупке или доставке, нет
         чисел и характеристик, которых нет в выгрузке, и нет обещаний
         вроде «хватит на год» или «дешевле всех».
 
-    Сколько их. Количество выводится из артикула и не меняется между
-    заходами. Распределение логарифмическое: 1000^u при равномерном u даёт
-    и единицы, и сотни, и тысячу — то есть разброс, а не одно число на
-    весь каталог.
+    Сколько их. Для каждого артикула количество 1..100 и не меняется между
+    заходами. У отмеченных на витрине хитов и избранных товаров примеров
+    больше; в объединённой карточке количество складывается по цветам.
 
     Почему тексты не повторяются. Отзыв собирается из слотов (зачин,
     установка, впечатление, оговорка, вывод, факт о позиции). Номер записи
     раскладывается по слотам обратимо: форма фразы берётся с шагом,
     взаимно простым с числом форм, а внутри формы номер разворачивается в
     набор слотов через взаимно простой множитель. Значит, для i от 0 до
-    1000 наборы слотов внутри одной карточки различны по построению, а не
+    100 наборы слотов внутри одной карточки различны по построению, а не
     «скорее всего». Между карточками расходятся и сдвиг, и множитель, и
     сами вплетённые факты — тип, цвет, ресурс, совместимость.
 
     Честная граница. Словари фраз общие для семейства товаров, поэтому два
     цветовых варианта одной серии берут фразы из одного набора: полностью
-    непохожими тысяча текстов на соседних карточках не будет. Насколько
+    непохожими сто текстов на соседних карточках не будет. Насколько
     именно — измеряет tools/audit-demo-reviews.mjs, и число в отчёте
     настоящее, а не «все уникальны».
   */
   var DEMO_PAGE = 8;            /* записей в порции */
-  var DEMO_MAX = 1000;          /* верх диапазона по условию задачи */
+  var DEMO_MAX = 100;
+  var DEMO_NAMES = [
+    'Алексей','Марина','Дмитрий','Ольга','Сергей','Анна','Игорь','Елена',
+    'Андрей','Наталья','Павел','Татьяна','Виктор','Юлия','Михаил','Светлана',
+    'Роман','Ирина','Константин','Екатерина','Владимир','Дарья','Николай','Вера',
+    'Артём','Людмила','Максим','Ксения','Евгений','Алина','Григорий','Полина',
+    'Вадим','Надежда','Олег','Валерия','Тимур','Мария','Денис','Анастасия',
+    'Фёдор','Любовь','Борис','Виктория','Кирилл','Алёна','Степан','Софья',
+    'Руслан','Инна','Пётр','Диана','Илья','Галина','Арсений','Лариса',
+    'Семён','Жанна','Матвей','Нина'
+  ];
+  var DEMO_FEATURED = ['hb-kx-fat410a7', 'hb-tk-1150', 'hb-106r01415', 'hb-tk-1130',
+    't-hi-black-tl-420x-pantum-p3010-', 'hb-cf283a', 'hb-t-1640e', 'hb-tk-160'];
 
   /* Детерминированный шум: один и тот же вход — один и тот же выход. */
   function dnum(seed) { var h = Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
@@ -81,15 +92,37 @@
   function demoKey(p) { return String((p && (p.code || p.id)) || ''); }
 
   /*
-    Сколько демо-отзывов у этой позиции: 1..1000, логарифмически.
-    Равномерный разброс дал бы почти всем карточкам сотни — и малых
-    значений в превью было бы не увидеть.
+    Количество примеров для артикула. Признаки «хит» и «избранное» уже
+    заданы витриной и не выдают себя за статистику заказов.
   */
-  function demoCount(p) {
+  function demoCountOne(p) {
     if (!p || !(Number(window.HB_DEMO_REVIEWS) > 0)) return 0;
     var u = dnum(hash('demo-count:' + demoKey(p)));
-    var n = Math.round(Math.pow(DEMO_MAX, u));
+    var hit = p.badge === 'hit' || DEMO_FEATURED.indexOf(p.id) >= 0;
+    var n = hit ? 45 + Math.round(55 * u)
+      : p.badge === 'sale' ? 15 + Math.round(40 * u)
+      : 1 + Math.round(39 * u * u);
     return Math.max(1, Math.min(DEMO_MAX, n));
+  }
+  var demoGroups = null;
+  function demoMembers(p) {
+    if (!p || !p.fam || !C.count) return p ? [p] : [];
+    if (!demoGroups) {
+      demoGroups = {};
+      C.all().forEach(function (x) {
+        if (x.fam) (demoGroups[x.fam] || (demoGroups[x.fam] = [])).push(x);
+      });
+    }
+    return demoGroups[p.fam] || [p];
+  }
+  function demoCount(p) {
+    return demoMembers(p).reduce(function (sum, x) { return sum + demoCountOne(x); }, 0);
+  }
+  function realStats(p) {
+    var members = demoMembers(p);
+    var total = members.reduce(function (sum, x) { return sum + (Number(x.reviews) || 0); }, 0);
+    var points = members.reduce(function (sum, x) { return sum + (Number(x.reviews) || 0) * (Number(x.rate) || 0); }, 0);
+    return { count: total, rate: total ? Math.round(points / total * 10) / 10 : 0 };
   }
 
   /*
@@ -673,7 +706,7 @@
     на пять звёзд с претензией в тексте читается как подделка.
 
     У самой тесной формы 16 × 16 = 256 сочетаний, а номеров на одну
-    форму приходится не больше 125 (1000 записей на восемь форм). Значит,
+    форму приходится не больше 13 (100 записей на восемь форм). Значит,
     внутри карточки повторов нет по построению, а не по счастливой
     случайности.
   */
@@ -749,21 +782,37 @@
       j = Math.floor(j / pools[q].length);
     }
     var r = dnum(hash('demo-rate:' + ctx.key + ':' + i));
+    var author = demoAuthor(ctx.key, i);
     return {
       demo: true,
       i: i,
       rate: shape.meh ? (r < 0.6 ? 4 : 3) : (r < 0.75 ? 5 : 4),
       text: parts.join(' '),
+      name: author.name,
+      date: author.date,
     };
+  }
+
+  /* Имя и дата — детали демо-макета, не сведения о покупателе.
+     Семейство использует общий порядковый номер: даты различаются даже
+     у отзывов соседних цветов и не меняются при перезагрузке страницы. */
+  function demoAuthor(key, position) {
+    var name = DEMO_NAMES[(hash('demo-name:' + key) + position * 17) % DEMO_NAMES.length];
+    var days = 2 + hash('demo-start:' + key) % 28 + position * 2 +
+      hash('demo-gap:' + key + ':' + position) % 2;
+    var date = new Date(Date.UTC(2026, 8, 13) - days * 86400000);
+    var value = String(date.getUTCDate()).padStart(2, '0') + '.' +
+      String(date.getUTCMonth() + 1).padStart(2, '0') + '.' + date.getUTCFullYear();
+    return { name: name, date: value };
   }
 
   /*
     Порция записей [from, from + n). Ничего не хранится и не строится
-    заранее: тысяча отзывов на карточке — это тысяча номеров, а не тысяча
+    заранее: сто отзывов на карточке — это сто номеров, а не сто
     объектов в памяти.
   */
   function demoReviews(p, d, from, n) {
-    var total = demoCount(p);
+    var total = demoCountOne(p);
     if (!total) return [];
     var ctx = demoCtx(p, d);
     var out = [];
@@ -772,30 +821,56 @@
     return out;
   }
 
-  /*
-    Одна запись в ленте. Ни имени, ни города, ни «покупка подтверждена»:
-    покупателя за ней нет. Значок «Демо» стоит на каждой карточке — на
-    случай, если человек попал сюда по якорю и заголовка блока не видел.
-    Оценка помечена так же и в рейтинг товара не идёт.
-  */
+  /* Общая лента вариантов: записи чередуются по цветам и сохраняют
+     артикул источника. Индекс страницы не зависит от открытого цвета. */
+  function demoGroupReviews(items, details, labels, from, n) {
+    var counts = items.map(demoCountOne);
+    var max = Math.max.apply(null, counts);
+    var contexts = items.map(function (p, i) { return demoCtx(p, details[i]); });
+    var out = [], pos = 0, stop = from + n;
+    for (var slot = 0; slot < max && pos < stop; slot++) {
+      for (var i = 0; i < items.length && pos < stop; i++) {
+        if (slot >= counts[i]) continue;
+        if (pos >= from) {
+          var rv = demoOne(slot, contexts[i]);
+          if (items.length > 1) {
+            var author = demoAuthor(items[0].fam, pos);
+            rv.name = author.name;
+            rv.date = author.date;
+          }
+          rv.productColor = labels[i] || C.colorTitle(items[i].color) || '';
+          if (items.length > 1 && !rv.productColor) rv.productVariant = items[i].code;
+          if (rv.productColor) rv.productCode = items[i].code;
+          out.push(rv);
+        }
+        pos++;
+      }
+    }
+    return out;
+  }
+
+  /* Вымышленный пример: имена, даты и оценки оговорены над всей лентой. */
   function demoCard(rv) {
     return '<article class="rev rev-demo"><div class="rh">' +
-      '<span class="ava ava-demo" aria-hidden="true">Д</span>' +
-      '<span class="demo-tag">Демо</span>' +
-      '<span class="demo-rate" title="Демонстрационная оценка, в рейтинг товара не идёт">' +
-      stars(rv.rate, 14) + '<i>демо-оценка</i></span>' +
+      '<span class="ava ava-demo" aria-hidden="true">' + esc(rv.name.slice(0, 1)) + '</span>' +
+      '<span class="demo-byline"><b>' + esc(rv.name) + '</b><small>' + esc(rv.date) +
+      '</small></span>' +
+      (rv.productColor ? '<span class="demo-tag">Цвет: ' + esc(rv.productColor) +
+        (rv.productCode ? ' · ' + esc(rv.productCode) : '') + '</span>' : '') +
+      (rv.productVariant ? '<span class="demo-tag">Вариант: ' + esc(rv.productVariant) + '</span>' : '') +
+      '<span class="demo-rate" title="Вымышленная оценка, в рейтинг товара не идёт"' +
+      ' aria-label="Вымышленная оценка: ' + rv.rate + ' из 5">' + stars(rv.rate, 14) + '</span>' +
       '</div><p>' + esc(rv.text || '') + '</p></article>';
   }
 
   /*
-    Кнопка порционной загрузки. Шаг удваивается до 64: доводить тысячу
-    записей восьмёрками — это сто двадцать нажатий, а грузить тысячу
+    Кнопка порционной загрузки. Шаг удваивается до 64: объединённое
+    семейство может содержать несколько сотен записей, и грузить их
     сразу незачем ни телефону, ни человеку.
   */
   function demoMore(shown, total) {
     if (shown >= total) {
-      return '<div class="demo-more"><span>Показаны все ' + fmt(total) + ' ' +
-        plural(total, 'демо-отзыв', 'демо-отзыва', 'демо-отзывов') + '</span></div>';
+      return '<div class="demo-more"><span>Всего примеров: ' + fmt(total) + '</span></div>';
     }
     var step = Math.min(64, Math.max(DEMO_PAGE, shown));
     var left = total - shown;
@@ -806,6 +881,7 @@
 
   /* Наружу — чтобы аудит и тесты прогоняли ровно тот же код, что витрина. */
   window.HB_DEMO_COUNT = demoCount;
+  window.HB_DEMO_COUNT_ONE = demoCountOne;
   window.HB_DEMO_REVIEWS_FOR = demoReviews;
 
   function plural(n, a, b, c) { n = Math.abs(n) % 100; var n1 = n % 10; if (n > 10 && n < 20) return c; if (n1 > 1 && n1 < 5) return b; if (n1 === 1) return a; return c; }
@@ -922,14 +998,29 @@
   if (S.view !== 'list') S.view = 'tiles';
   function save() { try { localStorage.setItem('hb-shop', JSON.stringify(S)); } catch (e) { } }
   function cartItems() {
-    return Object.keys(S.cart).map(function (id) { return { p: C.byId(id), q: S.cart[id] }; }).filter(function (x) { return x.p && x.q > 0; });
+    return Object.keys(S.cart).map(function (id) { return { p: C.byId(id), q: S.cart[id] }; }).filter(function (x) { return x.p && x.q > 0 && x.p.price > 0; });
   }
   function cartCount() { return cartItems().reduce(function (a, x) { return a + x.q; }, 0); }
   function cartSum() { return cartItems().reduce(function (a, x) { return a + x.q * x.p.price; }, 0); }
+  /* Скидка распределяется по строкам через накопленный итог. Поэтому
+     суммы строк всегда равны итогу заказа даже при округлении до рубля. */
+  function cartPricing(items) {
+    items = items || cartItems();
+    var gross = 0, discounted = 0, active = S.promo === 'HIBLACK5';
+    var lines = items.map(function (it) {
+      var lineGross = it.q * it.p.price;
+      gross += lineGross;
+      var nextDiscount = active ? Math.round(gross * 0.05) : 0;
+      var lineDiscount = nextDiscount - discounted;
+      discounted = nextDiscount;
+      return { gross: lineGross, discount: lineDiscount, net: lineGross - lineDiscount };
+    });
+    return { gross: gross, discount: discounted, net: gross - discounted, lines: lines };
+  }
   function count(o) { return Object.keys(o).filter(function (k) { return o[k]; }).length; }
   function updateHeader() {
     document.getElementById('cart-n').textContent = cartCount();
-    document.getElementById('cart-sum').textContent = fmt(cartSum()) + ' ₽';
+    document.getElementById('cart-sum').textContent = fmt(cartPricing().net) + ' ₽';
     var f = document.getElementById('fav-n'), c = document.getElementById('cmp-n');
     f.textContent = count(S.fav); f.hidden = !count(S.fav);
     c.textContent = count(S.cmp); c.hidden = !count(S.cmp);
@@ -970,10 +1061,24 @@
     во всех режимах, иначе при равных ценах и рейтингах список тасуется от
     страницы к странице и после смены фильтров.
   */
-  function sortList(l, s) {
+  function sortList(l, s, query) {
     var by = function (f) { return function (a, b) { return f(a, b) || a.row - b.row; }; };
     l = l.slice();
-    if (s === 'price') l.sort(by(function (a, b) { return a.price - b.price; }));
+    if (query && (!s || s === 'relevance')) {
+      var term = String(query).toLowerCase().replace(/[^0-9a-zа-яё]/gi, '');
+      var rank = function (p) {
+        var code = String(p.code || '').toLowerCase().replace(/[^0-9a-zа-яё]/gi, '');
+        if (String(p.no || '') === term || code === term) return 0;
+        if (code.indexOf(term) >= 0) {
+          /* Для совпадающего номера сначала основные картриджи, затем
+             запчасти с таким же номером (например, TK-5230 и TR-5230). */
+          return /^(laser|ink|matrix)$/.test(p.cat) ? 1 : 2;
+        }
+        return 3;
+      };
+      l.sort(by(function (a, b) { return rank(a) - rank(b); }));
+    }
+    else if (s === 'price') l.sort(by(function (a, b) { return a.price - b.price; }));
     else if (s === '-price') l.sort(by(function (a, b) { return b.price - a.price; }));
     else if (s === 'rating') l.sort(by(function (a, b) { return b.rate - a.rate || b.reviews - a.reviews; }));
     else if (s === 'new') l.sort(by(function (a, b) { return hash(b.id) - hash(a.id); }));
@@ -1015,6 +1120,63 @@
     такой товар честно говорит «Цена по запросу» и не продаётся кнопкой.
   */
   function noPrice(p) { return !(p.price > 0); }
+  function stockAlertButton(p, cls) {
+    return '<button class="btn ' + (cls || 'btn-o') + '" type="button" data-stock-alert="' + esc(p.id) +
+      '" aria-label="Уведомить о поступлении: ' + esc(p.name) + '">' +
+      ic('mail', 18) + '<span class="bt">Уведомить о поступлении</span></button>';
+  }
+  var stockAlertModal = null, stockAlertPrev = null;
+  function closeStockAlert() {
+    if (!stockAlertModal || !stockAlertModal.classList.contains('open')) return;
+    stockAlertModal.classList.remove('open');
+    stockAlertModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('noscroll');
+    if (stockAlertPrev && stockAlertPrev.focus) stockAlertPrev.focus();
+  }
+  function openStockAlert(id) {
+    var p = C.byId(id);
+    if (!p) return;
+    if (p.stock) { showToast('Товар уже в наличии — обновите страницу.'); return; }
+    if (!stockAlertModal) {
+      stockAlertModal = document.createElement('div');
+      stockAlertModal.className = 'modal stock-alert-modal';
+      stockAlertModal.setAttribute('aria-hidden', 'true');
+      stockAlertModal.innerHTML = '<div class="modal-bd" data-stock-close></div><div class="modal-w" role="dialog" aria-modal="true" aria-labelledby="stock-alert-title">' +
+        '<button class="modal-x" type="button" data-stock-close aria-label="Закрыть">×</button>' +
+        '<h3 id="stock-alert-title">Уведомить о поступлении</h3>' +
+        '<p id="stock-alert-product"></p>' +
+        '<form id="stock-alert-form"><label class="fld"><span>Электронная почта</span><input type="email" name="email" autocomplete="email" required placeholder="name@example.com"></label>' +
+        '<label class="agree"><input type="checkbox" name="consent" required><span>Согласен(на) получить одно письмо, когда этот товар появится в наличии. Ознакомлен(а) с <a href="' + link.page('privacy') + '">Политикой конфиденциальности</a>.</span></label>' +
+        '<p class="stock-alert-error" role="alert" hidden></p><button class="btn btn-y btn-full" type="submit">Сообщить о поступлении</button></form></div>';
+      document.body.appendChild(stockAlertModal);
+      stockAlertModal.addEventListener('click', function (e) { if (e.target.closest('[data-stock-close]')) closeStockAlert(); });
+      stockAlertModal.querySelector('form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var f = e.target, b = f.querySelector('[type=submit]'), err = f.querySelector('.stock-alert-error');
+        err.hidden = true;
+        if (!f.reportValidity()) return;
+        b.disabled = true; b.textContent = 'Сохраняем…';
+        fetch('/api/stock-alert', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product: f.dataset.product, email: f.elements.email.value.trim() }) })
+          .then(function (r) { return r.json().then(function (j) { if (!r.ok || !j.ok) throw new Error(j.error || 'Не удалось сохранить запрос'); return j; }); })
+          .then(function () { closeStockAlert(); showToast(ic('check', 18) + 'Сообщим на почту, когда товар появится.'); })
+          .catch(function (ex) { err.textContent = ex.message || 'Не удалось сохранить запрос. Попробуйте ещё раз.'; err.hidden = false; })
+          .finally(function () { b.disabled = false; b.textContent = 'Сообщить о поступлении'; });
+      });
+    }
+    stockAlertPrev = document.activeElement;
+    stockAlertModal.querySelector('#stock-alert-product').textContent = p.name + ' · артикул ' + p.code;
+    var f = stockAlertModal.querySelector('form'); f.reset(); f.dataset.product = p.id;
+    f.querySelector('.stock-alert-error').hidden = true;
+    stockAlertModal.classList.add('open'); stockAlertModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('noscroll');
+    f.elements.email.focus();
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-stock-alert]');
+    if (b) { e.preventDefault(); openStockAlert(b.dataset.stockAlert); }
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeStockAlert(); });
 
   /*
     Картинка товара.
@@ -1078,23 +1240,20 @@
     }
     syncBuybar();
   }
-  /*
-    Закреплённая панель показывает то же, что и карточка покупки: сколько штук
-    уйдёт по нажатию и сколько этого товара уже лежит в корзине. Иначе человек,
-    поставивший «3 шт.» наверху, нажимал бы внизу кнопку, не понимая, что
-    добавит три, и не видел бы результата — панель закрывает сам счётчик шапки.
-  */
+  /* В закреплённой панели всегда видны товар, выбранное количество и итог.
+     Она использует то же количество и ту же кнопку покупки, что и карточка. */
   function syncBuybar() {
     var bar = document.getElementById('buybar');
     if (!bar) return;
+    var q = pickedQty();
     var qEl = bar.querySelector('[data-bb-q]');
-    if (qEl) {
-      var q = pickedQty();
-      qEl.hidden = q <= 1;
-      qEl.textContent = q > 1 ? q + ' шт.' : '';
-    }
+    if (qEl) qEl.textContent = q + ' шт.';
+    var totalEl = bar.querySelector('[data-bb-total]');
+    if (totalEl) totalEl.textContent = fmt((+bar.dataset.price || 0) * q) + ' ₽';
     var inEl = bar.querySelector('[data-bb-in]');
     var btn = bar.querySelector('[data-add]');
+    if (btn) btn.setAttribute('aria-label', 'Добавить в корзину: ' + bar.dataset.name +
+      ', ' + q + ' шт. на ' + fmt((+bar.dataset.price || 0) * q) + ' ₽');
     if (inEl && btn) {
       var n = S.cart[btn.dataset.add] || 0;
       inEl.hidden = !n;
@@ -1103,6 +1262,7 @@
   }
   function card(p) {
     var fav = S.fav[p.id] ? ' on' : '', cmp = S.cmp[p.id] ? ' on' : '';
+    var reviewStats = realStats(p);
     return '<div class="card" data-id="' + p.id + '">' +
       '<a class="cmedia" href="' + link.product(p) + '">' + imgHtml(p, { alt: p.name }) + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="cbrand" title="Для принтеров ' + esc(C.brandName(p.brand)) + '">' + brandLogo(p.brand, 16) + '</span></a>' +
       '<div class="cacts"><button class="ibtn fav' + fav + '" type="button" data-fav="' + p.id + '" title="' + (S.fav[p.id] ? 'Убрать из избранного' : 'В избранное') + '" aria-label="' + (S.fav[p.id] ? 'Убрать из избранного' : 'В избранное') + '">' + ic('heart', 18) + '</button></div>' +
@@ -1110,24 +1270,20 @@
       /* Звёзды показываются только там, где за ними есть настоящие
          отзывы. Пустые звёзды рядом с нулём читаются как «оценили на
          ноль», а не как «ещё не оценивали». */
-      (p.reviews > 0
-        ? '<div class="crate">' + stars(p.rate) + '<span>' + ratef(p.rate) + '</span><a href="' + link.product(p, { tab: 'reviews' }) + '"><span class="rn">' + p.reviews + '</span><span class="rw"> ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</span></a></div>'
-        : (demoCount(p)
-          /* То же и в списке: иначе карточка обещает «нет отзывов», а по
-             ссылке открывается лента демо-записей. */
-          ? '<div class="crate crate-demo"><a href="' + link.product(p, { tab: 'reviews' }) + '">Демо-отзывы: ' + fmt(demoCount(p)) + '</a></div>'
-          : '<div class="crate crate-none"><a href="' + link.product(p, { tab: 'reviews' }) + '">Нет отзывов</a></div>')) +
+      (reviewStats.count > 0
+        ? '<div class="crate">' + stars(reviewStats.rate) + '<span>' + ratef(reviewStats.rate) + '</span><a href="' + link.product(p, { tab: 'reviews' }) + '"><span class="rn">' + reviewStats.count + '</span><span class="rw"> ' + plural(reviewStats.count, 'отзыв', 'отзыва', 'отзывов') + '</span></a></div>'
+        : '<div class="crate crate-none"><a href="' + link.product(p, { tab: 'reviews' }) + '">Отзывы</a></div>') +
       '<div class="cspecs">' + specsShort(p) + '</div>' +
-      (p.stock ? '<div class="avail"><i></i>В наличии</div>' : '<div class="avail out"><i></i>Под заказ, 3–5 дней</div>') + '</div>' +
+      (p.stock ? '<div class="avail"><i></i>В наличии</div>' : '<div class="avail out"><i></i>Нет в наличии</div>') + '</div>' +
       /* Цена и кнопки — отдельный блок, а не хвост описания: в виде списком он
          становится третьей колонкой карточки, в плитке просто идёт следом. */
       '<div class="cside"><div class="cfoot">' + priceBlock(p) +
-      (noPrice(p)
+      (!p.stock ? stockAlertButton(p, 'btn-o') : noPrice(p)
         ? '<a class="btn btn-o" href="' + link.page('contacts') + '">' + ic('phone', 18) + 'Запросить</a>'
         : '<button class="btn btn-y" type="button" data-add="' + p.id + '">' + ic('cart', 18) + 'В корзину</button>') + '</div>' +
       /* Иконка в углу карточки читалась как декорация — сравнение получило
          подпись и место в нижнем ряду, рядом с покупкой в один клик. */
-      '<div class="cbot">' + (noPrice(p) ? '<span class="oneclick oneclick-off">Цену уточняет менеджер</span>' : '<button class="oneclick" type="button" data-quick="' + p.id + '" data-qty="1">Купить в 1 клик</button>') +
+      '<div class="cbot">' + (!p.stock ? '<span class="oneclick oneclick-off">Ожидаем поступление</span>' : noPrice(p) ? '<span class="oneclick oneclick-off">Цену уточняет менеджер</span>' : '<button class="oneclick" type="button" data-quick="' + p.id + '" data-qty="1">Купить в 1 клик</button>') +
       '<button class="cmp-b' + cmp + '" type="button" data-cmp="' + p.id + '" aria-pressed="' + !!S.cmp[p.id] + '" title="' + cmpLabel(p.id) + '" aria-label="' + cmpLabel(p.id) + ' — ' + esc(p.name) + '">' +
       ic('compare', 16) + '<span>' + cmpLabel(p.id) + '</span></button></div></div></div>';
   }
@@ -1235,7 +1391,7 @@
     var base = q.q ? C.search(q.q) : Promise.resolve(C.all());
     return base.then(function (source) {
       var all = applyFilters(source, cat, brand, q);
-      var sorted = sortList(all, q.sort);
+      var sorted = sortList(all, q.sort, q.q);
       var pp = +(q.pp || 12), page = +(q.page || 1), acc = q.acc === '1';
       var start = acc ? 0 : (page - 1) * pp, end = page * pp, shown = sorted.slice(start, end);
       var pages = Math.max(1, Math.ceil(sorted.length / pp));
@@ -1273,7 +1429,7 @@
       applyFilters(source, cat, brand, q, 'type').forEach(function (x) { types[x.type] = (types[x.type] || 0) + 1; });
       list(q.type).forEach(function (t) { types[t] = types[t] || 0; });
       var typeF = Object.keys(types).sort().map(function (t) { return chk('type', t, t, list(q.type).indexOf(t) >= 0, types[t]); }).join('');
-      var prices = applyFilters(source, cat, brand, q, 'price').map(function (x) { return x.price; });
+      var prices = applyFilters(source, cat, brand, q, 'price').filter(function (x) { return x.price > 0; }).map(function (x) { return x.price; });
       var pmin = prices.length ? Math.min.apply(null, prices) : 0, pmax = prices.length ? Math.max.apply(null, prices) : 0;
 
       var side = '<aside class="side' + (q.f === '1' ? ' open' : '') + '"><div class="side-head">Фильтры<button type="button" data-close-f aria-label="Закрыть фильтры">' + ic('close', 18) + '</button></div>' + sideCats(cat, brand) +
@@ -1302,9 +1458,9 @@
         return '<a class="chip" href="' + a[1] + '">' + esc(a[0]) + ' ' + ic('close', 14) + '</a>';
       }).join('') + '<a class="clear" href="' + link.catalog(cat) + '">Сбросить всё</a></div>' : '';
 
-      var sortOpts = [['pop', 'По популярности'], ['price', 'Сначала дешевле'], ['-price', 'Сначала дороже'], ['rating', 'По рейтингу'], ['new', 'Новинки']];
-      var toolbar = '<div class="toolbar"><div class="l"><button class="sel mfilterbtn" type="button" data-open-f>' + ic('sliders', 18) + 'Фильтры' + (applied.length ? ' <i class="fn">' + applied.length + '</i>' : '') + '</button><label class="sel sel-sort' + ((q.sort && q.sort !== 'pop') ? ' picked' : '') + '">' + ic('sort', 18) + '<select data-f="sort" aria-label="Сортировка">' + sortOpts.map(function (o) {
-        return '<option value="' + o[0] + '"' + ((q.sort || 'pop') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+      var sortOpts = (q.q ? [['relevance', 'По релевантности']] : []).concat([['pop', 'По популярности'], ['price', 'Сначала дешевле'], ['-price', 'Сначала дороже'], ['rating', 'По рейтингу'], ['new', 'Новинки']]);
+      var toolbar = '<div class="toolbar"><div class="l"><button class="sel mfilterbtn" type="button" data-open-f>' + ic('sliders', 18) + 'Фильтры' + (applied.length ? ' <i class="fn">' + applied.length + '</i>' : '') + '</button><label class="sel sel-sort' + ((q.sort && q.sort !== (q.q ? 'relevance' : 'pop')) ? ' picked' : '') + '">' + ic('sort', 18) + '<select data-f="sort" aria-label="Сортировка">' + sortOpts.map(function (o) {
+        return '<option value="' + o[0] + '"' + ((q.sort || (q.q ? 'relevance' : 'pop')) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
       }).join('') + '</select>' + ic('chev-down', 14) + '</label><label class="sel sel-pp"><select data-f="pp" aria-label="Товаров на странице">' + [12, 24, 48].map(function (n) {
         return '<option value="' + n + '"' + (pp === n ? ' selected' : '') + '>Показывать по ' + n + '</option>';
       }).join('') + '</select>' + ic('chev-down', 14) + '</label></div><div class="r">' +
@@ -1341,9 +1497,11 @@
   function product(r) {
     var p = C.bySlug(r.slug) || C.byId(r.slug);
     if (!p) return notfound();
-    return Promise.all([C.detail(p.id), C.family(p.fam)]).then(function (res) {
-      var d = res[0] || { compat: '', models: [], specs: [], desc: '', reviews: [] };
-      var fam = res[1];
+    return C.family(p.fam).then(function (fam) {
+      var members = fam && fam.items && fam.items.length ? fam.items : [p];
+      return Promise.all(members.map(function (x) { return C.detail(x.id); })).then(function (details) {
+      var d = details[members.findIndex(function (x) { return x.id === p.id; })] ||
+        { compat: '', models: [], specs: [], desc: '', reviews: [] };
       var tab = r.query.tab || 'desc';
       var related = C.all().filter(function (x) { return x.id !== p.id && x.brand === p.brand && x.cat === p.cat; }).slice(0, 4);
       if (related.length < 4) related = related.concat(C.all().filter(function (x) { return x.id !== p.id && x.cat === p.cat && related.indexOf(x) < 0; }).slice(0, 4 - related.length));
@@ -1352,16 +1510,28 @@
         Проверочных записей здесь больше нет: список пуст ровно тогда,
         когда отзывов нет, и карточка так и говорит.
       */
-      var revs = (d.reviews || []).filter(function (r) { return r && !r.demo; });
+      var revs = [];
+      details.forEach(function (detail, i) {
+        (detail && detail.reviews || []).forEach(function (rv) {
+          if (!rv || rv.demo) return;
+          var copy = Object.assign({}, rv);
+          if (members.length > 1) {
+            copy.productColor = (fam.colors || [])[i] || C.colorTitle(members[i].color) || '';
+            if (copy.productColor) copy.productCode = members[i].code;
+            else copy.productVariant = members[i].code;
+          }
+          revs.push(copy);
+        });
+      });
       /*
         Демо и настоящие отзывы живут порознь и складываться не должны.
         Сводка считает только настоящие; демо-отзывы стоят отдельным
         блоком со своим заголовком, счётчиком и порционной загрузкой.
         Сразу отрисовывается первая порция, остальное — по кнопке: на
-        карточке их может быть до тысячи.
+        объединённой карточке их может быть несколько сотен.
       */
-      var demoTotal = demoCount(p);
-      var demoFirst = demoTotal ? demoReviews(p, d, 0, DEMO_PAGE) : [];
+      var demoTotal = members.reduce(function (sum, x) { return sum + demoCountOne(x); }, 0);
+      var demoFirst = demoTotal ? demoGroupReviews(members, details, fam ? fam.colors : [], 0, DEMO_PAGE) : [];
       var revAvg = revs.length ? Math.round(revs.reduce(function (a, r) { return a + (r.rate || 0); }, 0) / revs.length * 10) / 10 : 0;
       var src = p.img;
       /*
@@ -1457,7 +1627,7 @@
         return '<a class="chip" href="' + link.printer(printerKey(p.brand, m)) + '">' + esc(C.brandName(p.brand) + ' ' + m) + '</a>';
       }).join('');
       var tabs = [['desc', 'Описание'], ['specs', 'Характеристики'],
-        ['reviews', 'Отзывы' + (p.reviews > 0 ? ' <i>' + p.reviews + '</i>' : '')],
+        ['reviews', 'Отзывы' + (revs.length ? ' <i>' + revs.length + '</i>' : '')],
         ['delivery', 'Доставка и оплата']];
       var allSpecs = d.specs || [];
       var srow = function (x) { return '<div class="sr"><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b></div>'; };
@@ -1481,21 +1651,9 @@
         '<div class="pgrid"><header class="phead">' +
         '<h1>' + esc(p.name) + '</h1>' +
         '<div class="pmeta">' +
-        (p.reviews > 0
-          ? '<span class="rate">' + stars(p.rate, 16) + '<b>' + ratef(p.rate) + '</b><a href="' + link.product(p, { tab: 'reviews' }) + '" data-tab-link="reviews">' + p.reviews + ' ' + plural(p.reviews, 'отзыв', 'отзыва', 'отзывов') + '</a></span>'
-          /* Ссылка ведёт на вкладку отзывов настоящим адресом, а не
-             «#»: она работает и с клавиатуры, и после обновления
-             страницы, и в новой вкладке. */
-          /*
-            Шапка не спорит с тем, что ниже. Раньше здесь стояло «Пока нет
-            отзывов», а во вкладке лежали сотни видимых демо-записей.
-            Теперь шапка называет их своим именем и тут же говорит, что
-            настоящих отзывов нет.
-          */
-          : (demoCount(p)
-            ? '<span class="rate rate-demo"><a href="' + link.product(p, { tab: 'reviews' }) + '" data-tab-link="reviews">' +
-              'Демо-отзывы: ' + fmt(demoCount(p)) + '</a><i>настоящих отзывов пока нет</i></span>'
-            : '<span class="rate rate-none"><a href="' + link.product(p, { tab: 'reviews' }) + '" data-tab-link="reviews">Пока нет отзывов</a></span>')) +
+        (revs.length
+          ? '<span class="rate">' + stars(revAvg, 16) + '<b>' + ratef(revAvg) + '</b><a href="' + link.product(p, { tab: 'reviews' }) + '" data-tab-link="reviews">' + revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + '</a></span>'
+          : '<span class="rate rate-none"><a href="' + link.product(p, { tab: 'reviews' }) + '" data-tab-link="reviews">Отзывы</a></span>') +
         /* «Код товара» приходит из каталога, а не считается на месте хешем от
            адреса. Прежний способ менял код вместе с адресом: когда с витрины
            убрали повреждённую упаковку, 449 нормальных товаров переехали на
@@ -1527,17 +1685,19 @@
            кнопки, а не после них. */
         '<div class="buy"><div class="prow">' + priceBlock(p) + '<span class="per">за 1 шт.</span></div>' +
         (p.old && p.old > p.price ? '<div class="saveline">' + ic('percent', 16) + 'Скидка ' + fmt(p.old - p.price) + ' ₽ от прежней цены</div>' : '') +
-        (p.stock ? '<div class="avail"><i></i>В наличии на складе в Москве</div><div class="stock">Дату отгрузки подтверждает менеджер</div>' : '<div class="avail out"><i></i>Под заказ</div><div class="stock">Привезём со склада поставщика за 3–5 дней</div>') +
-        (noPrice(p)
+        (p.stock ? '<div class="avail"><i></i>В наличии на складе в Москве</div><div class="stock">Дату отгрузки подтверждает менеджер</div>' : '<div class="avail out"><i></i>Нет в наличии</div><div class="stock">Срок поставки уточняйте у менеджера</div>') +
+        (!p.stock
+          ? '<div class="brow">' + stockAlertButton(p, 'btn-y btn-lg') + '</div>'
+          : noPrice(p)
           ? '<div class="brow"><a class="btn btn-y btn-lg" href="' + link.page('contacts') + '">' + ic('phone', 22) + 'Запросить цену</a></div>' +
             '<div class="stock">Поставщик не передал цену на эту позицию — её подтверждает менеджер.</div>'
           : '<div class="brow"><div class="qty"><button type="button" data-q="-1" aria-label="Меньше" disabled>' + ic('minus', 18) + '</button><span id="pq" data-price="' + p.price + '">1</span><button type="button" data-q="1" aria-label="Больше">' + ic('plus', 18) + '</button></div><button class="btn btn-y btn-lg" type="button" data-add="' + p.id + '" data-useq="1">' + ic('cart', 22) + 'В корзину</button></div>') +
         /* Сумма считается от действующей цены и обновляется на месте: покупателю
            не приходится умножать в уме и гадать, что попадёт в корзину. */
-        (noPrice(p) ? '' : '<div class="qsum" id="qsum" aria-live="polite">Итого за <b data-qs-q>1</b> шт.: <b data-qs-t>' + fmt(p.price) + ' ₽</b></div>') +
+        (!p.stock || noPrice(p) ? '' : '<div class="qsum" id="qsum" aria-live="polite">Итого за <b data-qs-q>1</b> шт.: <b data-qs-t>' + fmt(p.price) + ' ₽</b></div>') +
         /* «Купить в 1 клик» у товара без цены означало бы заказ на сумму,
            которой нет. Кнопки нет — есть запрос цены выше. */
-        (noPrice(p) ? '' : '<button class="btn btn-o btn-full" type="button" data-quick="' + p.id + '">Купить в 1 клик</button>') +
+        (!p.stock || noPrice(p) ? '' : '<button class="btn btn-o btn-full" type="button" data-quick="' + p.id + '">Купить в 1 клик</button>') +
         '<div class="acts"><button type="button" class="' + (S.cmp[p.id] ? 'on' : '') + '" data-cmp="' + p.id + '" aria-pressed="' + !!S.cmp[p.id] + '" title="' + (S.cmp[p.id] ? 'Убрать из сравнения' : 'Добавить к сравнению') + '">' + ic('compare', 16) + (S.cmp[p.id] ? 'В сравнении' : 'В сравнение') + '</button><button type="button" class="' + (S.fav[p.id] ? 'on' : '') + '" data-fav="' + p.id + '">' + ic('heart', 16) + (S.fav[p.id] ? 'В избранном' : 'В избранное') + '</button></div>' +
         '<div class="dlist"><div>' + ic('truck', 18) + '<div><b>Курьер по Москве</b><span>Дату и интервал подтверждает менеджер</span></div></div><div>' + ic('pin', 18) + '<div><b>Самовывоз по предварительному согласованию</b><span>Москва, Ясеневая ул., д. 50</span></div></div><div>' + ic('card', 18) + '<div><b>Оплата картой, СБП или по счёту</b><span>Юрлицам — счёт и закрывающие документы</span></div></div><div>' + ic('shield', 18) + '<div><b>Гарантия ресурса</b><span>Срок указан в карточке и документах</span></div></div></div>' +
         (maxCfg()
@@ -1575,7 +1735,7 @@
           где источник это подтвердил (rv.verified), а не всем подряд.
         */
         '<div data-panel="reviews" id="panel-reviews" role="tabpanel" aria-labelledby="tab-reviews"' + (tab !== 'reviews' ? ' hidden' : '') + '>' +
-        '<div class="rev-grid">' +
+        '<div class="rev-grid' + (!revs.length && demoTotal ? ' examples-only' : '') + '">' +
         (revs.length
           ? '<div class="rev-sum"><div class="big"><b>' + ratef(revAvg) + '</b><span>из 5</span></div>' + stars(revAvg, 20) +
             '<div class="cnt">' + revs.length + ' ' + plural(revs.length, 'отзыв', 'отзыва', 'отзывов') + '</div>' +
@@ -1584,32 +1744,22 @@
               return '<div><span>' + n + '</span><i style="--w:' + Math.round(c / revs.length * 100) + '%"></i><span>' + c + '</span></div>';
             }).join('') + '</div>' +
             '<button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button></div>'
-          : '<div class="rev-sum rev-sum-empty"><div class="rev-none">' + ic('chat', 28) +
-            /* Формулировка держится рядом с демо-блоком: «настоящих» —
-               потому что ниже могут стоять примеры оформления, и без
-               этого слова сводка спорила бы с тем, что видно глазами. */
-            '<b>Настоящих отзывов пока нет</b>' +
-            '<span>Этот товар ещё никто не оценил. Оценки и звёзды появятся, ' +
-            'когда придёт первый отзыв и его проверит модератор.' +
-            (demoTotal ? ' Демо-отзывы ниже отзывами не считаются и в оценку не идут.' : '') +
-            '</span></div>' +
-            '<button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать первым</button></div>') +
+          : (demoTotal ? '' : '<div class="rev-sum rev-sum-empty"><div class="rev-none">' + ic('chat', 28) +
+            '<b>Отзывов пока нет</b>' +
+            '<span>Расскажите о товаре первым — это поможет другим покупателям.</span></div>' +
+            '<button class="btn btn-k btn-full" type="button" data-scroll="#rev-form">Написать отзыв</button></div>')) +
         '<div class="rev-list">' +
         /*
-          Демонстрационные примеры — отдельный блок со своим заголовком и
-          счётчиком, а не записи вперемешку с отзывами. Пометка стоит
-          дважды: на заголовке блока и на каждой карточке, — потому что
-          человек может попасть сюда по якорю и увидеть только одну.
+          Вымышленные примеры идут отдельной лентой. Одно короткое
+          пояснение над ней сообщает происхождение текста, имён и оценок.
         */
         (demoTotal
           ? '<section class="demo-block" data-demo-for="' + esc(p.id) + '"' +
             ' data-shown="' + demoFirst.length + '" data-total="' + demoTotal + '" data-step="' + DEMO_PAGE + '"' +
-            ' aria-label="Демо-отзывы: вымышленные примеры для предпросмотра">' +
-            '<header class="demo-head">' + ic('info', 22) +
-            '<div><h3>Демо-отзывы <span class="demo-n">' + fmt(demoTotal) + '</span></h3>' +
-            '<p>Вымышленные примеры для предпросмотра, не отзывы покупателей. За ними нет ' +
-            'ни людей, ни заказов: тексты составлены автоматически, чтобы показать, как выглядит ' +
-            'заполненная вкладка. В рейтинг товара, счётчик отзывов и микроразметку не идут.</p></div></header>' +
+            ' aria-label="Вымышленные примеры отзывов, не отзывы покупателей">' +
+            '<header class="demo-head"><div><h3>Отзывы</h3>' +
+            '<p>' + fmt(demoTotal) + ' вымышленных примеров, не отзывов покупателей. Имена, даты и оценки вымышлены; ' +
+            'в рейтинг товара и число отзывов они не входят.</p></div></header>' +
             '<div class="demo-items" data-demo-list>' + demoFirst.map(demoCard).join('') + '</div>' +
             demoMore(demoFirst.length, demoTotal) +
             '</section>'
@@ -1618,6 +1768,9 @@
           var name = rv.name || 'Покупатель';
           return '<article class="rev"><div class="rh"><div class="who"><span class="ava">' + esc(name.slice(0, 1)) + '</span><div><b>' + esc(name) + '</b><span>' +
             (rv.city ? esc(rv.city) : '') +
+            (rv.productColor ? (rv.city ? ' · ' : '') + 'Цвет: ' + esc(rv.productColor) +
+              (rv.productCode ? ' · ' + esc(rv.productCode) : '') : '') +
+            (rv.productVariant ? (rv.city ? ' · ' : '') + 'Вариант: ' + esc(rv.productVariant) : '') +
             /* Подтверждение покупки — факт из источника, а не оформление.
                Без подтверждения отметки нет вовсе. */
             (rv.verified ? (rv.city ? ' · ' : '') + '<span class="ver">' + ic('check', 12) + 'Покупка подтверждена</span>' : '') +
@@ -1704,24 +1857,25 @@
            что и штатная, поэтому добавляет тот же товар в том же количестве —
            одна и та же ветка обработчика, без параллельной логики. */
         '<div class="buybar" id="buybar" role="region" aria-hidden="true"' +
-          ' aria-label="Быстрая покупка: ' + esc(p.name) + '">' +
-          '<div class="bp">' + priceBlock(p) +
-            /* Метки стоят рядом с ценой, а не внутри кнопки: обработчик
-               нажатия на 1,4 с подменяет содержимое кнопки на «Добавлено»,
-               и всё, что лежало бы внутри, на это время исчезало бы. */
-            '<div class="bmeta">' +
-              '<span class="bq" data-bb-q hidden></span>' +
-              '<span class="bin" data-bb-in hidden></span>' +
-              (p.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Под заказ, 3–5 дней</span>') +
-            '</div>' +
-          '</div>' +
-          (noPrice(p)
+          ' aria-label="Быстрая покупка: ' + esc(p.name) + '" data-name="' + esc(p.name) +
+          '" data-price="' + (p.price || 0) + '">' +
+          '<div class="bbinfo"><div class="bbproduct">' +
+            '<b class="bbname" title="' + esc(p.name) + '">' + esc(p.name) + '</b>' +
+            (p.code && String(p.code).length <= 32 ? '<span class="bbcode">Артикул: ' + esc(p.code) + '</span>' : '') +
+          '</div><div class="bbterms">' +
+            (p.stock ? '<span>Добавим <b data-bb-q>1 шт.</b></span>' +
+              (noPrice(p) ? '<span>Цена по запросу</span>' : '<span>Итого <b data-bb-total>' + fmt(p.price) + ' ₽</b></span>') : '') +
+            '<span class="bin" data-bb-in hidden></span>' +
+            (p.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Нет в наличии</span>') +
+          '</div></div>' +
+          (!p.stock ? stockAlertButton(p, 'btn-y') : noPrice(p)
             ? '<a class="btn btn-o" href="' + link.page('contacts') + '" aria-label="Запросить цену: ' + esc(p.name) + '">' +
               ic('phone', 18) + '<span class="bt">Запросить цену</span></a>'
             : '<button class="btn btn-y" type="button" data-add="' + p.id + '" data-useq="1"' +
               ' aria-label="Добавить в корзину: ' + esc(p.name) + '">' +
               ic('cart', 18) + '<span class="bt">В корзину</span></button>') +
         '</div></div>';
+      });
     });
   }
 
@@ -1763,8 +1917,8 @@
         '</a>' +
         '<div class="var-b">' +
           '<div class="var-p">' + (x.price > 0 ? fmt(x.price) + ' ₽' : 'Цена по запросу') + '</div>' +
-          '<div class="var-s' + (x.stock ? '' : ' out') + '"><i></i>' + (x.stock ? 'В наличии' : 'Под заказ') + '</div>' +
-          (x.price > 0
+          '<div class="var-s' + (x.stock ? '' : ' out') + '"><i></i>' + (x.stock ? 'В наличии' : 'Нет в наличии') + '</div>' +
+          (!x.stock ? stockAlertButton(x, 'btn-o var-add') : x.price > 0
             ? '<button class="btn btn-y var-add" type="button" data-add="' + x.id + '"' +
               ' aria-label="Добавить в корзину: ' + esc(x.name) + '">' + ic('cart', 16) + 'В корзину</button>'
             : '<a class="btn btn-o var-add" href="' + link.page('contacts') + '">Запросить цену</a>') +
@@ -1774,8 +1928,8 @@
     var missing = fam.items.filter(function (x) { return !x.stock; });
     var note = missing.length
       ? '<p class="vars-note">' + ic('info', 16) + (missing.length === 1
-          ? 'Одного цвета сейчас нет на складе — привезём под заказ за 3–5 дней.'
-          : missing.length + ' ' + plural(missing.length, 'цвета', 'цветов', 'цветов') + ' сейчас нет на складе — привезём под заказ за 3–5 дней.') + '</p>'
+          ? 'Одного цвета сейчас нет на складе — можно запросить уведомление о поступлении.'
+          : missing.length + ' ' + plural(missing.length, 'цвета', 'цветов', 'цветов') + ' сейчас нет на складе — можно запросить уведомление о поступлении.') + '</p>'
       : '';
     /* Кнопка на весь набор появляется, только когда у всех цветов есть
        цена: иначе «весь комплект за N ₽» — сумма не за то, что положат. */
@@ -1820,26 +1974,30 @@
   }
 
   function cart() {
-    var items = cartItems(), n = cartCount(), sum = cartSum(), promo = S.promo === 'HIBLACK5' ? Math.round(sum * 0.05) : 0;
+    var items = cartItems(), n = cartCount(), pricing = cartPricing(items);
+    var sum = pricing.gross, promo = pricing.discount;
+    var unavailable = items.filter(function (it) { return !it.p.stock; });
     if (!items.length) {
       return '<div class="wrap"><div class="ph1">' + crumbs([['Главная', link.home()], ['Корзина', '']]) + '<h1>Корзина</h1></div><div class="empty big"><h3>В корзине пока пусто</h3><p>Подберите картридж по модели принтера или загляните в лучшие предложения.</p><div class="acts"><a class="btn btn-y" href="' + link.plain('finder') + '">Подобрать по принтеру</a><a class="btn btn-o" href="' + link.catalog('') + '">В каталог</a></div></div></div>';
     }
-    var addon = C.all().filter(function (x) { return !S.cart[x.id]; }).slice(0, 3);
-    var rows = items.map(function (it) {
-      var p = it.p;
+    var addon = C.all().filter(function (x) { return !S.cart[x.id] && x.stock && x.price > 0; }).slice(0, 3);
+    var rows = items.map(function (it, index) {
+      var p = it.p, line = pricing.lines[index];
       return '<div class="item"><a class="img" href="' + link.product(p) + '">' + imgHtml(p, {}) + '</a>' +
-        '<div class="ibody"><a class="t" href="' + link.product(p) + '">' + esc(p.name) + '</a><div class="m"><span>Артикул ' + esc(p.code) + '</span>' + (p.res ? '<span>Ресурс ' + fmt(p.res) + ' стр.</span>' : '') + '<span>Для ' + brandLogo(p.brand, 12, '') + '</span>' + (p.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Под заказ</span>') + '</div><div class="u">' + fmt(p.price) + ' ₽ за шт.</div></div>' +
+        '<div class="ibody"><a class="t" href="' + link.product(p) + '">' + esc(p.name) + '</a><div class="m"><span>Артикул ' + esc(p.code) + '</span>' + (p.res ? '<span>Ресурс ' + fmt(p.res) + ' стр.</span>' : '') + '<span>Для ' + brandLogo(p.brand, 12, '') + '</span>' + (p.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Нет в наличии</span>') + '</div><div class="u">' + (promo ? 'До скидки ' : '') + fmt(p.price) + ' ₽ за шт.</div>' + (!p.stock ? stockAlertButton(p, 'btn-o') : '') + '</div>' +
         '<div class="ictl"><div class="qty"><button type="button" data-cq="' + p.id + '" data-d="-1" aria-label="Меньше">' + ic('minus', 18) + '</button><span>' + it.q + '</span><button type="button" data-cq="' + p.id + '" data-d="1" aria-label="Больше">' + ic('plus', 18) + '</button></div>' +
         /* Расчёт строки пишем целиком, включая одну штуку: покупателю не
            приходится держать в голове, откуда взялась сумма. */
-        '<div class="sum"><small class="calc">' + it.q + ' шт. × ' + fmt(p.price) + ' ₽ =</small><div class="price">' + fmt(p.price * it.q) + ' ₽</div></div></div>' +
+        '<div class="sum"><small class="calc">' + it.q + ' шт. × ' + fmt(p.price) + ' ₽ = ' + fmt(line.gross) + ' ₽</small>' +
+        (promo ? '<small class="disc">Скидка 5%: −' + fmt(line.discount) + ' ₽</small><del>' + fmt(line.gross) + ' ₽</del>' : '') +
+        '<div class="price">' + fmt(line.net) + ' ₽</div></div></div>' +
         '<button class="rm" type="button" data-rm="' + p.id + '" aria-label="Удалить">' + ic('trash', 18) + '</button></div>';
     }).join('');
-    return '<div class="wrap"><div class="ph1">' + crumbs([['Главная', link.home()], ['Корзина', '']]) + '<h1>Корзина <span>' + n + ' ' + plural(n, 'товар', 'товара', 'товаров') + ' · ' + fmt(sum) + ' ₽</span></h1>' +
+    return '<div class="wrap"><div class="ph1">' + crumbs([['Главная', link.home()], ['Корзина', '']]) + '<h1>Корзина <span>' + n + ' ' + plural(n, 'товар', 'товара', 'товаров') + ' · ' + fmt(pricing.net) + ' ₽</span></h1>' +
       '<div class="steps"><div class="step on"><i>1</i><span>Корзина</span></div><div class="step"><i>2</i><span>Доставка и оплата</span></div><div class="step"><i>3</i><span>Подтверждение</span></div></div></div>' +
       '<div class="cgrid"><div class="clist"><div class="chead"><span>' + n + ' ' + plural(n, 'товар', 'товара', 'товаров') + '</span><div class="r"><a href="#" data-fav-all>' + ic('heart', 16) + 'Всё в избранное</a><a href="#" data-clear-cart>' + ic('trash', 16) + 'Очистить корзину</a></div></div>' + rows +
       '<div class="cfootr"><form class="promo" id="promo-form"><div class="field"><input type="text" name="promo" placeholder="Промокод" value="' + esc(S.promo || '') + '" aria-label="Промокод"></div><button class="btn btn-o" type="submit">Применить</button>' + (promo ? '<span class="ok">' + ic('check', 16) + 'Скидка 5% применена</span>' : (S.promoErr ? '<span class="err">Промокод не найден</span>' : '<span class="muted xs">Для теста: HIBLACK5</span>')) + '</form><a class="back" href="' + link.catalog('') + '">' + ic('chev-left', 16) + 'Продолжить покупки</a></div></div>' +
-      '<div class="summary"><h3>Ваш заказ</h3><div class="srow"><span>Товары, ' + n + ' шт.</span><b>' + fmt(sum) + ' ₽</b></div><div class="srow"><span>Скидка</span><b>' + (promo ? '−' + fmt(promo) + ' ₽' : '0 ₽') + '</b></div><div class="srow"><span>Доставка</span><b class="soft">рассчитаем на следующем шаге</b></div><div class="srow total"><span>Итого</span><b>' + fmt(sum - promo) + ' ₽</b></div><a class="btn btn-y btn-lg btn-full" href="' + link.plain('checkout') + '">Оформить заказ' + ic('arrow-right', 20) + '</a><div class="payrow"><span>НАЛИЧНЫМИ</span><span>КАРТОЙ КУРЬЕРУ</span><span>ПО СЧЁТУ</span></div><div class="biz">' + ic('building', 20) + '<div><b>Заказ для компании?</b>На следующем шаге выберите «Юридическое лицо» — счёт придёт на почту, документы отдадим с заказом.</div></div><div class="note">Согласия на обработку персональных данных и условия оферты подтверждаются на шаге оформления — отдельными галочками.</div>' +
+      '<div class="summary"><h3>Ваш заказ</h3><div class="srow"><span>Товары, ' + n + ' шт.</span><b>' + fmt(sum) + ' ₽</b></div><div class="srow"><span>Скидка 5%' + (promo ? ' · HIBLACK5' : '') + '</span><b>' + (promo ? '−' + fmt(promo) + ' ₽' : '0 ₽') + '</b></div><div class="srow"><span>Доставка</span><b class="soft">рассчитаем на следующем шаге</b></div><div class="srow total"><span>Итого</span><b>' + fmt(pricing.net) + ' ₽</b></div>' + (unavailable.length ? '<p class="cart-stock-warning">В корзине есть товар без наличия. Удалите его или подпишитесь на уведомление, чтобы оформить остальные товары.</p>' : '<a class="btn btn-y btn-lg btn-full" href="' + link.plain('checkout') + '">Оформить заказ' + ic('arrow-right', 20) + '</a>') + '<div class="payrow"><span>НАЛИЧНЫМИ</span><span>КАРТОЙ КУРЬЕРУ</span><span>ПО СЧЁТУ</span></div><div class="biz">' + ic('building', 20) + '<div><b>Заказ для компании?</b>На следующем шаге выберите «Юридическое лицо» — счёт придёт на почту, документы отдадим с заказом.</div></div><div class="note">Согласия на обработку персональных данных и условия оферты подтверждаются на шаге оформления — отдельными галочками.</div>' +
       maxEl('maxhelp', 'Задать вопрос по заказу в мессенджере MAX, откроется в новой вкладке',
         maxIcon(26) + '<span>Написать в MAX</span>' +
         (maxOn() ? '' : '<i class="maxnote">' + maxPending() + '</i>')) +
@@ -1867,9 +2025,9 @@
   ];
 
   function checkout(r) {
-    if (r.query.quick && C.byId(r.query.quick) && !S.cart[r.query.quick]) { S.cart[r.query.quick] = 1; save(); updateHeader(); }
-    var items = cartItems(), sum = cartSum(), promo = S.promo === 'HIBLACK5' ? Math.round(sum * 0.05) : 0;
-    if (!items.length) return cart();
+    if (r.query.quick && C.byId(r.query.quick) && C.byId(r.query.quick).stock && !S.cart[r.query.quick]) { S.cart[r.query.quick] = 1; save(); updateHeader(); }
+    var items = cartItems(), pricing = cartPricing(items), sum = pricing.gross, promo = pricing.discount;
+    if (!items.length || items.some(function (it) { return !it.p.stock; })) return cart();
     var d = S.co || {}, deliv = d.deliv || 'courier', pay = d.pay || 'cash', biz = d.biz === '1';
     var drow = DEL.filter(function (x) { return x[0] === deliv; })[0] || DEL[0];
     var dcost = drow[3] == null ? 0 : drow[3];
@@ -1889,9 +2047,12 @@
       '<section class="cobox"><h3>3. Оплата</h3><div class="opts">' + PAY.map(function (x) {
         return '<label class="opt' + (pay === x[0] ? ' on' : '') + '"><input type="radio" name="pay" value="' + x[0] + '"' + (pay === x[0] ? ' checked' : '') + '><span class="rd"></span><span class="ot"><b>' + x[1] + '</b><span>' + x[2] + '</span></span></label>';
       }).join('') + '</div><div class="note">Заказ уходит на сервер магазина, оплата в прототипе не проводится.</div></section></div>' +
-      '<div class="summary"><h3>Ваш заказ</h3><div class="colist">' + items.map(function (it) {
-        return '<div class="coi">' + imgHtml(it.p, {}) + '<span>' + esc(it.p.name) + '</span><b>' + it.q + ' × ' + fmt(it.p.price) + ' ₽</b></div>';
-      }).join('') + '</div><div class="srow"><span>Товары</span><b>' + fmt(sum) + ' ₽</b></div>' + (promo ? '<div class="srow"><span>Скидка</span><b>−' + fmt(promo) + ' ₽</b></div>' : '') + '<div class="srow"><span>Доставка</span><b' + (drow[3] == null ? ' class="soft"' : '') + '>' + dtext + '</b></div><div class="srow total"><span>Итого</span><b>' + fmt(sum - promo + dcost) + ' ₽</b></div>' +
+      '<div class="summary"><h3>Ваш заказ</h3><div class="colist">' + items.map(function (it, index) {
+        var line = pricing.lines[index];
+        return '<div class="coi">' + imgHtml(it.p, {}) + '<div class="coi-title"><span>' + esc(it.p.name) + '</span>' +
+          '<small>' + it.q + ' × ' + fmt(it.p.price) + ' ₽' + (promo ? ' · скидка ' + fmt(line.discount) + ' ₽' : '') +
+          '</small></div><b>' + fmt(line.net) + ' ₽</b></div>';
+      }).join('') + '</div><div class="srow"><span>Товары</span><b>' + fmt(sum) + ' ₽</b></div>' + (promo ? '<div class="srow"><span>Скидка 5% · HIBLACK5</span><b>−' + fmt(promo) + ' ₽</b></div>' : '') + '<div class="srow"><span>Доставка</span><b' + (drow[3] == null ? ' class="soft"' : '') + '>' + dtext + '</b></div><div class="srow total"><span>Итого</span><b>' + fmt(pricing.net + dcost) + ' ₽</b></div>' +
       '<div class="agrees" id="agrees">' +
       '<label class="agree"><input type="checkbox" name="agree-pd"><span>Я даю согласие на <a href="' + link.page('pdconsent') + '">обработку персональных данных</a> и ознакомлен(а) с <a href="' + link.page('privacy') + '">Политикой конфиденциальности</a></span></label>' +
       '<label class="agree"><input type="checkbox" name="agree-terms"><span>Я принимаю <a href="' + link.page('terms') + '">Пользовательское соглашение</a> и условия <a href="' + link.page('offer') + '">Публичной оферты</a></span></label>' +
@@ -1919,18 +2080,22 @@
     var items = C.all().filter(function (p) { return S.cmp[p.id]; });
     if (!items.length) return '<div class="wrap"><div class="ph1">' + crumbs([['Главная', link.home()], ['Сравнение', '']]) + '<h1>Сравнение</h1></div><div class="empty big"><h3>Список сравнения пуст</h3><p>Добавьте два-три картриджа кнопкой «Сравнить» на карточке — покажем их характеристики рядом.</p><a class="btn btn-o" href="' + link.catalog('') + '">В каталог</a></div></div>';
     var rows = [
-      ['Цена', function (p) { return '<b class="price" style="font-size:18px">' + fmt(p.price) + ' ₽</b>'; }],
+      ['Цена', function (p) { return '<b class="price" style="font-size:18px">' + (noPrice(p) ? 'Цена по запросу' : fmt(p.price) + ' ₽') + '</b>'; }],
       ['Бренд принтера', function (p) { return brandLogo(p.brand, 16, ''); }],
       ['Ресурс', function (p) { return p.res ? fmt(p.res) + ' стр.' : '—'; }],
       ['Цвет', function (p) { return C.colorTitle(p.color) || '—'; }],
       ['Чип', function (p) { return p.chip === true ? 'Есть' : (p.chip === false ? 'Нет' : '—'); }],
       ['Тип', function (p) { return p.type; }],
       ['Рейтинг', function (p) { return stars(p.rate) + ' ' + ratef(p.rate) + ' · ' + p.reviews; }],
-      ['Наличие', function (p) { return p.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Под заказ</span>'; }],
+      ['Наличие', function (p) { return p.stock ? '<span class="avail"><i></i>В наличии</span>' : '<span class="avail out"><i></i>Нет в наличии</span>'; }],
     ];
     return '<div class="wrap"><div class="ph1">' + crumbs([['Главная', link.home()], ['Сравнение', '']]) + '<h1>Сравнение <span>' + items.length + ' ' + plural(items.length, 'товар', 'товара', 'товаров') + '</span></h1></div>' +
       '<div class="cmp-wrap"><table class="cmp"><thead><tr><th></th>' + items.map(function (p) {
-        return '<th><a href="' + link.product(p) + '">' + imgHtml(p, { alt: p.name }) + '<span>' + esc(p.name) + '</span></a><button class="btn btn-y btn-sm" type="button" data-add="' + p.id + '">В корзину</button><button class="rmc" type="button" data-cmp="' + p.id + '">' + ic('close', 14) + 'Убрать</button></th>';
+        return '<th><a href="' + link.product(p) + '">' + imgHtml(p, { alt: p.name }) + '<span>' + esc(p.name) + '</span></a>' +
+          (!p.stock ? stockAlertButton(p, 'btn-o btn-sm') : noPrice(p)
+            ? '<a class="btn btn-o btn-sm" href="' + link.page('contacts') + '">Запросить цену</a>'
+            : '<button class="btn btn-y btn-sm" type="button" data-add="' + p.id + '">В корзину</button>') +
+          '<button class="rmc" type="button" data-cmp="' + p.id + '">' + ic('close', 14) + 'Убрать</button></th>';
       }).join('') + '</tr></thead><tbody>' + rows.map(function (r) {
         return '<tr><td>' + r[0] + '</td>' + items.map(function (p) { return '<td>' + r[1](p) + '</td>'; }).join('') + '</tr>';
       }).join('') + '</tbody></table></div></div>';
@@ -2256,20 +2421,9 @@
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     var a = e.target.closest('a');
     if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
-    /*
-      Ссылки вкладок карточки обрабатываются ниже по файлу — showTab плюс
-      прокрутка к вкладкам. Этот слушатель объявлен раньше, поэтому без
-      выхода здесь нажатие обрабатывалось дважды: сначала переход с
-      перерисовкой #app, следом showTab и плавная прокрутка. Куда в итоге
-      приезжала страница, решала гонка — успеет ли перерисовка до конца
-      прокрутки. На быстрой машине успевала, и дефекта не было видно; на
-      боевом сайте перерисовка приходила позже и возвращала к началу
-      страницы. Второе нажатие «работало» лишь потому, что адрес уже
-      совпадал с текущим и переход не начинался.
-
-      Адрес при этом не теряется: showTab сам приводит ?tab= в порядок
-      через replaceState, как и кнопки вкладок.
-    */
+    /* Вкладки переключаются своим обработчиком ниже без смены страницы.
+       Иначе первый клик запускает go() и позднюю перерисовку карточки,
+       которая сбивает прокрутку к характеристикам. */
     if (a.hasAttribute('data-spec-jump') || a.hasAttribute('data-tab-link')) return;
     var href = a.getAttribute('href');
     /* tel: и прочие внешние схемы уходят системе нетронутыми: выходим раньше,
@@ -2359,10 +2513,15 @@
   var toast = document.getElementById('toast'), tt;
   function showToast(html) { toast.innerHTML = html; toast.classList.add('show'); clearTimeout(tt); tt = setTimeout(function () { toast.classList.remove('show'); }, 2600); }
   function addToCart(id, q) {
+    var p = C.byId(id);
+    if (!p || !p.stock || noPrice(p)) {
+      showToast('Товара сейчас нет в продаже. Оставьте почту для уведомления о поступлении.');
+      return false;
+    }
     S.cart[id] = (S.cart[id] || 0) + (q || 1);
     save(); updateHeader(); syncBuybar();
-    var p = C.byId(id);
     showToast(ic('check', 18) + '<span>' + esc(p.name.slice(0, 48)) + '… — в корзине</span> <a href="' + link.plain('cart') + '">Перейти в корзину</a>');
+    return true;
   }
 
   document.addEventListener('click', function (e) {
@@ -2370,7 +2529,7 @@
     if (t) {
       var q = 1;
       if (t.dataset.useq) q = pickedQty();
-      addToCart(t.dataset.add, q);
+      if (!addToCart(t.dataset.add, q)) return;
       var old = t.innerHTML; t.classList.add('added'); t.innerHTML = ic('check', 18) + 'Добавлено';
       setTimeout(function () { t.innerHTML = old; t.classList.remove('added'); }, 1400);
       return;
@@ -2433,7 +2592,8 @@
       var famId = t.dataset.kit || t.dataset.kitAll, onlyStock = !!t.dataset.kit;
       C.family(famId).then(function (f) {
         if (!f) return;
-        var add = f.items.filter(function (x) { return onlyStock ? x.stock : true; });
+        var add = f.items.filter(function (x) { return x.stock && x.price > 0; });
+        if (!add.length) { showToast('Цвета сейчас отсутствуют. Запросите уведомление о поступлении.'); return; }
         add.forEach(function (x) { S.cart[x.id] = (S.cart[x.id] || 0) + 1; });
         save(); updateHeader();
         showToast(ic('check', 18) + '<span>В корзине ' + add.length + ' ' + plural(add.length, 'цвет', 'цвета', 'цветов') +
@@ -2587,14 +2747,17 @@
     var item = C.byId(sec.dataset.demoFor);
     if (!item) return;
     btn.disabled = true;
-    C.detail(item.id).then(function (d) {
+    C.family(item.fam).then(function (fam) {
+      var members = fam && fam.items && fam.items.length ? fam.items : [item];
+      return Promise.all(members.map(function (x) { return C.detail(x.id); })).then(function (details) {
       var step = Math.min(64, Math.max(DEMO_PAGE, shown));
-      var next = demoReviews(item, d, shown, step);
+      var next = demoGroupReviews(members, details, fam ? fam.colors : [], shown, step);
       var list = sec.querySelector('[data-demo-list]');
       if (list && next.length) list.insertAdjacentHTML('beforeend', next.map(demoCard).join(''));
       sec.dataset.shown = String(shown + next.length);
       var foot = sec.querySelector('.demo-more');
       if (foot) foot.outerHTML = demoMore(shown + next.length, total);
+      });
     }).catch(function () { btn.disabled = false; });
   });
 
@@ -2620,13 +2783,17 @@
     var err = f.querySelector('.agree-err'); if (err) err.hidden = true;
   });
 
-  /* Заказ уходит на сервер; если сервера нет (статичный просмотр), сохраняем локально. */
+  /* На боевом сайте заказ подтверждается только после ответа сервера. */
   function submitOrder(data, items, total) {
     return fetch('/api/order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customer: data, items: items.map(function (x) { return { id: x.p.id, code: x.p.code, name: x.p.name, price: x.p.price, qty: x.q }; }), total: total }),
-    }).then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); });
+      body: JSON.stringify({ customer: data, items: items.map(function (x) { return { id: x.p.id, code: x.p.code, name: x.p.name, price: x.p.price, qty: x.q }; }), promo: S.promo || '', total: total }),
+    }).then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      .then(function (result) {
+        if (!result || !result.ok || !result.number) throw new Error('Заказ не подтверждён сервером');
+        return result;
+      });
   }
 
   document.addEventListener('submit', function (e) {
@@ -2650,13 +2817,20 @@
     if (f.id === 'co-form') {
       e.preventDefault();
       if (!agreesOk(f, 'Без подтверждения двух обязательных согласий оформить заказ нельзя')) return;
-      var d2 = formData(f), items = cartItems(), total = cartSum();
+      var d2 = formData(f), items = cartItems();
+      var chosen = DEL.filter(function (x) { return x[0] === d2.deliv; })[0] || DEL[0];
+      var total = cartPricing(items).net + (chosen[3] || 0);
       S.co = d2;
       var btn = f.querySelector('button[type=submit]');
+      var was = btn.innerHTML;
       btn.disabled = true; btn.textContent = 'Отправляем…';
       (OFFLINE ? Promise.reject(new Error('offline')) : submitOrder(d2, items, total))
         .then(function (res) { finishOrder(d2, res.number, false); })
-        .catch(function () { finishOrder(d2, 10240 + (S.orders = (S.orders || 0) + 1), true); });
+        .catch(function () {
+          if (OFFLINE) return finishOrder(d2, 10240 + (S.orders = (S.orders || 0) + 1), true);
+          btn.disabled = false; btn.innerHTML = was;
+          showToast('Не удалось отправить заказ. Корзина сохранена — попробуйте ещё раз или позвоните нам.');
+        });
       return;
     }
     if (f.id === 'contact-form') {
@@ -2676,11 +2850,14 @@
       (OFFLINE ? Promise.reject(new Error('offline')) : fetch('/api/callback', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cbody),
       }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }))
-        .catch(function () { return null; })
-        .then(function () {
+        .then(function (res) {
+          if (!res || !res.ok) throw new Error('Обращение не подтверждено сервером');
           cbtn.disabled = false; cbtn.innerHTML = cwas;
           f.reset();
           showToast(ic('check', 18) + '<span>Обращение отправлено. Ответим в рабочее время.</span>');
+        }).catch(function () {
+          cbtn.disabled = false; cbtn.innerHTML = cwas;
+          showToast('Не удалось отправить обращение. Попробуйте ещё раз или позвоните нам.');
         });
       return;
     }
@@ -2842,11 +3019,14 @@
     (OFFLINE ? Promise.reject(new Error('offline')) : fetch('/api/callback', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }))
-      .catch(function () { return null; })
-      .then(function () {
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error('Заявка не подтверждена сервером');
         btn.disabled = false; btn.innerHTML = was;
         f.reset(); cbClose();
         showToast(ic('check', 18) + '<span>Заявка принята. Перезвоним в рабочее время.</span>');
+      }).catch(function () {
+        btn.disabled = false; btn.innerHTML = was;
+        showToast('Не удалось отправить заявку. Попробуйте ещё раз или позвоните нам.');
       });
   });
 
@@ -2857,7 +3037,7 @@
   */
   var qm = document.getElementById('quick'), qPrev = null, qItem = null;
   function qOpen(id, q) {
-    var p = C.byId(id); if (!p || !qm) return;
+    var p = C.byId(id); if (!p || !qm || !p.stock || noPrice(p)) return;
     qItem = { p: p, q: Math.max(1, q | 0) };
     var sum = p.price * qItem.q;
     document.getElementById('q-prod').innerHTML =
@@ -2919,7 +3099,10 @@
     var items = [{ p: qItem.p, q: qItem.q }], total = qItem.p.price * qItem.q;
     (OFFLINE ? Promise.reject(new Error('offline')) : submitOrder(d, items, total))
       .then(function (res) { finishQuick(d, res.number, false); })
-      .catch(function () { finishQuick(d, 10240 + (S.orders = (S.orders || 0) + 1), true); })
+      .catch(function () {
+        if (OFFLINE) return finishQuick(d, 10240 + (S.orders = (S.orders || 0) + 1), true);
+        showToast('Не удалось отправить заказ. Попробуйте ещё раз или позвоните нам.');
+      })
       .then(function () { btn.disabled = false; btn.innerHTML = was; });
   });
   function finishQuick(d, number, offline) {
@@ -3054,7 +3237,7 @@
     if (bbObs) { bbObs.disconnect(); bbObs = null; }
     var bar = document.getElementById('buybar');
     if (!bar) return;
-    var btn = app.querySelector('.buy [data-add]');
+    var btn = app.querySelector('.buy [data-add], .buy [data-stock-alert]');
     if (!btn || btn.disabled || btn.hasAttribute('aria-disabled')) { bar.remove(); return; }
     syncBuybar();
     if (!('IntersectionObserver' in window)) { bar.remove(); return; }

@@ -361,6 +361,46 @@ async function readVttStore(storeRoot) {
   }
 
   /*
+    Полноразмерные снимки поставщика, выложенные на сайт.
+
+    В выгрузке у товара стоит адрес картинки на b2b.vtt.ru. Горячая
+    ссылка туда не годится: она не работает офлайн, зависит от чужого
+    сервера и раскрывает источник. Файлы перенесены к нам в
+    assets/img/vtt-full, а какой снимок какому товару принадлежит,
+    помнит data/vtt-photos.json — по имени файла у поставщика, а не по
+    идентификатору товара: имя файла переживает и переименование
+    карточки, и смену артикула.
+
+    Реестр ведётся руками и сборкой только читается. Пересборка каталога
+    после этого не возвращает адреса b2b.vtt.ru — иначе каждый npm run
+    build уносил бы боевые фотографии обратно на чужой сервер.
+  */
+  const PHOTO_REGISTRY = path.join(ROOT, 'data/vtt-photos.json');
+  if (fs.existsSync(PHOTO_REGISTRY)) {
+    const reg = JSON.parse(fs.readFileSync(PHOTO_REGISTRY, 'utf8'));
+    const dir = String(reg.dir || 'assets/img/vtt-full');
+    const photos = reg.photos || {};
+    let full = 0;
+    const lost = [];
+    for (const p of products) {
+      const name = String(p.img ?? '').split('/').pop();
+      const local = name ? photos[name] : null;
+      if (!local) continue;
+      if (!fs.existsSync(path.join(ROOT, dir, local))) { lost.push(local); continue; }
+      p.imgOriginal = p.img;
+      p.img = '/' + dir + '/' + local;
+      p.srcset = '';
+      p.srcsetAvif = '';
+      p.photoMissing = false;
+      full += 1;
+    }
+    console.log(`  полноразмерных снимков из ${dir}: ${full} из ${Object.keys(photos).length}`);
+    if (lost.length) {
+      console.log(`  ВНИМАНИЕ: в реестре есть, а на диске нет: ${lost.length} (${lost.slice(0, 3).join(', ')})`);
+    }
+  }
+
+  /*
     Оригиналы снимков, положенные рядом вручную.
 
     Этап картинок (vtt:images) складывает свои варианты в манифест, но
@@ -602,17 +642,61 @@ for (const p of products) {
 }
 
 /*
-  Адрес товара. Код производителя не уникален: один и тот же картридж бывает с
-  чипом и без, код у них общий. Поэтому за основу берём идентификатор товара, а
-  совпадения всё равно разводим числовым хвостом — иначе две карточки получат
-  один адрес и одна из них выпадет из предрендера.
+  Адрес товара.
+
+  Адреса уже проиндексированы поисковиками и разосланы покупателям, поэтому
+  их нельзя вычислять заново на каждой сборке: любое изменение правила
+  переименовало бы тысячи страниц разом. Выданные адреса лежат в
+  data/product-slugs.json, сборка их читает и отдаёт товару его собственный
+  адрес, каким бы ни был сегодняшний способ составления.
+
+  Новый товар получает адрес из названия: тип, марка, артикул и бренд
+  совместимой техники. Код производителя не уникален — один и тот же
+  картридж бывает с чипом и без, — поэтому совпадения разводятся сначала
+  пометкой про чип, потом кодом товара, и только в крайнем случае числом.
+
+  Прежние адреса не пропадают: они остаются в aliases и попадают в
+  data/product-redirects.json, откуда api/product-redirect.php отдаёт с них
+  один 301 на действующий адрес.
 */
+const SLUG_REGISTRY = path.join(ROOT, 'data/product-slugs.json');
+const SLUG_REDIRECTS = path.join(ROOT, 'data/product-redirects.json');
+const slugRegistry = fs.existsSync(SLUG_REGISTRY)
+  ? JSON.parse(fs.readFileSync(SLUG_REGISTRY, 'utf8'))
+  : { version: 1, items: {} };
+slugRegistry.items = slugRegistry.items || {};
 const takenSlugs = new Set();
+let slugsMinted = 0;
+for (const rec of Object.values(slugRegistry.items)) {
+  takenSlugs.add(rec.slug);
+  for (const a of rec.aliases || []) takenSlugs.add(a);
+}
+function mintSlug(p) {
+  const brand = slugify(brandName(p.brand) || p.brand || '');
+  const head = [slugify(p.type || ''), 'hi-black', slugify(p.code || p.id), brand]
+    .filter(Boolean).join('-').replace(/-+/g, '-').slice(0, 96).replace(/-+$/, '');
+  const base = head || slugify(p.id || p.code) || 'tovar';
+  /* Хвосты по смыслу, а не по счёту: «-2» в адресе не говорит покупателю
+     ничего, а «с чипом» и код товара отличают карточки друг от друга. */
+  const tails = [null, p.chip ? 's-chipom' : null, p.no ? 'kod-' + p.no : null];
+  for (const t of tails) {
+    const s = t ? base + '-' + t : base;
+    if (!takenSlugs.has(s)) return s;
+  }
+  let n = 2, s = base + '-' + n;
+  while (takenSlugs.has(s)) s = base + '-' + ++n;
+  return s;
+}
 function uniqueSlug(p) {
-  const base = slugify(p.id || p.code) || 'tovar';
-  let s = base, n = 2;
-  while (takenSlugs.has(s)) s = base + '-' + n++;
+  const known = slugRegistry.items[p.id];
+  if (known && known.slug) return known.slug;
+  const s = mintSlug(p);
   takenSlugs.add(s);
+  /* Прежний адрес товара — его идентификатор: с него надо уметь
+     перенаправить, даже если карточка появилась в каталоге только что. */
+  const aliases = slugify(p.id) && slugify(p.id) !== s ? [slugify(p.id)] : [];
+  slugRegistry.items[p.id] = { slug: s, aliases };
+  slugsMinted += 1;
   return s;
 }
 
@@ -1000,10 +1084,15 @@ const categories = cats.map((c) => ({ ...c, img: (fallback.products?.find?.((x) 
 */
 const PLACEHOLDER = '/assets/img/no-photo.svg';
 const localImg = (p) => /^\/assets\/img\//.test(String(p.img ?? '')) && p.img !== PLACEHOLDER;
+/* Отобранный вручную снимок прототипа важнее случайного первого товара
+   раздела: его выбирали под плитку, а не взяли по порядку. Дальше идёт
+   полноразмерное фото поставщика, и только потом ячейка атласа — в ней
+   кадр ужат до 240 пикселей и на плитке это видно. */
+const curated = (p) => /^\/assets\/img\/products\//.test(String(p.img ?? ''));
 const inAtlas = (p) => !!(keptThumbs?.items?.[p.id]);
 for (const c of categories) {
   const pool = products.filter((p) => p.cat === c.id);
-  const byFile = pool.find(localImg);
+  const byFile = pool.find(curated) || pool.find(localImg);
   const byAtlas = pool.find(inAtlas);
   c.img = byFile ? byFile.img : '';
   /* Адрес товара, а не картинки: ячейку в атласе клиент найдёт сам. */
@@ -1060,6 +1149,40 @@ const sizes = {};
 /* Сжатие индекса живёт в отдельном модуле: тем же кодом его разбирает
    предрендер, и формат проверяется тестом на круговой обход. */
 sizes.index = write('data/catalog/index.json', packIndex(FIELDS, rows));
+
+/*
+  Реестр адресов и карта перенаправлений.
+
+  Реестр пополняется только новыми товарами: у выданного адреса ничего не
+  переписывается, поэтому пересборка каталога не может увести страницу с
+  проиндексированного адреса. Карта перенаправлений собирается из aliases
+  целиком — она производная и правится через реестр.
+
+  Файлы пишутся ровно в том виде, в каком лежат на сайте: с отступом и
+  переводом строки в конце, чтобы правка руками давала понятный diff.
+*/
+{
+  const live = new Set(rows.map((r) => r[0]));
+  /* Порядок ключей не трогаем: он сложился при первой выдаче адресов, и
+     любая пересортировка дала бы diff на весь файл вместо добавленных
+     строк. Новые товары просто дописываются в конец. */
+  const items = slugRegistry.items;
+  const gone = Object.keys(items).filter((id) => !live.has(id));
+  slugRegistry.version = slugRegistry.version || 1;
+  fs.writeFileSync(SLUG_REGISTRY, JSON.stringify(slugRegistry, null, 2) + '\n');
+  const redirects = {};
+  for (const [id, rec] of Object.entries(items)) {
+    if (!live.has(id)) continue;
+    for (const a of rec.aliases || []) {
+      if (a && a !== rec.slug) redirects[a] = rec.slug;
+    }
+  }
+  fs.writeFileSync(SLUG_REDIRECTS, JSON.stringify({ version: 1, redirects }, null, 2) + '\n');
+  console.log(`адресов в реестре: ${Object.keys(items).length}` +
+    (slugsMinted ? `, выдано новых: ${slugsMinted}` : ', новых нет') +
+    (gone.length ? `, ушедших с витрины: ${gone.length} (адреса держим занятыми)` : '') +
+    `; перенаправлений: ${Object.keys(redirects).length}`);
+}
 
 /*
   Карта атласов возвращается на место и заново привязывается к

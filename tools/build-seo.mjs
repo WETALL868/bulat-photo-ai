@@ -31,7 +31,7 @@ const OUT = path.join(ROOT, 'seo-pages');
 fs.rmSync(OUT, { recursive: true, force: true });
 const PORT = 8099;
 const BASE = `http://127.0.0.1:${PORT}`;
-const SITE = 'https://hi-black.example';       // боевой домен подставляется здесь
+const SITE = 'https://hiblack-msk.ru';         // боевой домен: тот же, что в .htaccess и robots.txt
 const args = process.argv.slice(2);
 const LIMIT = args.includes('--limit') ? Number(args[args.indexOf('--limit') + 1]) : Infinity;
 const argValue = (name, fallback) => {
