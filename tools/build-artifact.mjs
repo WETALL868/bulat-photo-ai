@@ -41,15 +41,6 @@ const OUT = path.resolve(ROOT, argOf('out', 'dist/artifact'));
    не отвечает». */
 const IMAGE_PROXY = argOf('image-proxy', 'wsrv');
 /*
-  Демонстрационные примеры оформления блока отзывов: --demo-reviews[=1..3].
-
-  Флаг живёт только здесь, в сборке превью, и ничего не пишет в данные —
-  он лишь объявляет window.HB_DEMO_REVIEWS на странице. Примеры собирает
-  браузер из полей карточки (assets/js/app.js, demoExamples), поэтому
-  чанки не растут ни на байт, а в боевой сборке этой строки нет и брать
-  записи неоткуда.
-*/
-/*
   Опыт с оригиналом снимка: --full-image=<адрес товара через запятую>.
 
   В атласе лежит ячейка 240 пикселей — этого мало для основного фото на
@@ -69,18 +60,11 @@ const IMAGE_PROXY = argOf('image-proxy', 'wsrv');
 const FULL_IMAGE = String(argOf('full-image', '') || '')
   .split(',').map((x) => x.trim()).filter(Boolean);
 
-const DEMO_REVIEWS = (() => {
-  const raw = argOf('demo-reviews', null);
-  if (raw === null) return 0;
-  /* Значение флага — только «включено»: сколько записей у карточки,
-     решает её артикул, а не ключ запуска. */
-  return raw === '' || Number(raw) > 0 ? 1 : 0;
-})();
 const MAX_FILES = 255;
 
 /* Собранный каталог можно взять не из репозитория, а из отдельной папки:
-   так превью с демонстрационными записями (--demo-reviews) не требует
-   подменять честные data/catalog, из которых строится предрендер.
+   так превью на экспериментальном каталоге не требует подменять
+   боевые data/catalog, из которых строится предрендер.
    Адреса файлов в самом превью при этом не меняются. */
 const SRC_CATALOG = path.resolve(ROOT, argOf('catalog', 'data/catalog'));
 const SRC_LIVE = path.resolve(ROOT, argOf('live', 'live'));
@@ -201,7 +185,8 @@ for (let i = 0; i < chunkFiles.length; i += GROUP) {
   put(`data/catalog/chunks/detail-${groups}.json`, relativeAssets(JSON.stringify(merged)));
   groups += 1;
 }
-if (stray) throw new Error(`в данных каталога лежат ${stray} демонстрационных записей — их там быть не должно`);
+if (stray) throw new Error(`в данных каталога лежат ${stray} записей с меткой demo — ` +
+  'отзыв на витрине бывает только настоящим и только после модерации');
 meta.chunkSize = (meta.chunkSize ?? 32) * GROUP;
 /* Число чанков тоже пересчитывается: иначе в meta остаётся счёт исходной
    сборки (137 файлов по 32 товара), а рядом лежит 35 файлов по 128. Поле
@@ -374,7 +359,6 @@ html = html
   .replace(
     SCRIPTS,
     '<script>window.HB_DATA_BASE = "./"; window.HB_HASH_ROUTING = true;' +
-    (DEMO_REVIEWS ? ` window.HB_DEMO_REVIEWS = ${DEMO_REVIEWS};` : '') +
     (Object.keys(fullImages).length ? ` window.HB_FULL_IMG = ${JSON.stringify(fullImages)};` : '') +
     '</script>\n<script>\n' + js + '\n</script>',
   );
@@ -398,10 +382,10 @@ const body = (html.match(/<body>([\s\S]*)<\/body>/) || ['', ''])[1];
 */
 /*
   Превью не должно попадать в индекс ни при каких условиях. Это не боевая
-  витрина: здесь может стоять флаг --demo-reviews с примерами оформления
-  вместо отзывов, здесь адреса картинок идут через прокси, а данные
-  собраны для просмотра, а не для покупателя из поиска. Боевые страницы
-  строит tools/build-seo.mjs из data/catalog, и этой строки там нет.
+  витрина: здесь адреса картинок идут через прокси, часть снимков не
+  влезла в лимит файлов, а данные собраны для просмотра, а не для
+  покупателя из поиска. Боевые страницы строит tools/build-seo.mjs из
+  data/catalog, и этой строки там нет.
 */
 const noindex = '<meta name="robots" content="noindex,nofollow">';
 fs.writeFileSync(path.join(OUT, 'index.html'),
@@ -413,12 +397,6 @@ const bytes = published.reduce((a, rel) => a + fs.statSync(path.join(OUT, rel)).
 const page = fs.statSync(path.join(OUT, 'index.html')).size;
 const mb = (n) => (n / 1048576).toFixed(2) + ' МБ';
 console.log(`Превью собрано в ${path.relative(ROOT, OUT)}`);
-if (DEMO_REVIEWS) {
-  console.log('  ДЕМО-ОТЗЫВЫ: включены. Это вымышленные тексты для предпросмотра, не отзывы покупателей.');
-  console.log('  Количество на карточку выводится из артикула (1..1000), записи собираются в браузере');
-  console.log('  порциями. В данные не записаны — чанки не выросли; страница помечена noindex,');
-  console.log('  предрендер и карта сайта строятся из data/catalog и демо-отзывов не содержат.');
-}
 console.log(`  страница ${mb(page)}, файлов рядом ${published.length}, данные ${mb(bytes)}`);
 console.log(`  чанков деталей ${groups} (по ${meta.chunkSize} товаров), картинок ${needed.size}` +
   (atlasFiles ? `, атласов ${atlasFiles}` : ''));

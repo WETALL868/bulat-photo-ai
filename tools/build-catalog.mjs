@@ -31,6 +31,7 @@ import { colorKey, colorTitle, colorRank } from '../vtt/src/colors.mjs';
 import { modelsFromName, parseSupplierNote, buildDescription as vttDescription } from '../vtt/src/publish.mjs';
 import { seriesKey, famKey, FAM_MAX, FAM_MIN_SERIES, variantLabel } from '../vtt/src/family.mjs';
 import { ItemRegistry, stableKey } from './item-registry.mjs';
+import { readReviewQueue, reviewsSummary } from './reviews-store.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CHUNK_SIZE = 32; // товаров в одном файле деталей
@@ -609,77 +610,25 @@ products.sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name, 'ru'));
   на сайт не поедут.
 */
 const REVIEWS_DIR = path.resolve(ROOT, argOf('reviews', 'var/reviews'));
-{
-  /*
-    Очередь модерации. Отзыв кладёт туда api/index.php со статусом
-    pending; на сайт он выходит только со статусом approved, то есть
-    после того, как его прочёл человек. Никакой другой источник записей
-    у витрины не предусмотрен.
-  */
-  const byProduct = new Map();
-  let pending = 0, rejected = 0, orphan = 0, broken = 0;
-  const ids = new Set(products.map((p) => p.id));
-  const files = fs.existsSync(REVIEWS_DIR)
-    ? fs.readdirSync(REVIEWS_DIR).filter((f) => f.endsWith('.json')).sort()
-    : [];
-  for (const f of files) {
-    let rv;
-    try { rv = JSON.parse(fs.readFileSync(path.join(REVIEWS_DIR, f), 'utf8')); }
-    catch { broken += 1; continue; }
-    if (!rv || typeof rv !== 'object') { broken += 1; continue; }
-    if (rv.status === 'rejected') { rejected += 1; continue; }
-    if (rv.status !== 'approved') { pending += 1; continue; }
-    const rate = Number(rv.rate);
-    if (!(rate >= 1 && rate <= 5)) { broken += 1; continue; }
-    const text = String(rv.text ?? '').trim();
-    if (text.length < 20) { broken += 1; continue; }
-    if (!ids.has(rv.product)) { orphan += 1; continue; }
-    /*
-      Наружу уходит только то, что человек написал для чужих глаз.
-      Адрес и IP автора остаются в очереди: это контакт для модератора,
-      а не часть отзыва, и в data/catalog им делать нечего. Поля
-      перечислены поимённо, а не копируются целиком, — тогда новое поле
-      в очереди не утечёт на витрину само собой.
-    */
-    const d = new Date(rv.createdAt);
-    const out = {
-      name: String(rv.name ?? '').trim() || 'Покупатель',
-      rate: Math.round(rate),
-      text,
-      date: Number.isNaN(d.getTime()) ? '' : String(d.getUTCDate()).padStart(2, '0') + '.' +
-        String(d.getUTCMonth() + 1).padStart(2, '0') + '.' + d.getUTCFullYear(),
-      verified: rv.verified === true,
-    };
-    for (const k of ['city', 'printer', 'plus', 'minus']) {
-      const v = String(rv[k] ?? '').trim();
-      if (v) out[k] = v;
-    }
-    const reply = typeof rv.reply === 'string' ? rv.reply.trim() : String(rv.reply?.text ?? '').trim();
-    if (reply) out.reply = reply;
-    if (!byProduct.has(rv.product)) byProduct.set(rv.product, []);
-    byProduct.get(rv.product).push({ ...out, at: d.getTime() || 0 });
-  }
-  for (const p of products) {
-    const list = (byProduct.get(p.id) || []).sort((a, b) => b.at - a.at);
-    p.reviewList = list.map(({ at, ...rest }) => rest);
-    p.reviews = list.length;
-    /*
-      Средняя оценка считается по опубликованным отзывам и по ним же
-      уходит в AggregateRating. Цифра в разметке обязана совпадать с
-      видимой на странице — считаем её один раз и здесь.
-    */
-    p.rate = list.length
-      ? Math.round(list.reduce((a, r) => a + r.rate, 0) / list.length * 10) / 10
-      : 0;
-  }
-  const withReviews = products.filter((p) => p.reviews > 0).length;
-  const total = products.reduce((a, p) => a + p.reviews, 0);
-  console.log(`отзывы: опубликовано ${total} на ${withReviews} товарах` +
-    (pending ? `, ждут модерации ${pending}` : '') +
-    (rejected ? `, отклонено ${rejected}` : '') +
-    (orphan ? `, ОТ УШЕДШИХ ТОВАРОВ ${orphan}` : '') +
-    (broken ? `, НЕ РАЗОБРАНО ${broken}` : '') +
-    (files.length ? '' : ` (очередь ${path.relative(ROOT, REVIEWS_DIR)} пуста)`));
+/*
+  Отзывы живут рядом с ценами, в live/, а не в собранном каталоге.
+
+  Причина та же, по которой там лежат цены: они меняются чаще каталога.
+  Одобрил модератор отзыв — он обязан появиться на сайте сразу, а не
+  после следующей пересборки трёх с половиной тысяч карточек. Поэтому
+  статический каталог отзывов не содержит вовсе (reviewList пуст,
+  счётчик и оценка — нули), а витрина берёт их из live/reviews.json тем
+  же кодом, что цену и наличие.
+
+  Файл пишут двое: эта сборка и api/index.php при модерации. Формат у
+  них общий, и оба берут данные из одной очереди.
+*/
+const liveReviews = readReviewQueue(REVIEWS_DIR, new Set(products.map((p) => p.id)));
+console.log(reviewsSummary(liveReviews, path.relative(ROOT, REVIEWS_DIR)));
+for (const p of products) {
+  p.reviewList = [];
+  p.reviews = 0;
+  p.rate = 0;
 }
 
 /*
@@ -1288,6 +1237,10 @@ sizes.families = write('data/catalog/families.json', families);
 chunks.forEach((c, i) => write(`data/catalog/chunks/detail-${i}.json`, c));
 sizes.chunks = chunks.reduce((a, _, i) => a + fs.statSync(path.join(OUT_CATALOG, `chunks/detail-${i}.json`)).size, 0);
 sizes.live = write('live/catalog-live.json', live);
+/* Отзывы — отдельный маленький файл рядом с ценами: его переписывает
+   ещё и модерация, и переписывать ради одного отзыва весь каталог цен
+   было бы незачем. */
+write('live/reviews.json', { updatedAt: liveReviews.updatedAt, items: liveReviews.items });
 write('live/update-status.json', {
   status: 'ok',
   lastRunAt: now.toISOString(),

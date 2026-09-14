@@ -17,6 +17,10 @@
 
 declare(strict_types=1);
 
+/* Метка «точка входа»: по ней подключаемые части отличают обращение
+   через этот файл от прямого запроса к себе. */
+define('HB_API', true);
+
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
 
@@ -56,6 +60,20 @@ function settings(): array
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', '/');
 $route = preg_replace('#^api/?#', '', $path);
+
+require_once __DIR__ . '/reviews-store.php';
+
+/*
+  Админка живёт отдельным файлом: здесь пароль, сессии и адреса
+  покупателей, и держать это вперемешку с приёмом заказов незачем.
+  Подключается только на своих маршрутах — на обычный заказ её код не
+  исполняется вовсе.
+*/
+if (str_starts_with($route, 'admin/') || $route === 'admin') {
+    $adminRoute = substr($route, 6);
+    require __DIR__ . '/admin.php';
+    exit;
+}
 
 if ($method === 'GET' && $route === 'status') {
     $live = __DIR__ . '/../live/update-status.json';
@@ -172,7 +190,7 @@ if ($route === 'review') {
         fail(422, 'Поставьте оценку от 1 до 5');
     }
     $config = settings();
-    $dir = rtrim((string) $config['orders_dir'], '/') . '/../reviews';
+    $dir = reviews_dir($config);
     if (!is_dir($dir) && !@mkdir($dir, 0770, true) && !is_dir($dir)) {
         error_log('[hi-black] нет папки для отзывов: ' . $dir);
         fail(503, 'Отзыв не приняли. Попробуйте позже.');

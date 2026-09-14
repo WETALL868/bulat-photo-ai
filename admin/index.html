@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Модерация отзывов — Hi-Black</title>
+<link rel="icon" href="/assets/img/favicon.svg">
+<style>
+/*
+  Админка не тащит стили витрины: на 150 КБ ради шести кнопок нет причин,
+  а главное — она не должна ломаться, когда меняется дизайн магазина.
+*/
+:root{
+  --ink:#16181d; --ink2:#3c4049; --muted:#6b7280; --line:#e6e8ec; --line2:#d3d7de;
+  --bg:#f5f6f8; --surface:#fff; --yellow:#ffd84d; --yellow2:#e8c02e;
+  --green:#137a45; --red:#b42318; --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.06);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  -webkit-text-size-adjust:100%}
+a{color:inherit}
+.wrap{max-width:980px;margin:0 auto;padding:24px 16px 64px}
+header.top{background:var(--ink);color:#fff}
+header.top .wrap{display:flex;align-items:center;gap:16px;padding:14px 16px;flex-wrap:wrap}
+header.top b{font-size:17px;letter-spacing:-.01em}
+header.top .sp{flex:1}
+header.top a,header.top button{color:#fff;background:transparent;border:1px solid rgba(255,255,255,.3);
+  border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer;text-decoration:none}
+header.top button:hover,header.top a:hover{background:rgba(255,255,255,.12)}
+h1{font-size:24px;letter-spacing:-.02em;margin:0 0 4px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 20px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+  box-shadow:var(--shadow);padding:18px;margin-bottom:14px}
+label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+input[type=password],input[type=text],textarea{width:100%;padding:10px 12px;border:1px solid var(--line2);
+  border-radius:10px;font:inherit;background:#fff;color:var(--ink)}
+input:focus,textarea:focus{outline:2px solid var(--ink);outline-offset:1px;border-color:transparent}
+textarea{min-height:76px;resize:vertical}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 16px;
+  border-radius:10px;border:1px solid var(--line2);background:#fff;font:inherit;font-weight:600;cursor:pointer}
+.btn:hover{border-color:var(--ink)}
+.btn[disabled]{opacity:.55;cursor:default}
+.btn-y{background:var(--yellow);border-color:var(--yellow2)}
+.btn-ok{background:var(--green);border-color:var(--green);color:#fff}
+.btn-no{background:#fff;border-color:var(--line2);color:var(--red)}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.tabs button{border:1px solid var(--line2);background:#fff;border-radius:999px;padding:7px 14px;
+  font:inherit;font-size:14px;cursor:pointer}
+.tabs button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tabs .n{font-size:12px;opacity:.75;margin-left:6px}
+.rv-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
+.rv-head b{font-size:16px}
+.stars{color:#b7791f;letter-spacing:2px;white-space:nowrap}
+.pill{font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;border:1px solid var(--line2);color:var(--muted)}
+.pill.ok{color:var(--green);border-color:#bfe3cd;background:#f0f9f4}
+.pill.no{color:var(--red);border-color:#f3c9c4;background:#fdf3f2}
+.meta{font-size:13px;color:var(--muted);display:flex;gap:6px 14px;flex-wrap:wrap;margin-bottom:10px}
+.meta code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+.text{white-space:pre-wrap;margin:0 0 12px}
+.reply{border-left:3px solid var(--line2);padding:2px 0 2px 12px;margin:0 0 12px;color:var(--ink2)}
+.reply b{display:block;font-size:13px;margin-bottom:2px}
+.acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.msg{padding:12px 14px;border-radius:10px;margin-bottom:14px;font-size:14px}
+.msg.err{background:#fdf3f2;border:1px solid #f3c9c4;color:var(--red)}
+.msg.ok{background:#f0f9f4;border:1px solid #bfe3cd;color:var(--green)}
+.empty{text-align:center;color:var(--muted);padding:36px 12px}
+.note{font-size:13px;color:var(--muted);line-height:1.55}
+[hidden]{display:none!important}
+@media (max-width:640px){
+  .wrap{padding:16px 12px 56px}
+  h1{font-size:20px}
+  .acts .btn{flex:1 1 calc(50% - 4px)}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <b>Hi-Black · админка</b>
+    <span class="sp"></span>
+    <a href="/" target="_blank" rel="noopener">Открыть сайт</a>
+    <button type="button" id="logout" hidden>Выйти</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="msg" class="msg" role="status" hidden></div>
+
+  <section id="login-view" hidden>
+    <h1>Вход</h1>
+    <p class="sub">Модерация отзывов магазина.</p>
+    <form class="card" id="login-form">
+      <label for="pw">Пароль</label>
+      <input type="password" id="pw" name="password" autocomplete="current-password" required>
+      <p class="note" style="margin:10px 0 14px">
+        Пароль задаётся на сервере, в закрытом файле настроек вне публичной папки.
+        Если вход отвечает «Админка не настроена» — в настройках нет ключа
+        <code>admin_password_hash</code>.
+      </p>
+      <button class="btn btn-y" type="submit">Войти</button>
+    </form>
+  </section>
+
+  <section id="list-view" hidden>
+    <h1>Отзывы</h1>
+    <p class="sub">
+      Отзыв виден на сайте только после одобрения. Решение вступает в силу сразу —
+      пересобирать каталог не нужно.
+    </p>
+    <div class="tabs" id="tabs">
+      <button type="button" data-status="pending" aria-pressed="true">На модерации<span class="n" data-n="pending"></span></button>
+      <button type="button" data-status="approved" aria-pressed="false">Опубликованы<span class="n" data-n="approved"></span></button>
+      <button type="button" data-status="rejected" aria-pressed="false">Отклонены<span class="n" data-n="rejected"></span></button>
+      <button type="button" data-status="all" aria-pressed="false">Все</button>
+    </div>
+    <div id="list"></div>
+  </section>
+</main>
+
+<script src="/admin/admin.js"></script>
+</body>
+</html>

@@ -48,13 +48,27 @@ const cats = read('data/catalog/categories.json');
 const brands = read('data/catalog/brands.json');
 const compat = read('data/catalog/compatibility.json');
 const live = read('live/catalog-live.json');
+/* Отзывы приходят оттуда же, откуда цены: из live/. В собранном
+   каталоге их нет — модерация обновляет маленький файл рядом, а не
+   пересобирает карточки. Файла может не быть, если отзывов ещё не было. */
+const reviews = fs.existsSync(path.join(ROOT, 'live/reviews.json'))
+  ? read('live/reviews.json')
+  : { items: {} };
 const site = read('data/site.json');
 
 const F = Object.fromEntries(meta.fields.map((f, i) => [f, i]));
 /* Индекс лежит сжатым — тем же модулем, что его собрал, он и
    разворачивается: предрендер должен видеть раздел «laser», а не номер
    в словаре. */
-const products = unpackRows(catalog).map((r) => Object.fromEntries(meta.fields.map((f, i) => [f, r[i]])));
+const products = unpackRows(catalog).map((r) => {
+  const p = Object.fromEntries(meta.fields.map((f, i) => [f, r[i]]));
+  /* Те же числа, что увидит покупатель: витрина берёт их из этого файла,
+     и AggregateRating обязан совпасть с видимым на странице. */
+  const rv = reviews.items?.[p.id];
+  p.reviews = rv ? rv.count : 0;
+  p.rate = rv ? rv.rate : 0;
+  return p;
+});
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
@@ -231,7 +245,9 @@ const sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://w
   indexable.map((r) => `<url><loc>${SITE}${r.url}</loc><lastmod>${now}</lastmod><changefreq>${r.url === '/' ? 'daily' : 'weekly'}</changefreq></url>`).join('\n') +
   '\n</urlset>\n';
 fs.writeFileSync(path.join(ROOT, 'sitemap.xml'), sitemap);
-fs.writeFileSync(path.join(ROOT, 'robots.txt'), `User-agent: *\nDisallow: /cart\nDisallow: /checkout\nDisallow: /order\nDisallow: /favorites\nDisallow: /compare\nDisallow: /login\nDisallow: /search\nSitemap: ${SITE}/sitemap.xml\n`);
+/* /admin закрыт паролем, но и в индексе ему делать нечего: страница
+   входа в выдаче — это приглашение подбирать пароль. */
+fs.writeFileSync(path.join(ROOT, 'robots.txt'), `User-agent: *\nDisallow: /admin\nDisallow: /cart\nDisallow: /checkout\nDisallow: /order\nDisallow: /favorites\nDisallow: /compare\nDisallow: /login\nDisallow: /search\nSitemap: ${SITE}/sitemap.xml\n`);
 
 const bytes = routes.reduce((a, r) => a + fs.statSync(path.join(OUT, r.file + '.html')).size, 0);
 console.log(`Собрано страниц: ${routes.length} за ${((Date.now() - t0) / 1000).toFixed(0)} с, ${(bytes / 1024 / 1024).toFixed(1)} МБ`);

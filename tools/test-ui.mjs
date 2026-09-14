@@ -608,126 +608,150 @@ for (const [dev, vp] of [['десктоп', { width: 1440, height: 900 }], ['т�
 }
 
 /*
-  Демо-отзывы — сплошная проверка по всему каталогу.
+  Отзывы: от формы до карточки, через настоящую админку.
 
-  Открывать тысячи страниц бессмысленно: генератор чистый и вынесен на
-  window, поэтому гоняем его прямо в браузере по всем карточкам разом.
-  Проверяем то, за что отвечает код: примеры есть у каждого товара,
-  количество на артикул лежит в 1..DEMO_MAX и реально разбросано, оценки
-  только 3–5, внутри карточки тексты не повторяются, а в рейтинг,
-  счётчик отзывов и микроразметку ни одна запись не попадает.
+  Проверяем не заглушку, а тот код, который поедет на хостинг: dev-сервер
+  проксирует /api/admin/* во встроенный PHP. Если админка на этой машине
+  не настроена (нет api/config-path.php с хешем пароля) — честно
+  пропускаем, а не делаем вид, что проверили.
+*/
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
 
-  Про сами записи. На боевом сайте у примера есть вымышленные имя и
-  дата, и признака «демо» на карточке записи нет. Значит, единственное,
-  что отделяет ленту от настоящих отзывов, — пометка над ней. Её и
-  проверяем дословно: пропадёт строка — посетитель примет примеры за
-  отзывы покупателей, и тест обязан на это упасть.
+  /* Спрашиваем сервер уже со страницы сайта: на about:blank fetch по
+     относительному адресу идти некуда, и проверка «не настроено» была бы
+     ложной. */
+  await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' });
+  const probe = await page.evaluate(async () => {
+    try {
+      const r = await fetch('/api/admin/session', { cache: 'no-store' });
+      return await r.json();
+    } catch (e) { return { error: String(e) }; }
+  });
+
+  if (!probe || probe.configured !== true) {
+    check('админка: проверка пропущена — пароль на этой машине не задан', true,
+      'нужен api/config-path.php с admin_password_hash');
+  } else {
+    const PASSWORD = process.env.HB_ADMIN_PASSWORD || 'dev-parol-dlya-testa';
+    await page.goto(`${BASE}/admin`, { waitUntil: 'networkidle' });
+    check('админка: открывается страница входа', (await page.locator('#login-form').count()) === 1);
+    check('админка: очередь до входа не видна', (await page.locator('#list-view:visible').count()) === 0);
+
+    /* Неверный пароль не должен ни пускать, ни рассказывать почему. */
+    await page.fill('#pw', 'заведомо-неверный');
+    await page.click('#login-form button[type=submit]');
+    await page.waitForTimeout(800);
+    const err = await page.locator('#msg').innerText().catch(() => '');
+    check('админка: неверный пароль отклонён', /неверный пароль/i.test(err), err.slice(0, 60));
+    check('админка: после отказа очередь по-прежнему закрыта',
+      (await page.locator('#list-view:visible').count()) === 0);
+
+    await page.fill('#pw', PASSWORD);
+    await page.click('#login-form button[type=submit]');
+    await page.waitForSelector('#list-view:visible', { timeout: 10000 }).catch(() => {});
+    check('админка: вход по паролю работает', (await page.locator('#list-view:visible').count()) === 1);
+
+    await page.click('[data-status="all"]');
+    await page.waitForTimeout(700);
+    const cards = await page.locator('#list [data-file]').count();
+    check('админка: очередь показана', cards > 0, `записей ${cards}`);
+
+    if (cards > 0) {
+      const first = page.locator('#list [data-file]').first();
+      const file = await first.getAttribute('data-file');
+      const body = await first.innerText();
+      /* Адрес автора модератору нужен — именно по нему он уточняет отзыв
+         и сверяет покупку с заказом. Наружу он не уходит, и это
+         проверяется ниже, на карточке товара. */
+      check('админка: адрес автора виден модератору', /@/.test(body), body.split('\n')[1] || '');
+
+      const before = await page.evaluate(async (base) => {
+        const r = await fetch(base + '/live/reviews.json', { cache: 'no-store' });
+        return r.ok ? Object.keys((await r.json()).items || {}).length : 0;
+      }, BASE);
+
+      const approve = first.locator('button[data-do="approve"]');
+      if (await approve.count()) {
+        await approve.click();
+        await page.waitForTimeout(1200);
+        const after = await page.evaluate(async (base) => {
+          const r = await fetch(base + '/live/reviews.json', { cache: 'no-store' });
+          return r.ok ? await r.json() : { items: {} };
+        }, BASE);
+        const ids = Object.keys(after.items || {});
+        check('админка: одобрение сразу попало в live/reviews.json', ids.length > before,
+          `товаров с отзывами: ${before} → ${ids.length}`);
+
+        const target = ids[0];
+        const listed = after.items[target].list || [];
+        check('в опубликованном отзыве нет адреса автора',
+          !JSON.stringify(listed).includes('@'), JSON.stringify(listed).slice(0, 60));
+
+        /* Самое важное: отзыв виден на сайте без пересборки каталога. */
+        const slug = prod(target);
+        const buyer = await ctx.newPage();
+        await buyer.goto(`${BASE}/product/${slug}?tab=reviews`, { waitUntil: 'networkidle' });
+        await buyer.waitForSelector('#ptabs', { timeout: 15000 });
+        const panel = await buyer.locator('[data-panel="reviews"]').innerText();
+        const meta = await buyer.locator('.pmeta').innerText();
+        check('одобренный отзыв виден на карточке без пересборки',
+          panel.includes(listed[0].text.slice(0, 30)), panel.split('\n')[0]);
+        check('в шапке появились оценка и счётчик', /\d,\d/.test(meta) && /отзыв/.test(meta),
+          meta.replace(/\n/g, ' ').slice(0, 70));
+        check('адрес автора на страницу не попал', !/@[a-z0-9.-]+\.[a-z]{2,}/i.test(panel));
+        await buyer.close();
+
+        /* Возвращаем очередь как было: проверка не должна оставлять
+           одобренный отзыв на витрине. */
+        await page.evaluate(async ([base, f, csrfless]) => {
+          const s = await (await fetch(base + '/api/admin/session', { cache: 'no-store' })).json();
+          await fetch(base + '/api/admin/review', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': s.csrf },
+            body: JSON.stringify({ file: f, action: 'pending' }),
+          });
+        }, [BASE, file, null]);
+        await page.waitForTimeout(600);
+        const restored = await page.evaluate(async (base) => {
+          const r = await fetch(base + '/live/reviews.json', { cache: 'no-store' });
+          return r.ok ? Object.keys((await r.json()).items || {}).length : 0;
+        }, BASE);
+        check('возврат на модерацию убирает отзыв с витрины', restored === before,
+          `товаров с отзывами: ${restored}`);
+      }
+    }
+  }
+  await ctx.close();
+}
+
+/*
+  На витрине не должно остаться ни одной сгенерированной записи.
 */
 {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();
-  await page.goto(`${BASE}/product/${SLUG}`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/product/${SLUG}?tab=reviews`, { waitUntil: 'networkidle' });
   await page.waitForSelector('#ptabs', { timeout: 15000 });
-
-  const stat = await page.evaluate(async () => {
-    const C = window.HBCatalog;
-    const countOne = window.HB_DEMO_COUNT_ONE || window.HB_DEMO_COUNT;
-    const gen = window.HB_DEMO_REVIEWS_FOR;
-    const items = C.all();
-    const out = {
-      total: items.length, without: [], dup: [], badRate: [], empty: [],
-      totals: [], hist: { one: 0, small: 0, mid: 0, big: 0 }, byType: {},
-    };
-    for (const p of items) {
-      const n = countOne(p);
-      out.totals.push(n);
-      if (!n) { if (out.without.length < 5) out.without.push(p.id); continue; }
-      out.hist[n === 1 ? 'one' : n < 10 ? 'small' : n < 50 ? 'mid' : 'big'] += 1;
-      const d = await C.detail(p.id);
-      const got = gen(p, d, 0, 12);
-      const texts = got.map((r) => r.text);
-      if (!texts.length || texts.some((t) => !t || t.length < 20)) { if (out.empty.length < 5) out.empty.push(p.id); }
-      if (new Set(texts).size !== texts.length && out.dup.length < 5) out.dup.push(p.id);
-      for (const r of got) if (![3, 4, 5].includes(r.rate) && out.badRate.length < 5) out.badRate.push(p.id + ': ' + r.rate);
-      out.byType[p.type || '—'] = (out.byType[p.type || '—'] || 0) + 1;
-    }
-    const live = out.totals.filter(Boolean);
-    out.min = Math.min(...live); out.top = Math.max(...live);
-    out.sum = live.reduce((a, b) => a + b, 0);
-    return out;
-  });
-
-  /* Потолок читаем из самого кода витрины, а не держим второй копией в
-     тесте: разойдутся — и тест начнёт проверять несуществующее число. */
-  const appSrc = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
-  const DEMO_MAX = Number((appSrc.match(/var DEMO_MAX = (\d+);/) || [])[1]);
-
-  check(`демо-отзывы есть у каждого из ${stat.total} товаров каталога`, stat.without.length === 0,
-    stat.without.length ? 'без отзывов: ' + stat.without.join(', ') : `типов товара: ${Object.keys(stat.byType).length}`);
-  check(`количество на артикул в диапазоне 1–${DEMO_MAX}`, stat.min >= 1 && stat.top <= DEMO_MAX,
-    `от ${stat.min} до ${stat.top}, всего ${stat.sum}`);
-  /* Разброс, а не одно число на весь каталог. */
-  const h = stat.hist;
-  check('разброс количества реально используется', h.one > 0 && h.small > 0 && h.mid > 0 && h.big > 0,
-    `1 → ${h.one}, 2–9 → ${h.small}, 10–49 → ${h.mid}, 50+ → ${h.big}`);
-  check('оценки только 3–5', stat.badRate.length === 0, stat.badRate.join(', '));
-  check('внутри карточки тексты не повторяются', stat.dup.length === 0, stat.dup.join(', '));
-  check('пустых и обрубленных текстов нет', stat.empty.length === 0, stat.empty.join(', '));
-
-  /* Разметка блока в собранном виде: пометка над лентой и порционная загрузка. */
-  await page.goto(`${BASE}/product/${prod('hb-tk-8115bk')}?tab=reviews`, { waitUntil: 'networkidle' });
-  await page.waitForSelector('.demo-block', { timeout: 15000 }).catch(() => {});
-  const block = await page.locator('.demo-block').count();
-  check('лента примеров отрисовалась', block === 1, `найдено ${block}`);
-  if (block) {
-    const head = await page.locator('.demo-head').innerText();
-    check('над лентой сказано, что это вымышленные примеры',
-      /вымышленных примеров, не отзывов покупателей/.test(head), head.replace(/\n/g, ' ').slice(0, 120));
-    check('сказано, что имена, даты и оценки вымышлены', /Имена, даты и оценки вымышлены/.test(head));
-    check('сказано, что записи не идут в рейтинг и счётчик',
-      /в рейтинг товара и число отзывов они не входят/.test(head));
-    check('нумерации «Демонстрационный пример №» больше нет',
-      !/Демонстрационный пример №/.test(await page.locator('.demo-block').innerText()));
-    const shown = await page.locator('.demo-block .rev-demo').count();
-    const rated = await page.locator('.demo-block .demo-rate').count();
-    check('у каждой записи есть помеченная оценка', shown > 0 && rated === shown,
-      `записей ${shown}, оценок ${rated}`);
-
-    const total = Number(await page.locator('.demo-block').getAttribute('data-total'));
-    const before = await page.locator('.demo-block .rev-demo').count();
-    if (total > before) {
-      await page.locator('[data-demo-more]').click();
-      await page.waitForFunction((n) => document.querySelectorAll('.demo-block .rev-demo').length > n, before, { timeout: 8000 })
-        .catch(() => {});
-      const after = await page.locator('.demo-block .rev-demo').count();
-      check('«Показать ещё» догружает следующую порцию', after > before, `${before} → ${after} из ${total}`);
-      const foot = await page.locator('.demo-more').innerText();
-      check('счётчик показанного обновился', new RegExp(String(after)).test(foot.replace(/\u00a0/g, ' ')), foot.replace(/\n/g, ' '));
-    } else {
-      check('«Показать ещё» не нужна: записи уместились целиком', true, `всего ${total}`);
-    }
-  }
-
-  /*
-    Ни одна вымышленная запись не считается отзывом.
-
-    Шапка и сводка берут число из настоящих отзывов, а их нет, — значит
-    ни счётчика, ни звёзд, ни средней оценки на странице быть не должно,
-    сколько бы примеров ни стояло ниже.
-  */
-  const headDemo = await page.locator('.pmeta').innerText();
-  check('в шапке нет счётчика отзывов и оценки', !/\d+\s+отзыв/.test(headDemo) && !/\d,\d/.test(headDemo),
-    headDemo.replace(/\n/g, ' ').slice(0, 90));
-  const tabLabel = await page.locator('#tab-reviews').innerText();
-  check('на вкладке «Отзывы» нет числа примеров', !/\d/.test(tabLabel), tabLabel.replace(/\n/g, ' '));
-  const micro = await page.evaluate(() => document.documentElement.innerHTML.includes('aggregateRating'));
-  check('микроразметки с рейтингом нет', micro === false);
-
-  /* Форма настоящего отзыва на месте и не тронута. */
+  const panel = await page.locator('[data-panel="reviews"]').innerText();
+  check('вымышленной ленты на карточке нет',
+    !/вымышленных примеров|Демо-отзыв/.test(panel) && (await page.locator('.demo-block').count()) === 0);
+  check('вкладка честно говорит, что отзывов нет', /Отзывов пока нет/.test(panel),
+    panel.split('\n')[0]);
+  const gen = await page.evaluate(() => ({
+    count: typeof window.HB_DEMO_COUNT,
+    flag: typeof window.HB_DEMO_REVIEWS,
+    gen: typeof window.HB_DEMO_REVIEWS_FOR,
+  }));
+  check('генератора вымышленных отзывов в браузере нет',
+    gen.count === 'undefined' && gen.flag === 'undefined' && gen.gen === 'undefined',
+    JSON.stringify(gen));
+  check('микроразметки с рейтингом нет',
+    (await page.evaluate(() => document.documentElement.innerHTML.includes('aggregateRating'))) === false);
   check('форма настоящего отзыва осталась', (await page.locator('#rev-form input[name=email]').count()) === 1);
-  check('оценка в форме по-прежнему не выбрана заранее',
+  check('оценка в форме не выбрана заранее',
     (await page.locator('#rev-form input[name=rate]:checked').count()) === 0);
-
   await ctx.close();
 }
 

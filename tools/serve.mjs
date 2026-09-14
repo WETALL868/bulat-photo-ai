@@ -11,12 +11,20 @@
     неизвестный адрес            seo-pages/404.html со статусом 404
     POST /api/order              приём заказа (в разработке пишем в файл)
     POST /api/review             отзыв на модерацию (пишем в var/reviews)
+    /api/admin/*                 админка — проксируется в настоящий PHP
+    /admin                       страница модерации отзывов
+
+  Админку не подменяем заглушкой: там пароль, сессии и права доступа, и
+  проверять надо тот код, который поедет на хостинг. Если php в системе
+  нет, запросы к админке честно отвечают 503, а витрина работает как
+  работала.
 
   Запуск: node tools/serve.mjs [порт]
 */
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,9 +49,58 @@ function safeJoin(base, p) {
   return full.startsWith(base) ? full : null;
 }
 
+/*
+  Встроенный сервер PHP поднимается рядом и получает запросы админки.
+  Порт нулевой не умеет, поэтому берём соседний с нашим.
+*/
+const PHP_PORT = PORT + 1;
+const hasPhp = spawnSync('php', ['--version'], { stdio: 'ignore' }).status === 0;
+let php = null;
+if (hasPhp) {
+  php = spawn('php', ['-S', `127.0.0.1:${PHP_PORT}`, '-t', ROOT, path.join(ROOT, 'tools/php-router.php')],
+    { cwd: ROOT, stdio: 'ignore' });
+  php.on('error', () => { php = null; });
+  process.on('exit', () => { if (php) php.kill(); });
+}
+
+function proxyToPhp(req, res, pathname, search) {
+  if (!php) {
+    return send(res, 503, JSON.stringify({ ok: false, error: 'Для админки нужен php в системе' }), TYPES['.json']);
+  }
+  const chunks = [];
+  req.on('data', (c) => { chunks.push(c); });
+  req.on('end', () => {
+    const body = Buffer.concat(chunks);
+    const headers = Object.assign({}, req.headers, { host: `127.0.0.1:${PHP_PORT}` });
+    delete headers['accept-encoding'];
+    if (body.length) headers['content-length'] = String(body.length);
+    const up = http.request({
+      host: '127.0.0.1', port: PHP_PORT, method: req.method,
+      path: pathname + search, headers,
+    }, (r) => {
+      res.writeHead(r.statusCode || 500, r.headers);
+      r.pipe(res);
+    });
+    up.on('error', (e) => {
+      send(res, 502, JSON.stringify({ ok: false, error: 'PHP не ответил: ' + e.message }), TYPES['.json']);
+    });
+    if (body.length) up.write(body);
+    up.end();
+  });
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const pathname = url.pathname;
+
+  /* Админка — настоящий PHP, а не заглушка. */
+  if (pathname === '/api/admin' || pathname.startsWith('/api/admin/')) {
+    return proxyToPhp(req, res, pathname, url.search);
+  }
+  if (pathname === '/admin' || pathname === '/admin/') {
+    const file = path.join(ROOT, 'admin/index.html');
+    return send(res, 200, fs.readFileSync(file), TYPES['.html'], { 'X-Robots-Tag': 'noindex, nofollow' });
+  }
 
   if (req.method === 'POST' && pathname === '/api/order') {
     let body = '';

@@ -21,12 +21,19 @@
     node tools/reviews.mjs reply <файл> <текст>  ответ магазина
     node tools/reviews.mjs stats               сводка по товарам
 
+    node tools/reviews.mjs publish             пересобрать live/reviews.json
+
   <файл> — имя файла в очереди; хватает начала, если оно однозначно.
-  После одобрения нужна пересборка: npm run build.
+  Решение вступает в силу сразу: инструмент переписывает live/reviews.json,
+  и витрина берёт отзыв при следующей загрузке страницы. Пересобирать
+  каталог не нужно — он отзывов не содержит вовсе.
+
+  То же самое делает админка на сайте: /admin, вход по паролю.
 */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readReviewQueue, reviewsSummary, writeLiveReviews } from './reviews-store.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -63,6 +70,27 @@ function pick(prefix) {
   return hit[0];
 }
 
+/*
+  Публикация. Решение вступает в силу сразу: переписывается
+  live/reviews.json — тот же файл, что обновляет админка, и витрина
+  читает его при следующей загрузке страницы. Пересобирать каталог из-за
+  одного отзыва незачем.
+
+  Идентификаторы товаров берём из собранного каталога: отзыв об ушедшей
+  с витрины позиции публиковать некуда.
+*/
+function publish() {
+  const idxFile = path.join(ROOT, 'data/catalog/index.json');
+  let ids = null;
+  if (fs.existsSync(idxFile)) {
+    const idx = JSON.parse(fs.readFileSync(idxFile, 'utf8'));
+    ids = new Set((idx.rows || []).map((r) => String(r[0])));
+  }
+  const result = readReviewQueue(DIR, ids);
+  writeLiveReviews(path.join(ROOT, 'live/reviews.json'), result);
+  console.log('  ' + reviewsSummary(result, path.relative(ROOT, DIR)));
+}
+
 function setStatus(f, status, note) {
   const rv = load(f);
   if (rv.status === status) { console.log(`Уже ${status}: ${f}`); return; }
@@ -71,7 +99,7 @@ function setStatus(f, status, note) {
   if (note) rv.moderatorNote = note;
   save(f, rv);
   console.log(`${MARK[status]} ${status}: ${rv.product} — ${rv.name}, ${rv.rate}/5`);
-  if (status === 'approved') console.log('  На сайт выйдет после пересборки: npm run build');
+  publish();
 }
 
 if (cmd === 'list') {
@@ -110,6 +138,7 @@ if (cmd === 'list') {
   rv.verified = true;
   save(f, rv);
   console.log(`✓ покупка подтверждена: ${rv.product} — ${rv.name}`);
+  publish();
 } else if (cmd === 'reply') {
   const f = pick(args[1]);
   const text = args.slice(2).join(' ').trim();
@@ -118,6 +147,9 @@ if (cmd === 'list') {
   rv.reply = text;
   save(f, rv);
   console.log(`ответ магазина записан: ${rv.product}`);
+  publish();
+} else if (cmd === 'publish') {
+  publish();
 } else if (cmd === 'stats') {
   const by = new Map();
   let pending = 0, rejected = 0;
@@ -136,6 +168,6 @@ if (cmd === 'list') {
   console.log(`\nопубликовано ${rows.reduce((a, r) => a + r[1].length, 0)} на ${rows.length} товарах` +
     `, ждут модерации ${pending}, отклонено ${rejected}`);
 } else {
-  console.error(`Неизвестная команда «${cmd}». Команды: list, show, approve, reject, verify, reply, stats.`);
+  console.error(`Неизвестная команда «${cmd}». Команды: list, show, approve, reject, verify, reply, publish, stats.`);
   process.exit(1);
 }

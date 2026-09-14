@@ -120,6 +120,12 @@
     p.old = l.old || 0;
     p.stock = !!l.available;
     p.chip = p.chip === null ? null : !!p.chip;
+    /* Счётчик и средняя оценка приходят оттуда же, откуда и цена: из
+       live. В собранном каталоге они всегда нули, иначе одобренный
+       отзыв ждал бы пересборки, чтобы попасть в звёзды и в сортировку. */
+    var rv = (state.reviews && state.reviews[p.id]) || null;
+    p.reviews = rv ? rv.count : 0;
+    p.rate = rv ? rv.rate : 0;
     return p;
   }
 
@@ -222,6 +228,10 @@
         json(BASE + 'brands.json'),
         json('/live/catalog-live.json'),
         json('/data/site.json'),
+        /* Отзывы лежат рядом с ценами и обновляются модерацией, без
+           пересборки каталога. Файла может не быть вовсе — на витрине,
+           собранной до первого отзыва, — и это не ошибка загрузки. */
+        json('/live/reviews.json').catch(function () { return { items: {} }; }),
       ]).then(function (r) {
         /* Карта миниатюр грузится вторым шагом и только если она есть:
            первый пакет и так определяет скорость первого экрана. */
@@ -236,6 +246,7 @@
         state.brands = r[3];
         state.live = r[4];
         state.site = r[5];
+        state.reviews = (r[6] && r[6].items) || {};
         state.loaded = true;
         return API;
       });
@@ -268,7 +279,14 @@
       if (row < 0) return Promise.resolve(null);
       var n = Math.floor(row / state.meta.chunkSize);
       if (!chunkCache[n]) chunkCache[n] = json(BASE + 'chunks/detail-' + n + '.json');
-      return chunkCache[n].then(function (c) { return c[id] || null; });
+      return chunkCache[n].then(function (c) {
+        var d = c[id] || null;
+        if (!d) return null;
+        /* Список отзывов подставляется поверх чанка: в самом чанке его
+           нет, и подменить он ничего не может. */
+        var rv = (state.reviews && state.reviews[id]) || null;
+        return Object.assign({}, d, { reviews: rv ? rv.list : [] });
+      });
     },
 
     featured: function () {

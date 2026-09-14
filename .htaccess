@@ -23,8 +23,24 @@
   RewriteCond %{THE_REQUEST} \s/+seo-pages/(.+)\.html(?:[?\s]) [NC]
   RewriteRule ^seo-pages/(.+)\.html$ https://hiblack-msk.ru/$1 [R=301,L,NE]
 
+  # Служебные данные не отдаём наружу никогда — и раньше всех остальных
+  # правил, иначе «настоящий файл отдаём как есть» сработает и на них.
+  #
+  # var/ лежит внутри публичной папки: там очередь отзывов с адресами и
+  # IP авторов, заказы с телефонами и адресами доставки, сессии админки.
+  # Один известный адрес файла — и всё это скачивается без пароля.
+  # Правильное место для таких данных — выше публичной папки (см.
+  # api/config-path.php), а этот запрет вторая преграда на случай, когда
+  # конфиг не настроили или указали путь внутри сайта.
+  RewriteRule ^(var|vtt-data|vtt-source|vtt-data-mock|catalog-source|tools|node_modules|server)(/|$) - [F,L]
+
   # Заказы и прочие серверные операции.
   RewriteRule ^api(/.*)?$ api/index.php [L,QSA]
+
+  # Админка: модерация отзывов. Отдаём страницу прямо по /admin, без
+  # перенаправления на /admin/ — иначе канонический адрес без слеша
+  # спорил бы с DirectorySlash. Доступ закрывает пароль, а не адрес.
+  RewriteRule ^admin/?$ admin/index.html [L]
 
   # Главная — раньше проверки существующей директории.
   RewriteRule ^$ seo-pages/home.html [L]
@@ -53,6 +69,14 @@
 
   # Неизвестный адрес обязан быть настоящим 404, а не пустой успешной страницей.
   RewriteRule ^ - [R=404,L]
+</IfModule>
+
+# Подключаемые части PHP исполняются только через api/index.php: прямой
+# запрос к ним — это запуск кода без настроек и без проверки прав.
+<IfModule mod_authz_core.c>
+  <FilesMatch "^(admin|reviews-store|config-path|shop\.config\.sample)\.php$">
+    Require all denied
+  </FilesMatch>
 </IfModule>
 
 <IfModule mod_headers.c>
