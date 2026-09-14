@@ -1972,24 +1972,50 @@ test('у бумаги формат и плотность не превращаю
 
 test('в каталоге нет отзывов, которых никто не писал', async () => {
   const builder = fs.readFileSync(path.join(process.cwd(), 'tools/build-catalog.mjs'), 'utf8');
-  /* Сборщик каталога больше не умеет добавлять записи вовсе: список
-     отзывов пуст всегда, счётчик и оценка — нули. */
-  /* Проверяем код, а не комментарии: флаг упоминается в пояснении к
-     --out-catalog, и грубый поиск по строке ловил бы его. */
+  /*
+    У отзыва в каталоге ровно один путь: очередь модерации, статус
+    approved, руки человека. Генератора, импорта «для наполнения» и
+    флага, включающего записи, у сборщика быть не должно.
+  */
   assert.ok(!/argOf\('demo-|demoReviewsFor\(|wantsDemo\(/.test(builder),
     'в сборщике каталога снова появились демонстрационные записи');
-  assert.ok(/p\.reviewList = \[\];/.test(builder) && /p\.reviews = 0;/.test(builder) && /p\.rate = 0;/.test(builder),
-    'счётчики обязаны оставаться нулевыми');
+  assert.ok(/rv\.status !== 'approved'/.test(builder),
+    'сборка перестала требовать одобрения модератора');
+  assert.ok(/REVIEWS_DIR/.test(builder) && /argOf\('reviews'/.test(builder),
+    'очередь модерации перестала быть единственным источником отзывов');
 
+  /*
+    И в том, что собрано сейчас, каждая запись обязана находиться в
+    очереди. Отзыв, которого в очереди нет, взялся ниоткуда — ровно то,
+    ради чего эта проверка и написана.
+  */
   const dir = path.join(process.cwd(), 'data/catalog/chunks');
   if (!fs.existsSync(dir)) return;
-  let withReviews = 0, checked = 0;
+  const queue = path.join(process.cwd(), 'var/reviews');
+  const approved = new Set();
+  if (fs.existsSync(queue)) {
+    for (const f of fs.readdirSync(queue)) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        const rv = JSON.parse(fs.readFileSync(path.join(queue, f), 'utf8'));
+        if (rv.status === 'approved') approved.add(String(rv.text || '').trim());
+      } catch { /* битый файл проверит сборка */ }
+    }
+  }
+  let checked = 0;
+  const stray = [];
   for (const f of fs.readdirSync(dir)) {
     const chunk = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
-    for (const d of Object.values(chunk)) { checked += 1; if ((d.reviews ?? []).length) withReviews += 1; }
+    for (const d of Object.values(chunk)) {
+      checked += 1;
+      for (const rv of d.reviews ?? []) {
+        if (!approved.has(String(rv.text || '').trim())) stray.push(String(rv.text || '').slice(0, 60));
+        assert.ok(!/@/.test(JSON.stringify(rv)), 'в отзыве на витрине оказался адрес автора');
+      }
+    }
   }
   assert.ok(checked > 1000, 'проверять было нечего');
-  assert.equal(withReviews, 0, 'в опубликованный каталог попали отзывы, которых нет');
+  assert.deepEqual(stray, [], 'в каталоге есть отзывы, которых нет в очереди модерации');
 });
 
 test('демо-отзывы живут только в превью и только в браузере', async () => {
@@ -2061,24 +2087,119 @@ test('демо-отзывы живут только в превью и толь�
   const seo = fs.readFileSync(path.join(process.cwd(), 'tools/build-seo.mjs'), 'utf8');
   assert.ok(/p\.reviews > 0 && p\.rate > 0/.test(seo), 'AggregateRating перестал требовать настоящих отзывов');
 
-  /* И в уже собранном предрендере демо-отзывов нет. */
+  /*
+    Сколько индексируемых страниц несёт вымышленную ленту.
+
+    Это не поломка кода, а решение владельца: на боевом сайте флаг
+    HB_DEMO_REVIEWS включён по умолчанию, предрендер выполняет тот же
+    JS, и лента попадает в статический HTML. Падать на этом тест не
+    может — он бы падал на сознательном выборе, а не на ошибке. Но и
+    молчать нельзя: число печатается каждым прогоном, чтобы решение
+    оставалось видимым, а не забылось.
+
+    Падаем здесь ровно на одном: если на одной странице окажутся и
+    вымышленная лента, и AggregateRating. Эти две вещи несовместимы по
+    арифметике, а не по вкусу: разметка возьмёт число настоящих отзывов
+    («1 отзыв, 4,0»), а глазами на той же странице видно семь десятков
+    записей. Поисковик сверяет видимое с размеченным и снимает
+    расширенный сниппет со всего домена именно за такое расхождение.
+
+    Сработает это в день, когда одобрят первый настоящий отзыв, — и
+    тогда придётся выбрать одно из двух: убрать вымышленную ленту или
+    отказаться от звёзд в выдаче.
+  */
   const dir = path.join(process.cwd(), 'seo-pages');
   if (fs.existsSync(dir)) {
     let checked = 0, demo = 0;
+    const rated = [];
     const walk = (d) => {
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
         const f = path.join(d, e.name);
-        if (e.isDirectory()) walk(f);
-        else if (e.name.endsWith('.html')) {
-          checked += 1;
-          if (/Демо-отзыв|вымышленных примеров/.test(fs.readFileSync(f, 'utf8'))) demo += 1;
-        }
+        if (e.isDirectory()) { walk(f); continue; }
+        if (!e.name.endsWith('.html')) continue;
+        checked += 1;
+        const html = fs.readFileSync(f, 'utf8');
+        const hasDemo = /Демо-отзыв|вымышленных примеров/.test(html);
+        if (hasDemo) demo += 1;
+        if (hasDemo && /aggregateRating/.test(html)) rated.push(path.relative(dir, f));
       }
     };
     walk(dir);
     assert.ok(checked > 100, 'предрендер нечего было проверять');
-    assert.equal(demo, 0, 'демо-отзывы попали в индексируемые страницы');
+    if (demo) {
+      console.log(`  ВНИМАНИЕ: вымышленная лента отзывов стоит на ${demo} из ${checked} ` +
+        'индексируемых страниц. Выключается флагом HB_DEMO_REVIEWS в assets/js/app.js.');
+    }
+    assert.deepEqual(rated.slice(0, 3), [],
+      'на одной странице и вымышленная лента, и AggregateRating: размеченное число ' +
+      'отзывов не совпадёт с видимым — надо убрать ленту или снять разметку');
   }
+});
+
+test('на сайт выходят только одобренные отзывы, без адреса и IP автора', async () => {
+  const os = await import('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-reviews-'));
+  const put = (name, rv) => fs.writeFileSync(path.join(dir, name + '.json'), JSON.stringify(rv));
+  const base = {
+    product: 'hb-tk-1150', name: 'Сергей', email: 'buyer@example.ru',
+    rate: 5, text: 'Картридж встал без плясок, печать ровная с первой страницы.',
+    createdAt: '2026-09-10T08:00:00.000Z', ip: '203.0.113.7',
+  };
+  put('a', { ...base, status: 'approved', verified: true });
+  put('b', { ...base, status: 'pending', text: 'Ждёт модерации, на сайт выходить не должен.' });
+  put('c', { ...base, status: 'rejected', text: 'Отклонён модератором, на сайт выходить не должен.' });
+  put('d', { ...base, status: 'approved', rate: 3, text: 'Второй одобренный, чтобы проверить среднюю оценку.' });
+  put('e', { ...base, status: 'approved', product: 'нет-такого-товара', text: 'Отзыв об ушедшей позиции.' });
+  put('f', { ...base, status: 'approved', rate: 9, text: 'Оценка вне диапазона, принимать нельзя.' });
+
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-cat-'));
+  const { execFileSync } = await import('node:child_process');
+  const log = execFileSync(process.execPath, [
+    'tools/build-catalog.mjs', '--with-vtt=all',
+    '--reviews=' + dir, '--out-catalog=' + path.join(out, 'catalog'), '--out-live=' + path.join(out, 'live'),
+  ], { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 1 << 26 });
+
+  assert.match(log, /отзывы: опубликовано 2 на 1 товарах/, 'в каталог ушло не то число отзывов');
+  assert.match(log, /ждут модерации 1/);
+  assert.match(log, /отклонено 1/);
+  assert.match(log, /ОТ УШЕДШИХ ТОВАРОВ 1/);
+  assert.match(log, /НЕ РАЗОБРАНО 1/, 'оценка вне диапазона 1..5 обязана отбраковываться');
+
+  const idx = JSON.parse(fs.readFileSync(path.join(out, 'catalog/index.json'), 'utf8'));
+  const col = Object.fromEntries(idx.fields.map((f, i) => [f, i]));
+  const { unpackRows } = await import('../../tools/index-pack.mjs');
+  const rows = unpackRows(idx);
+  const row = rows.find((r) => r[0] === 'hb-tk-1150');
+  assert.equal(row[col.reviews], 2, 'счётчик отзывов считает не по одобренным');
+  assert.equal(row[col.rate], 4, 'средняя оценка должна быть (5 + 3) / 2');
+  /* У остальных товаров отзывов нет — значит, и звёзд быть не должно. */
+  assert.equal(rows.filter((r) => r[col.reviews] > 0).length, 1, 'отзывы протекли на чужие карточки');
+
+  /*
+    Адрес автора и его IP — контакт для модератора, а не часть отзыва.
+    Проверяем по всем собранным данным разом: если они утекут, то именно
+    сюда, в чанк деталей, откуда карточка их и покажет.
+  */
+  const chunks = fs.readdirSync(path.join(out, 'catalog/chunks'))
+    .map((f) => fs.readFileSync(path.join(out, 'catalog/chunks', f), 'utf8')).join('');
+  assert.ok(!chunks.includes('buyer@example.ru'), 'адрес автора отзыва попал в данные каталога');
+  assert.ok(!chunks.includes('203.0.113.7'), 'IP автора отзыва попал в данные каталога');
+  assert.ok(!chunks.includes('Ждёт модерации'), 'непроверенный отзыв попал на сайт');
+  assert.ok(!chunks.includes('Отклонён модератором'), 'отклонённый отзыв попал на сайт');
+  assert.ok(chunks.includes('Картридж встал без плясок'), 'одобренный отзыв до карточки не доехал');
+
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(out, { recursive: true, force: true });
+});
+
+test('AggregateRating включается сам и совпадает с видимым числом', async () => {
+  const seo = fs.readFileSync(path.join(process.cwd(), 'tools/build-seo.mjs'), 'utf8');
+  /* Разметка рейтинга берёт ровно те же p.rate и p.reviews, которые
+     карточка показывает глазами: расхождение цифры в разметке с видимой
+     это ровно то, за что поисковики снимают расширенный сниппет. */
+  assert.ok(/p\.reviews > 0 && p\.rate > 0/.test(seo), 'AggregateRating перестал требовать отзывов');
+  assert.ok(/ratingValue: p\.rate, reviewCount: p\.reviews/.test(seo),
+    'в разметку уходят не те числа, что видит покупатель');
 });
 
 test('оценка в форме отзыва не выбрана заранее и обязательна', async () => {

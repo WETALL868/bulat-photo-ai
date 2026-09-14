@@ -271,15 +271,16 @@ function buildSpecs(p, brandName) {
   в поисковую выдачу. Поэтому вместо генератора здесь пусто: настоящих
   отзывов у нас пока нет, и карточка так и говорит — «Пока нет отзывов».
 
-  Откуда они появятся. Форма на карточке отправляет отзыв на модерацию
+  Откуда они берутся. Форма на карточке отправляет отзыв на модерацию
   (POST /api/review), сервер кладёт его в var/reviews со статусом
   pending. Опубликованным отзыв становится только после проверки
-  человеком, и только тогда попадает в счётчики, в звёзды и в
-  AggregateRating. VTT отзывов не отдаёт — источник только собственный.
+  человеком — `node tools/reviews.mjs approve <файл>`, — и только тогда
+  попадает в счётчики, в звёзды и в AggregateRating. VTT отзывов не
+  отдаёт: источник только собственный.
 
-  Поле reviewList остаётся в форме данных: как только появятся
-  настоящие записи, их будет куда положить, и вёрстка их уже умеет
-  показывать.
+  Саму очередь читает блок «отзывы» ниже по файлу. Другого источника
+  записей у витрины нет: ни выгрузки, ни генератора, ни импорта «для
+  наполнения» — только то, что написал человек и подтвердил модератор.
 */
 /* --------------------------------------------------------------- сборка */
 
@@ -596,17 +597,89 @@ products.sort((a, b) => b.pop - a.pop || a.name.localeCompare(b.name, 'ru'));
   считают только настоящие записи.
 
   Демонстрационные примеры оформления блока отзывов сюда не попадают
-  вовсе. Их собирает браузер на превью (assets/js/app.js, demoExamples)
-  из полей уже загруженной карточки, а включает флаг сборки превью
-  --demo-reviews в tools/build-artifact.mjs. Так у данных остаётся ровно
-  одно состояние — честное: материализовать примеры в чанки значило бы
-  и раздуть их на 4,3 МБ, и завести в боевом экспорте записи, которых
-  никто не писал.
+  вовсе. Их собирает браузер (assets/js/app.js) из полей уже загруженной
+  карточки. Так у данных остаётся ровно одно состояние — честное:
+  материализовать примеры в чанки значило бы завести в боевом экспорте
+  записи, которых никто не писал, и отправить их в AggregateRating.
+
+  Путь к очереди можно задать: --reviews=<папка>. По умолчанию
+  var/reviews — там же, куда её кладёт api/index.php. Сборка идёт локально,
+  а отзывы приходят на сервер, поэтому перед сборкой очередь надо забрать
+  с хостинга (rsync, scp или выгрузка панели) — иначе одобренные отзывы
+  на сайт не поедут.
 */
-for (const p of products) {
-  p.reviewList = [];
-  p.reviews = 0;
-  p.rate = 0;
+const REVIEWS_DIR = path.resolve(ROOT, argOf('reviews', 'var/reviews'));
+{
+  /*
+    Очередь модерации. Отзыв кладёт туда api/index.php со статусом
+    pending; на сайт он выходит только со статусом approved, то есть
+    после того, как его прочёл человек. Никакой другой источник записей
+    у витрины не предусмотрен.
+  */
+  const byProduct = new Map();
+  let pending = 0, rejected = 0, orphan = 0, broken = 0;
+  const ids = new Set(products.map((p) => p.id));
+  const files = fs.existsSync(REVIEWS_DIR)
+    ? fs.readdirSync(REVIEWS_DIR).filter((f) => f.endsWith('.json')).sort()
+    : [];
+  for (const f of files) {
+    let rv;
+    try { rv = JSON.parse(fs.readFileSync(path.join(REVIEWS_DIR, f), 'utf8')); }
+    catch { broken += 1; continue; }
+    if (!rv || typeof rv !== 'object') { broken += 1; continue; }
+    if (rv.status === 'rejected') { rejected += 1; continue; }
+    if (rv.status !== 'approved') { pending += 1; continue; }
+    const rate = Number(rv.rate);
+    if (!(rate >= 1 && rate <= 5)) { broken += 1; continue; }
+    const text = String(rv.text ?? '').trim();
+    if (text.length < 20) { broken += 1; continue; }
+    if (!ids.has(rv.product)) { orphan += 1; continue; }
+    /*
+      Наружу уходит только то, что человек написал для чужих глаз.
+      Адрес и IP автора остаются в очереди: это контакт для модератора,
+      а не часть отзыва, и в data/catalog им делать нечего. Поля
+      перечислены поимённо, а не копируются целиком, — тогда новое поле
+      в очереди не утечёт на витрину само собой.
+    */
+    const d = new Date(rv.createdAt);
+    const out = {
+      name: String(rv.name ?? '').trim() || 'Покупатель',
+      rate: Math.round(rate),
+      text,
+      date: Number.isNaN(d.getTime()) ? '' : String(d.getUTCDate()).padStart(2, '0') + '.' +
+        String(d.getUTCMonth() + 1).padStart(2, '0') + '.' + d.getUTCFullYear(),
+      verified: rv.verified === true,
+    };
+    for (const k of ['city', 'printer', 'plus', 'minus']) {
+      const v = String(rv[k] ?? '').trim();
+      if (v) out[k] = v;
+    }
+    const reply = typeof rv.reply === 'string' ? rv.reply.trim() : String(rv.reply?.text ?? '').trim();
+    if (reply) out.reply = reply;
+    if (!byProduct.has(rv.product)) byProduct.set(rv.product, []);
+    byProduct.get(rv.product).push({ ...out, at: d.getTime() || 0 });
+  }
+  for (const p of products) {
+    const list = (byProduct.get(p.id) || []).sort((a, b) => b.at - a.at);
+    p.reviewList = list.map(({ at, ...rest }) => rest);
+    p.reviews = list.length;
+    /*
+      Средняя оценка считается по опубликованным отзывам и по ним же
+      уходит в AggregateRating. Цифра в разметке обязана совпадать с
+      видимой на странице — считаем её один раз и здесь.
+    */
+    p.rate = list.length
+      ? Math.round(list.reduce((a, r) => a + r.rate, 0) / list.length * 10) / 10
+      : 0;
+  }
+  const withReviews = products.filter((p) => p.reviews > 0).length;
+  const total = products.reduce((a, p) => a + p.reviews, 0);
+  console.log(`отзывы: опубликовано ${total} на ${withReviews} товарах` +
+    (pending ? `, ждут модерации ${pending}` : '') +
+    (rejected ? `, отклонено ${rejected}` : '') +
+    (orphan ? `, ОТ УШЕДШИХ ТОВАРОВ ${orphan}` : '') +
+    (broken ? `, НЕ РАЗОБРАНО ${broken}` : '') +
+    (files.length ? '' : ` (очередь ${path.relative(ROOT, REVIEWS_DIR)} пуста)`));
 }
 
 /*
