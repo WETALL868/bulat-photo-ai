@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /cart
+Disallow: /checkout
+Disallow: /order
+Disallow: /favorites
+Disallow: /compare
+Disallow: /login
+Disallow: /search
+Sitemap: https://hiblack-msk.ru/sitemap.xml
