@@ -2200,6 +2200,108 @@ test('подключаемые части api не запускаются нап
   assert.ok(/var/.test(ht) && /\[F,L\]/.test(ht), 'var/ снова отдаётся наружу');
 });
 
+test('панели вкладок карточки не вложены друг в друга', async () => {
+  /*
+    Панель «Доставка и оплата» рендерилась ВНУТРИ панели отзывов: в ленте
+    отзывов не закрывался один <div>, а скрытая панель прячет собой всё
+    вложенное. Вкладка открывалась и не показывала ничего.
+
+    Считаем теги у каждой панели: сколько открыли, столько и закрыли.
+    Тогда панели остаются соседями, а не матрёшкой.
+  */
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  const marks = ['desc', 'specs', 'reviews', 'delivery'].map((n) => ({
+    name: n, at: app.indexOf(`'<div data-panel="${n}"`),
+  }));
+  for (const m of marks) assert.ok(m.at > 0, `панель ${m.name} пропала из карточки`);
+  const end = app.indexOf("'<div class=\"sec\"><div class=\"sec-head\"><h2>Похожие товары");
+  assert.ok(end > marks[3].at, 'не нашли конец блока вкладок');
+  for (let i = 0; i < marks.length; i++) {
+    const from = marks[i].at;
+    const to = i + 1 < marks.length ? marks[i + 1].at : end;
+    const body = app.slice(from, to);
+    const open = (body.match(/<div\b/g) || []).length;
+    const close = (body.match(/<\/div>/g) || []).length;
+    /* У последней панели в срез попадает ещё и закрывающий тег .tabbody. */
+    const expect = i + 1 < marks.length ? 0 : -1;
+    assert.equal(open - close, expect,
+      `панель ${marks[i].name}: открыто ${open} <div>, закрыто ${close} — соседняя панель окажется внутри неё`);
+  }
+});
+
+test('вкладка доставки собрана из данных оформления заказа', async () => {
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  /*
+    Способы доставки и оплаты берутся из тех же DEL и PAY, по которым
+    собран шаг оформления. Пересказ своими словами разошёлся бы с
+    оформлением на первой же правке тарифа.
+  */
+  assert.ok(/function deliveryPanel\(\)/.test(app), 'вкладка доставки снова стала текстом из site.json');
+  assert.ok(/deliveryRows\(DEL\)/.test(app), 'способы доставки перестали браться из данных оформления');
+  assert.ok(/PAY\.map\(/.test(app), 'способы оплаты перестали браться из данных оформления');
+  assert.ok(/deliveryPanel\(\) \+ '<\/div>'/.test(app), 'вкладка доставки перестала показывать эту панель');
+
+  /*
+    Онлайн-оплаты на сайте ещё нет: страница «Оплата» говорит, что карта
+    и СБП появятся после подключения платёжного провайдера. Значит, ни
+    карточка, ни футер не вправе обещать их как доступный способ.
+  */
+  /* Комментарии вырезаем: разбор причины не должен ловиться как обещание. */
+  const visible = app.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const sbp = [...visible.matchAll(/[^.]*СБП[^.]*\./g)].map((m) => m[0]);
+  assert.ok(sbp.length > 0, 'упоминание СБП пропало вместе с оговоркой');
+  for (const line of sbp) {
+    assert.ok(/появится после подключения платёжного провайдера/.test(line),
+      `СБП обещана как доступный способ: «${line.trim().slice(0, 80)}»`);
+  }
+  const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+  assert.ok(!/<span>СБП<\/span>/.test(html), 'значок СБП вернулся в футер, а оплаты через СБП на сайте нет');
+
+  /* Блок для юрлиц — один из разделов вкладки, а не отдельная секция
+     страницы: снаружи он висел и под описанием, и под отзывами. */
+  const b2bAt = app.indexOf("'<section class=\"b2b\">");
+  const panelAt = app.indexOf('function deliveryPanel()');
+  const panelEnd = app.indexOf("  function checkout(r) {");
+  assert.ok(b2bAt > panelAt && b2bAt < panelEnd, 'блок для юрлиц снова стоит вне вкладки');
+});
+
+test('на телефоне ничего не вылезает за кнопку, панель и футер', async () => {
+  const css = fs.readFileSync(path.join(process.cwd(), 'assets/css/styles.css'), 'utf8');
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+
+  /*
+    1. Кнопка «Уведомить о поступлении». Базовый .btn запрещает перенос,
+       а надпись длиннее половины узкого телефона — в карточке каталога
+       она вылезала за край. Отдельный класс разрешает перенос.
+  */
+  assert.ok(/class="btn btn-alert /.test(app), 'кнопка уведомления потеряла свой класс');
+  assert.ok(/\.btn-alert\{[^}]*white-space:normal/.test(css), 'кнопке уведомления снова запрещён перенос');
+  assert.ok(/\.btn-alert\{[^}]*height:auto/.test(css), 'высота кнопки уведомления снова фиксирована');
+
+  /*
+    2. Запас под закреплённой панелью. Раньше он висел на body, рисовался
+       белым фоном body и давал полосу пустоты под тёмным футером; высота
+       была взята с потолка. Теперь он в футере и считается от измеренной
+       высоты панели.
+  */
+  assert.ok(!/body\.pg-product\{padding-bottom/.test(css),
+    'запас под панелью снова на body — под футером появится белая полоса');
+  assert.ok(/body\.pg-product\.bar-on \.foot\{/.test(css), 'запас под панелью пропал из футера');
+  assert.ok(/var\(--buybar-h/.test(css), 'запас перестал зависеть от настоящей высоты панели');
+  assert.ok(/setProperty\('--buybar-h'/.test(app), 'высота панели больше не измеряется');
+
+  /* 3. Панель на телефоне складывается в столбец: иначе в строку не
+        помещаются и название, и действие. */
+  assert.ok(/@media \(max-width:430px\)\{[^@]*\.buybar\{flex-direction:column/.test(css.replace(/\s+/g, ' ')) ||
+    /\.buybar\{flex-direction:column/.test(css), 'панель перестала складываться в столбец на телефоне');
+
+  /* 4. Товар без остатка нельзя положить в корзину ни из карточки, ни из
+        панели: обе ветки рисуют кнопку уведомления. */
+  assert.ok(/!p\.stock \? stockAlertButton\(p, 'btn-o'\)/.test(app), 'в карточке каталога вернулась покупка без остатка');
+  assert.ok(/!p\.stock \? stockAlertButton\(p, 'btn-y'\)/.test(app), 'в панели вернулась покупка без остатка');
+  assert.ok(/if \(!p \|\| !p\.stock \|\| noPrice\(p\)\)/.test(app), 'addToCart перестал проверять наличие');
+});
+
 test('оценка в форме отзыва не выбрана заранее и обязательна', async () => {
   const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
   /*

@@ -78,6 +78,19 @@ h1{font-size:36px}h2{font-size:28px}h3{font-size:20px}h4{font-size:16px}
 .btn-o{background:#fff;border-color:var(--line2)}.btn-o:hover{border-color:var(--ink);color:var(--ink)}
 .btn-s{background:var(--surface)}.btn-s:hover{background:var(--surface2);color:var(--ink)}
 .btn-sm{height:42px;padding:0 16px;font-size:14px;border-radius:10px}
+/*
+  «Уведомить о поступлении» — единственная кнопка витрины с длинной
+  надписью, которая должна помещаться в карточку шириной в половину
+  телефона. Базовый .btn запрещает перенос и держит фиксированную
+  высоту: на 320–430 px текст вместе с иконкой вылезал за край карточки.
+
+  Поэтому здесь перенос разрешён, высота растёт по содержимому, а
+  иконка не отбирает ширину у текста. min-height сохраняет кнопку
+  крупной для пальца даже в одну строку.
+*/
+.btn-alert{white-space:normal;height:auto;min-height:44px;padding:9px 12px;
+  line-height:1.2;text-align:center;max-width:100%;overflow-wrap:anywhere}
+.btn-alert svg{flex:none}
 .btn-lg{height:56px;padding:0 28px;font-size:16px;border-radius:14px}
 .btn-full{width:100%}
 .btn.added{background:var(--gtint);color:var(--green)}
@@ -770,24 +783,40 @@ a.line-c:hover{border-color:var(--ink)}
   background:var(--ink);color:var(--yellow);border-radius:999px;padding:2px 8px}
 .buybar .bin i{font-style:normal;font-weight:500}
 
-/* На телефоне название допускает две строки; цена и количество остаются рядом. */
+/*
+  Телефон: панель складывается в столбец.
+
+  В одну строку помещались либо название, либо кнопка. Название
+  обрезалось на середине слова, а «Уведомить о поступлении» упиралось в
+  свою ширину — то есть покупатель видел ни товар, ни действие целиком.
+  В столбце название получает всю ширину и две строки, артикул и
+  наличие стоят под ним, а кнопка идёт во всю ширину: попасть по ней
+  пальцем проще, чем по узкой кнопке у края.
+*/
 @media (max-width:430px){
-  .buybar{padding:10px 10px 10px 12px;gap:8px}
+  .buybar{flex-direction:column;align-items:stretch;gap:8px;padding:10px 12px}
+  .buybar .bbinfo{gap:3px}
   .buybar .bbproduct{display:block}
-  .buybar .bbname{font-size:12px;line-height:1.25;white-space:normal;display:-webkit-box;
+  .buybar .bbname{font-size:12.5px;line-height:1.25;white-space:normal;display:-webkit-box;
     -webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .buybar .bbcode{display:block;margin-top:2px;font-size:10px}
-  .buybar .bbterms{gap:2px 7px;font-size:11px}
-  .buybar .bbterms b{font-size:12px}
-  .buybar .avail{display:none}
+  .buybar .bbcode{display:inline;margin-top:0;font-size:11px}
+  .buybar .bbterms{gap:2px 10px;font-size:11.5px}
+  .buybar .bbterms b{font-size:12.5px}
+  .buybar .avail{font-size:11px}
   .buybar .bin i{display:none}
-  .buybar .btn{padding:0 8px;font-size:12px;min-width:106px}
+  .buybar .btn{width:100%;padding:0 12px;font-size:13px;min-width:0}
+  .buybar .btn-alert{padding:8px 12px}
+}
+/* На самых узких экранах длинное название не укладывается в две строки:
+   даём третью, чтобы артикул в начале названия не обрезался. */
+@media (max-width:360px){
+  .buybar .bbname{-webkit-line-clamp:3}
 }
 
 /* Плашка cookie и всплывающее уведомление встают над панелью, а не под ней:
    иначе нажатие «В корзину» прячет собственный ответ. */
-body.pg-product.bar-on .cookie{bottom:calc(130px + env(safe-area-inset-bottom,0px))}
-body.pg-product.bar-on .toast{bottom:calc(130px + env(safe-area-inset-bottom,0px))}
+body.pg-product.bar-on .cookie{bottom:calc(var(--buybar-h,74px) + 28px + env(safe-area-inset-bottom,0px))}
+body.pg-product.bar-on .toast{bottom:calc(var(--buybar-h,74px) + 28px + env(safe-area-inset-bottom,0px))}
 
 /* 10. Корзина и оформление
    -------------------------------------------------------------------------- */
@@ -965,6 +994,43 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
 .spec-more.on svg{transform:rotate(180deg)}
 
 /* B2B-блок под характеристиками: горизонтальный, во всю ширину. */
+/*
+  Вкладка «Доставка и оплата». Список условий, а не сплошной абзац:
+  покупатель ищет глазами свой способ доставки и его цену, и читать ради
+  этого четыре предложения подряд ему незачем.
+*/
+.dlv{display:flex;flex-direction:column;gap:22px;max-width:860px}
+.dlv-b h3{display:flex;align-items:center;gap:9px;font-family:var(--head);font-weight:800;
+  font-size:19px;letter-spacing:-.01em;margin:0 0 12px}
+.dlv-b h3 svg{color:var(--ink2);flex:none}
+.drows{display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:14px;
+  background:var(--surface);overflow:hidden}
+.drow{padding:13px 16px;background:#fff}
+.drow + .drow{border-top:1px solid var(--line)}
+/* Цена стоит в одной строке с названием и не уезжает под него: на телефоне
+   ряд переносится целиком, а не рвётся посередине. */
+.dr-t{display:flex;align-items:baseline;justify-content:space-between;gap:10px 14px;flex-wrap:wrap}
+.dr-t b{font-weight:700;font-size:14.5px;line-height:1.3;min-width:0}
+/* Цена доставки — пометка при названии, а не второй заголовок: на узком
+   экране она переносится на свою строку, и жирным читалась как ещё один
+   способ доставки. */
+.dr-c{margin-left:auto;font-size:13px;font-weight:600;color:var(--ink2);white-space:nowrap;flex:none;
+  background:var(--surface2,#f2f3f5);border-radius:999px;padding:2px 9px}
+.dr-c.num{color:var(--ink);font-family:var(--head);font-weight:700;font-size:13.5px}
+.dr-d{display:block;margin-top:4px;color:var(--muted);font-size:13px;line-height:1.45}
+.dlv-n{margin:10px 2px 0;color:var(--muted);font-size:13px;line-height:1.5}
+.dlv-n a{font-weight:600;color:var(--ink);border-bottom:1px solid var(--line2)}
+.dlv-warr{display:flex;gap:9px;align-items:flex-start;margin-top:0}
+.dlv-warr svg{color:var(--ink2);flex:none;margin-top:2px}
+.dlv .b2b{margin-top:0}
+@media (max-width:640px){
+  .dlv{gap:18px}
+  .dlv-b h3{font-size:17px;margin-bottom:10px}
+  .drow{padding:12px 13px}
+  .dr-t b,.dr-c{font-size:13.5px}
+  .dlv .b2b{padding:18px 16px}
+  .dlv .b2b-h h2{font-size:19px}
+}
 .b2b{margin-top:32px;border:1px solid var(--yellow2);border-radius:20px;background:var(--ytint);padding:26px 28px}
 .b2b-h{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .b2b-h > svg{color:var(--ink);flex:none}
@@ -1129,7 +1195,6 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
 .stock-alert-modal .stock-alert-error{color:var(--red);font-size:13px;margin:0}
 .item .ibody [data-stock-alert]{margin-top:10px;min-height:36px;padding:5px 12px;font-size:12px}
 .cart-stock-warning{padding:12px;border:1px solid var(--line2);border-radius:12px;background:var(--surface);font-size:13px;line-height:1.45;margin:14px 0}
-@media(max-width:640px){.buybar [data-stock-alert]{min-width:135px;max-width:45vw;height:auto;min-height:50px;line-height:1.15;white-space:normal}.buybar [data-stock-alert] svg{display:none}}
 
 .lightbox{position:fixed;inset:0;background:rgba(20,20,20,.86);display:none;align-items:center;justify-content:center;z-index:200;padding:32px;cursor:zoom-out}
 .lightbox.open{display:flex}
@@ -1323,8 +1388,23 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .buybar.show{transform:none}
   .buybar .btn{height:50px}
 
-  /* Хвост страницы не должен уходить под карточку: её высота плюс отступ. */
-  body.pg-product{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
+  /*
+    Запас под закреплённой панелью — в самом футере, а не в body.
+
+    Отступ у body рисуется его фоном, то есть белым, и на телефоне под
+    тёмным футером появлялась белая полоса во всю ширину экрана: 150 px
+    пустоты после конца страницы. Причин было две — запас стоял не на том
+    элементе и был взят с потолка, вдвое больше нужного.
+
+    Теперь запас живёт внутри футера (фон у него свой, полосы не будет) и
+    считается от настоящей высоты панели: её измеряет app.js и кладёт в
+    --buybar-h. Резерв нужен, только пока панель на экране, поэтому он
+    висит на .bar-on; переключается он у верха страницы, где смены высоты
+    документа не видно.
+  */
+  body.pg-product.bar-on .foot{
+    padding-bottom:calc(32px + var(--buybar-h,74px) + 12px + env(safe-area-inset-bottom,0px));
+  }
   .toast{bottom:96px}
   /* корзина */
   .cgrid{grid-template-columns:1fr;gap:24px}
@@ -1530,6 +1610,9 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .price small{font-size:12px;margin-left:6px}
   .cfoot{gap:8px;padding-top:4px}
   .cfoot .btn{height:40px;font-size:13px;gap:8px;padding:0 10px}
+  /* У кнопки с переносом высота считается по строкам, иначе вторая
+     строка вылезает за нижнюю кромку. */
+  .cfoot .btn-alert{height:auto;min-height:40px;padding:7px 8px;gap:6px;line-height:1.15}
   .oneclick{font-size:12px}
   /* каталог */
   .ph1 h1{gap:10px}
@@ -1669,10 +1752,10 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .cookie{width:calc(100vw - 24px);bottom:calc(14px + env(safe-area-inset-bottom,0px));padding:14px 16px;gap:12px;border-radius:14px}
   .cookie p{flex:1 1 100%;font-size:13.5px}
   .cookie .btn{width:100%}
-  body.pg-product.bar-on .cookie{bottom:calc(150px + env(safe-area-inset-bottom,0px))}
+  body.pg-product.bar-on .cookie{bottom:calc(var(--buybar-h,74px) + 24px + env(safe-area-inset-bottom,0px))}
   .toast{white-space:normal;padding:12px 16px;font-size:13px;left:16px;right:16px;transform:translateY(20px);max-width:none;bottom:20px}
   .toast.show{transform:translateY(0)}
-  body.pg-product .toast{bottom:150px}
+  body.pg-product.bar-on .toast{bottom:calc(var(--buybar-h,74px) + 24px + env(safe-area-inset-bottom,0px))}
   .lightbox{padding:12px}
   .lightbox img{padding:12px;border-radius:14px}
   .lightbox .x{right:12px;top:12px;width:44px;height:44px}
@@ -1692,6 +1775,7 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .ctitle{font-size:12px}
   .cfoot .btn{font-size:12px;gap:6px}
   .cfoot .btn svg{display:none}
+  .cfoot .btn-alert{font-size:11.5px;padding:7px 6px}
   .hslider h1,.hslider h2{font-size:24px}
   .tile .ph{width:88px;height:72px}
   .thumbs{gap:6px}

@@ -350,8 +350,10 @@ if (!SCRIPTS.test(html)) {
   throw new Error('в index.html не найдены три тега скриптов витрины — встраивать нечего, ' +
     'превью уехало бы со ссылками на файлы, которых в артефакте нет');
 }
-const STYLES = '<link rel="stylesheet" href="/assets/css/styles.css">';
-if (!html.includes(STYLES)) throw new Error('в index.html не найден тег стилей — встраивать нечего');
+/* Версия для сброса кэша («styles.css?v=…») допускается так же, как у
+   скриптов: без неё замена молча не срабатывала бы. */
+const STYLES = /<link rel="stylesheet" href="\/assets\/css\/styles\.css(?:\?[^"]*)?">/;
+if (!STYLES.test(html)) throw new Error('в index.html не найден тег стилей — встраивать нечего');
 html = html
   .replace(/<link rel="preload"[^>]*>\s*/g, '')
   .replace(/<link rel="stylesheet" href="\/assets\/css\/fonts.css">\s*/, '')

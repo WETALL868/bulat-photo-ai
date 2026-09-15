@@ -286,8 +286,21 @@
     такой товар честно говорит «Цена по запросу» и не продаётся кнопкой.
   */
   function noPrice(p) { return !(p.price > 0); }
+  /*
+    Кнопка «Уведомить о поступлении».
+
+    Она стоит в очень разных местах: в карточке каталога шириной в
+    половину телефона, в блоке покупки на всю ширину, в закреплённой
+    панели, в сравнении и в корзине. Надпись длинная, а .btn запрещает
+    перенос — в узкой карточке текст вылезал за её край вместе с
+    иконкой. Отдельный класс btn-alert разрешает перенос и растит высоту
+    по содержимому, поэтому кнопка вписывается в любую из этих ширин.
+
+    Надпись при этом не сокращается: «Уведомить» без «о поступлении»
+    оставляет покупателя гадать, о чём его уведомят.
+  */
   function stockAlertButton(p, cls) {
-    return '<button class="btn ' + (cls || 'btn-o') + '" type="button" data-stock-alert="' + esc(p.id) +
+    return '<button class="btn btn-alert ' + (cls || 'btn-o') + '" type="button" data-stock-alert="' + esc(p.id) +
       '" aria-label="Уведомить о поступлении: ' + esc(p.name) + '">' +
       ic('mail', 18) + '<span class="bt">Уведомить о поступлении</span></button>';
   }
@@ -861,7 +874,7 @@
            которой нет. Кнопки нет — есть запрос цены выше. */
         (!p.stock || noPrice(p) ? '' : '<button class="btn btn-o btn-full" type="button" data-quick="' + p.id + '">Купить в 1 клик</button>') +
         '<div class="acts"><button type="button" class="' + (S.cmp[p.id] ? 'on' : '') + '" data-cmp="' + p.id + '" aria-pressed="' + !!S.cmp[p.id] + '" title="' + (S.cmp[p.id] ? 'Убрать из сравнения' : 'Добавить к сравнению') + '">' + ic('compare', 16) + (S.cmp[p.id] ? 'В сравнении' : 'В сравнение') + '</button><button type="button" class="' + (S.fav[p.id] ? 'on' : '') + '" data-fav="' + p.id + '">' + ic('heart', 16) + (S.fav[p.id] ? 'В избранном' : 'В избранное') + '</button></div>' +
-        '<div class="dlist"><div>' + ic('truck', 18) + '<div><b>Курьер по Москве</b><span>Дату и интервал подтверждает менеджер</span></div></div><div>' + ic('pin', 18) + '<div><b>Самовывоз по предварительному согласованию</b><span>Москва, Ясеневая ул., д. 50</span></div></div><div>' + ic('card', 18) + '<div><b>Оплата картой, СБП или по счёту</b><span>Юрлицам — счёт и закрывающие документы</span></div></div><div>' + ic('shield', 18) + '<div><b>Гарантия ресурса</b><span>Срок указан в карточке и документах</span></div></div></div>' +
+        '<div class="dlist"><div>' + ic('truck', 18) + '<div><b>Курьер по Москве</b><span>Дату и интервал подтверждает менеджер</span></div></div><div>' + ic('pin', 18) + '<div><b>Самовывоз по предварительному согласованию</b><span>Москва, Ясеневая ул., д. 50</span></div></div><div>' + ic('card', 18) + '<div><b>Оплата при получении или по счёту</b><span>Наличными или картой курьеру; юрлицам — счёт и документы</span></div></div><div>' + ic('shield', 18) + '<div><b>Гарантия ресурса</b><span>Срок указан в карточке и документах</span></div></div></div>' +
         (maxCfg()
           ? maxEl('ask-max', 'Написать о товаре ' + p.name + ' в мессенджере MAX, откроется в новой вкладке',
               maxIcon(26) + '<div><b>Написать в MAX</b>' +
@@ -986,19 +999,14 @@
         '<span id="rev-email-note">Отзыв появится на странице после проверки модератором. ' +
         'E-mail нужен только для связи с вами по этому отзыву: он не публикуется и не попадает в рассылку.</span></div>' +
         '<div class="rev-msg" id="rev-msg" role="status" aria-live="polite" hidden></div>' +
-        '</form></div></div>' +
-        '<div data-panel="delivery" id="panel-delivery" role="tabpanel" aria-labelledby="tab-delivery"' + (tab !== 'delivery' ? ' hidden' : '') + '><div class="desc" style="max-width:820px">' + C.site.pageText.delivery_short + '</div></div>' +
+        /* Три закрывающих тега: форма, .rev-list, .rev-grid — и четвёртый
+           на саму панель. Без него следующая панель оказывалась ВНУТРИ
+           этой, а панель отзывов скрыта, пока открыта другая вкладка: так
+           «Доставка и оплата» не показывала ничего. */
+        '</form></div></div></div>' +
+        '<div data-panel="delivery" id="panel-delivery" role="tabpanel" aria-labelledby="tab-delivery"' + (tab !== 'delivery' ? ' hidden' : '') + '>' +
+        deliveryPanel() + '</div>' +
         '</div>' +
-        /* Счёт юрлицам вынесен из правой колонки: там он тонул среди мелких
-           плашек, а компаниям это первое, что нужно увидеть. */
-        '<section class="b2b"><div class="b2b-h">' + ic('building', 26) + '<div><h2>Счёт для юридических лиц и ИП</h2>' +
-        '<p>Оплата по безналичному расчёту с полным пакетом документов.</p></div>' +
-        '<a class="btn btn-o" href="' + link.page('business') + '">Условия для юрлиц' + ic('arrow-right', 18) + '</a></div>' +
-        '<div class="b2b-l"><div>' + ic('doc', 20) + '<div><b>Счёт на оплату</b><span>Придёт на почту после оформления заказа</span></div></div>' +
-        '<div>' + ic('check', 20) + '<div><b>Закрывающие документы</b><span>УПД или накладная и счёт-фактура — вместе с заказом</span></div></div>' +
-        '<div>' + ic('user', 20) + '<div><b>Выбор «Юридическое лицо»</b><span>Отметьте на шаге оформления и укажите реквизиты</span></div></div></div>' +
-        '<p class="b2b-note">' + ic('mail', 18) + '<span>На шаге оформления выберите «Юридическое лицо» и заполните реквизиты компании. ' +
-        'Если удобнее, отправьте карточку организации и запрос на <a href="mailto:info@nvprint-msk.ru">info@nvprint-msk.ru</a>.</span></p></section>' +
         '<div class="sec"><div class="sec-head"><h2>Похожие товары</h2><a class="more" href="' + link.catalog(p.cat, p.brand) + '">Все для ' + esc(C.brandName(p.brand)) + ' ' + ic('arrow-right', 18) + '</a></div><div class="grid4">' + related.map(card).join('') + '</div></div>' +
         /* Закреплённая панель покупки. Кнопка несёт те же data-add и data-useq,
            что и штатная, поэтому добавляет тот же товар в том же количестве —
@@ -1170,6 +1178,69 @@
     ['cash', 'При получении', 'Наличными или картой курьеру магазина'],
     ['invoice', 'По счёту', 'Счёт придёт на почту. Организациям — закрывающие документы с заказом'],
   ];
+
+  /*
+    Вкладка «Доставка и оплата».
+
+    Раньше здесь лежал абзац текста из site.json, а всё видное место
+    занимал блок «Счёт для юридических лиц и ИП» — причём он стоял ВНЕ
+    вкладок и потому висел под описанием и отзывами тоже. Покупатель,
+    открывший вкладку, не находил ни способов доставки, ни способов
+    оплаты: вкладка называлась одним, а показывала другое.
+
+    Теперь способы доставки берутся из того же массива DEL, а оплаты —
+    из PAY, по которым собран шаг оформления заказа. Разойтись им негде:
+    это одни и те же данные, а не пересказ. Цену доставки показываем
+    только там, где она в этих данных задана числом; где её считает
+    менеджер — так и написано, без придуманных тарифов.
+  */
+  function deliveryRows(list) {
+    return list.map(function (x) {
+      var fixed = x[3] != null;
+      var cost = fixed ? (x[3] ? fmt(x[3]) + ' ₽' : 'бесплатно') : 'рассчитает менеджер';
+      return '<div class="drow"><div class="dr-t"><b>' + esc(x[1]) + '</b>' +
+        '<span class="dr-c' + (fixed ? ' num' : '') + '">' + esc(cost) + '</span></div>' +
+        '<span class="dr-d">' + esc(x[2]) + '</span></div>';
+    }).join('');
+  }
+  function deliveryPanel() {
+    var c = (C.site && C.site.contacts) || {};
+    return '<div class="dlv">' +
+      '<section class="dlv-b"><h3>' + ic('truck', 20) + 'Доставка</h3>' +
+      '<div class="drows">' + deliveryRows(DEL) + '</div>' +
+      /* Адрес самовывоза — уточнение к строке списка, а не отдельный
+         раздел: отдельным он читался как второй самовывоз. */
+      '<p class="dlv-n">Способ доставки выбирается на шаге оформления заказа — там же считается её стоимость. ' +
+      'Самовывоз: ' + esc(c.address || '') + (c.metro ? ', метро ' + esc(c.metro) : '') +
+      (c.pickupHours ? ', ' + esc(c.pickupHours) : '') + '.</p></section>' +
+
+      '<section class="dlv-b"><h3>' + ic('card', 20) + 'Оплата</h3>' +
+      '<div class="drows">' + PAY.map(function (x) {
+        return '<div class="drow"><div class="dr-t"><b>' + esc(x[1]) + '</b></div>' +
+          '<span class="dr-d">' + esc(x[2]) + '</span></div>';
+      }).join('') + '</div>' +
+      /* Онлайн-оплаты на сайте пока нет, и обещать её нельзя: покупатель
+         дойдёт до шага оформления и не найдёт там ни карты, ни СБП.
+         Формулировка взята со страницы «Оплата», она же единственный
+         источник правды об этом. */
+      '<p class="dlv-n">Оплата картой на сайте и через СБП появится после подключения платёжного провайдера. ' +
+      'Сейчас доступны оплата при получении и оплата по счёту. ' +
+      '<a href="' + link.page('payment') + '">Подробно об оплате</a></p></section>' +
+
+      '<section class="b2b"><div class="b2b-h">' + ic('building', 26) + '<div><h2>Юридическим лицам и ИП</h2>' +
+      '<p>Оплата по безналичному расчёту с полным пакетом документов.</p></div>' +
+      '<a class="btn btn-o" href="' + link.page('business') + '">Условия для юрлиц' + ic('arrow-right', 18) + '</a></div>' +
+      '<div class="b2b-l"><div>' + ic('doc', 20) + '<div><b>Счёт на оплату</b><span>Придёт на почту после оформления заказа</span></div></div>' +
+      '<div>' + ic('check', 20) + '<div><b>Закрывающие документы</b><span>УПД или накладная и счёт-фактура — вместе с заказом или по ЭДО</span></div></div>' +
+      '<div>' + ic('user', 20) + '<div><b>Выбор «Юридическое лицо»</b><span>Отметьте на шаге оформления и укажите реквизиты</span></div></div></div>' +
+      '<p class="b2b-note">' + ic('mail', 18) + '<span>На шаге оформления выберите «Юридическое лицо» и заполните реквизиты компании. ' +
+      'Если удобнее, отправьте карточку организации и запрос на <a href="mailto:' + esc(c.email || '') + '">' +
+      esc(c.email || '') + '</a>.</span></p></section>' +
+
+      '<p class="dlv-n dlv-warr">' + ic('shield', 18) + '<span>Гарантийный срок указан в карточке товара и в документах на заказ. ' +
+      '<a href="' + link.page('warranty') + '">Гарантия и возврат</a></span></p>' +
+      '</div>';
+  }
 
   function checkout(r) {
     if (r.query.quick && C.byId(r.query.quick) && C.byId(r.query.quick).stock && !S.cart[r.query.quick]) { S.cart[r.query.quick] = 1; save(); updateHeader(); }
@@ -2350,6 +2421,12 @@
     она заблокирована — панель убирается из разметки, дублировать нечего.
   */
   var bbObs = null;
+  var bbResize = null;
+  function measureBuybar(bar) {
+    if (!bar || !bar.isConnected) return;
+    var h = Math.round(bar.getBoundingClientRect().height);
+    if (h > 0) document.documentElement.style.setProperty('--buybar-h', h + 'px');
+  }
   function initBuybar() {
     if (bbObs) { bbObs.disconnect(); bbObs = null; }
     var bar = document.getElementById('buybar');
@@ -2357,6 +2434,14 @@
     var btn = app.querySelector('.buy [data-add], .buy [data-stock-alert]');
     if (!btn || btn.disabled || btn.hasAttribute('aria-disabled')) { bar.remove(); return; }
     syncBuybar();
+    /*
+      Высота панели зависит от ширины экрана и от длины названия: на
+      телефоне она складывается в столбец и занимает вдвое больше, чем на
+      десктопе. Запас под неё в конце страницы считает CSS, поэтому число
+      надо измерить, а не угадать — угаданное давало белую полосу под
+      футером на всю ширину экрана.
+    */
+    measureBuybar(bar);
     if (!('IntersectionObserver' in window)) { bar.remove(); return; }
     bbObs = new IntersectionObserver(function (en) {
       var on = !en[0].isIntersecting;
@@ -2365,8 +2450,15 @@
       bar.setAttribute('aria-hidden', on ? 'false' : 'true');
       /* Плашке cookie и всплывающему уведомлению есть куда подняться. */
       document.body.classList.toggle('bar-on', on);
+      /* Мерить имеет смысл, когда панель видна: у скрытой высота нулевая
+         на части браузеров. */
+      if (on) measureBuybar(bar);
     }, { threshold: 0 });
     bbObs.observe(btn);
+    /* Поворот экрана меняет и ширину панели, и число строк в названии. */
+    if (bbResize) window.removeEventListener('resize', bbResize);
+    bbResize = function () { measureBuybar(document.getElementById('buybar')); };
+    window.addEventListener('resize', bbResize);
   }
 
   /*

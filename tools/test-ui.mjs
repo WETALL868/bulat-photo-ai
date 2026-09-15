@@ -848,6 +848,164 @@ if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
   art.close();
 }
 
+/*
+  Телефон: кнопка уведомления, закреплённая панель, конец страницы.
+
+  Три ошибки, найденные владельцем на телефоне, жили в одном месте —
+  в том, что содержимое мерили на глаз, а не по настоящей ширине:
+
+    • «Уведомить о поступлении» не переносится (.btn запрещает перенос),
+      и в карточке каталога шириной в половину экрана надпись вылезала
+      наружу вместе с иконкой;
+    • в закреплённой панели название и кнопка не помещались в одну
+      строку, и название обрезалось на середине слова;
+    • запас под панелью стоял на body, рисовался его белым фоном и давал
+      полосу пустоты под тёмным футером — вдвое больше, чем нужно.
+
+  Поэтому проверяем не «выглядит нормально», а числа: ничего не выходит
+  за свою карточку и за окно, в панели ничего не обрезано, после футера
+  ноль лишних пикселей.
+*/
+{
+  const PHONES = [320, 360, 375, 390, 430];
+  const stockOf = (id) => {
+    const live = JSON.parse(fs.readFileSync(path.join(ROOT, 'live/catalog-live.json'), 'utf8'));
+    return !!(live.items[id] || {}).available;
+  };
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/catalog/index.json'), 'utf8'));
+  const ids = idx.rows.map((r) => String(r[0]));
+  const outId = ids.find((id) => !stockOf(id) && slugRegistry[id]);
+  const inId = ids.find((id) => stockOf(id) && slugRegistry[id]);
+
+  for (const width of PHONES) {
+    const ctx = await browser.newContext({ viewport: { width, height: 780 }, isMobile: true, hasTouch: true });
+    const page = await ctx.newPage();
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => { try { localStorage.setItem('hb_cookie_consent_v2', '1'); } catch (e) { } });
+
+    /* ---- каталог: кнопка уведомления внутри своей карточки ---- */
+    await page.goto(`${BASE}/catalog/zip`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.card', { timeout: 15000 });
+    await page.waitForTimeout(350);
+    const grid = await page.evaluate(() => {
+      const de = document.documentElement;
+      const res = { overflowX: de.scrollWidth - window.innerWidth, spill: [], alerts: 0, tiny: [] };
+      for (const card of document.querySelectorAll('.card')) {
+        const cr = card.getBoundingClientRect();
+        for (const el of card.querySelectorAll('*')) {
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) continue;
+          if (r.right > cr.right + 0.5 || r.left < cr.left - 0.5) {
+            if (res.spill.length < 4) res.spill.push(String(el.className).slice(0, 28) + ' «' +
+              (el.textContent || '').trim().slice(0, 20) + '»');
+          }
+        }
+        const a = card.querySelector('[data-stock-alert]');
+        if (!a) continue;
+        res.alerts += 1;
+        const ar = a.getBoundingClientRect();
+        /* Кнопка должна остаться крупной: мелкую не нажать пальцем. */
+        if (ar.height < 34 || ar.width < 70) res.tiny.push(`${Math.round(ar.width)}x${Math.round(ar.height)}`);
+      }
+      return res;
+    });
+    check(`${width}: каталог без горизонтальной прокрутки`, grid.overflowX <= 0, `запас ${-grid.overflowX}px`);
+    check(`${width}: ничего не вылезает за карточку`, grid.spill.length === 0, grid.spill.join('; '));
+    check(`${width}: кнопка уведомления осталась крупной`, grid.alerts > 0 && grid.tiny.length === 0,
+      `кнопок ${grid.alerts}${grid.tiny.length ? ', мелкие: ' + grid.tiny.join(', ') : ''}`);
+
+    /* ---- карточка товара: панель и конец страницы ---- */
+    for (const [id, label] of [[outId, 'без остатка'], [inId, 'в наличии']]) {
+      await page.goto(`${BASE}/product/${prod(id)}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#ptabs', { timeout: 15000 });
+      await page.evaluate(() => window.scrollTo(0, 2000));
+      await page.waitForTimeout(600);
+      const bar = await page.evaluate(() => {
+        const b = document.getElementById('buybar');
+        if (!b) return { нет: true };
+        const br = b.getBoundingClientRect();
+        const out = { h: Math.round(br.height), clipped: [], overflowX: document.documentElement.scrollWidth - window.innerWidth };
+        for (const el of b.querySelectorAll('*')) {
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) continue;
+          if (r.right > br.right + 0.5 || r.left < br.left - 0.5 || r.bottom > br.bottom + 0.5) {
+            if (out.clipped.length < 4) out.clipped.push(String(el.className).slice(0, 26));
+          }
+        }
+        const n = b.querySelector('.bbname');
+        out.nameCut = n ? n.scrollHeight > n.clientHeight + 1 : false;
+        out.hasCode = !!b.querySelector('.bbcode');
+        out.hasAlert = !!b.querySelector('[data-stock-alert]');
+        out.hasAdd = !!b.querySelector('[data-add]');
+        out.terms = (b.querySelector('.bbterms') || { innerText: '' }).innerText.replace(/\n/g, ' ');
+        return out;
+      });
+      check(`${width}: панель (${label}) ничего не обрезает`,
+        !bar.нет && bar.clipped.length === 0 && bar.overflowX <= 0 && !bar.nameCut,
+        `высота ${bar.h}px, обрезано ${(bar.clipped || []).length}, название обрезано ${bar.nameCut}`);
+      check(`${width}: в панели (${label}) виден артикул`, bar.hasCode === true);
+      if (label === 'без остатка') {
+        check(`${width}: без остатка в панели уведомление, а не корзина`,
+          bar.hasAlert === true && bar.hasAdd === false);
+      } else {
+        check(`${width}: в наличии — количество, итог и покупка`,
+          bar.hasAdd === true && /шт\./.test(bar.terms) && /₽/.test(bar.terms), bar.terms.slice(0, 60));
+      }
+
+      /* Конец страницы: прокручиваем до упора надёжно — одиночный
+         scrollTo в мобильном контексте не всегда доезжает. */
+      for (let i = 0; i < 5; i++) {
+        await page.evaluate(() => { const e = document.scrollingElement || document.documentElement; e.scrollTop = e.scrollHeight; });
+        await page.waitForTimeout(150);
+      }
+      const tail = await page.evaluate(() => {
+        const de = document.documentElement;
+        const f = document.querySelector('.foot').getBoundingClientRect();
+        const b = document.getElementById('buybar');
+        const last = document.querySelector('.foot .credit') || document.querySelector('.foot .fbottom');
+        return {
+          after: Math.round(de.scrollHeight - (f.bottom + window.scrollY)),
+          bodyPB: getComputedStyle(document.body).paddingBottom,
+          clearance: b && last ? Math.round(b.getBoundingClientRect().top - last.getBoundingClientRect().bottom) : null,
+        };
+      });
+      check(`${width}: после футера (${label}) нет пустоты`, tail.after === 0,
+        `${tail.after}px, padding-bottom у body ${tail.bodyPB}`);
+      check(`${width}: панель (${label}) не накрывает конец футера`, tail.clearance === null || tail.clearance >= 0,
+        `просвет ${tail.clearance}px`);
+    }
+
+    /* ---- вкладка «Доставка и оплата» ---- */
+    await page.goto(`${BASE}/product/${prod(inId)}?tab=delivery`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#ptabs', { timeout: 15000 });
+    await page.waitForTimeout(400);
+    const dlv = await page.evaluate(() => {
+      const p = document.querySelector('[data-panel="delivery"]');
+      if (!p) return { нет: true };
+      const pr = p.getBoundingClientRect();
+      const spill = [...p.querySelectorAll('*')].filter((e) => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && (r.right > pr.right + 0.5 || r.left < pr.left - 0.5);
+      }).length;
+      return {
+        h: Math.round(pr.height), spill, hidden: p.hidden,
+        внутриДругойПанели: !!p.parentElement.closest('[data-tabpanel], [role="tabpanel"]'),
+        text: (p.innerText || '').replace(/\n+/g, ' '),
+      };
+    });
+    check(`${width}: вкладка «Доставка и оплата» видна`, !dlv.нет && dlv.h > 200 && !dlv.внутриДругойПанели,
+      `высота ${dlv.h}px`);
+    check(`${width}: во вкладке есть доставка, оплата и раздел для юрлиц`,
+      /Доставка/.test(dlv.text) && /Оплата/.test(dlv.text) && /Юридическим лицам/.test(dlv.text) &&
+      /Самовывоз/.test(dlv.text) && /СДЭК/.test(dlv.text));
+    check(`${width}: вкладка не обещает онлайн-оплату`,
+      !/СБП/.test(dlv.text) || /появится после подключения/.test(dlv.text));
+    check(`${width}: во вкладке ничего не вылезает`, dlv.spill === 0, `вылезает ${dlv.spill}`);
+
+    await ctx.close();
+  }
+}
+
 await browser.close();
 stop();
 
