@@ -8,6 +8,7 @@
     "start": "node tools/serve.mjs",
     "catalog": "node tools/build-catalog.mjs",
     "reviews": "node tools/reviews.mjs",
+    "photos": "node tools/audit-photos.mjs",
     "seo": "node tools/build-seo.mjs",
     "build": "node tools/build-catalog.mjs && node tools/build-seo.mjs",
     "single": "node tools/build-single.mjs",

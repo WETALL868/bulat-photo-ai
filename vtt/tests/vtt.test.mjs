@@ -2302,6 +2302,84 @@ test('на телефоне ничего не вылезает за кнопку
   assert.ok(/if \(!p \|\| !p\.stock \|\| noPrice\(p\)\)/.test(app), 'addToCart перестал проверять наличие');
 });
 
+test('в каталоге нет битых, горячих и подменённых картинок', async () => {
+  /*
+    Четыре беды выглядят на карточке одинаково — «нет картинки», — а
+    чинятся по-разному, поэтому и проверяются отдельно:
+
+      битая ссылка     адрес есть, файла нет: сервер отдаст 404;
+      горячая ссылка   адрес ведёт на b2b.vtt.ru: чужой сервер и офлайн
+                       мимо, ровно то, ради чего заводили vtt-photos.json;
+      лишняя заглушка  заглушка стоит там, где снимок у поставщика есть, —
+                       значит, его потеряли по дороге;
+      битый файл       файл лежит, но это не изображение.
+
+    Гоняем ровно тот код, что и tools/audit-photos.mjs: проверка и отчёт
+    не должны разойтись.
+  */
+  const { execFileSync } = await import('node:child_process');
+  let out = '';
+  try {
+    out = execFileSync(process.execPath, ['tools/audit-photos.mjs'],
+      { cwd: process.cwd(), encoding: 'utf8' });
+  } catch (e) {
+    out = String(e.stdout || '') + String(e.stderr || '');
+    assert.fail('проверка фотографий нашла проблемы:\n' + out);
+  }
+  assert.match(out, /битых ссылок \(файла нет\): 0/, 'появились ссылки на несуществующие файлы');
+  assert.match(out, /горячих ссылок на поставщика: 0/, 'в каталог вернулись адреса b2b.vtt.ru');
+  assert.match(out, /неожиданных заглушек: 0/, 'заглушка стоит там, где снимок есть');
+  assert.match(out, /испорченных файлов: 0/, 'среди картинок есть не-изображения');
+  assert.match(out, /битых картинок разделов, марок и атласа: 0/, 'битые картинки вне карточек товара');
+});
+
+test('снимок берётся только по точному совпадению артикула', async () => {
+  const builder = fs.readFileSync(path.join(process.cwd(), 'tools/build-catalog.mjs'), 'utf8');
+  /*
+    У уценённой позиции свой Id, но тот же артикул и то же название, что
+    у обычной, — снимок у них общий по праву. А вот оригинальный номер
+    общий у целого семейства разных позиций: под одним OriginalNumber
+    лежат и набор из двух картриджей, и одиночный, и чипы соседних
+    моделей. Брать снимок по нему — значит показать покупателю другой
+    товар, поэтому в сборке этого пути быть не должно.
+  */
+  const block = builder.slice(builder.indexOf('Снимок по точному артикулу поставщика'),
+    builder.indexOf('Полноразмерные снимки поставщика, выложенные на сайт'));
+  assert.ok(block.length > 500, 'блок подстановки снимка по артикулу пропал');
+  assert.ok(/it\.vendorCode/.test(block), 'совпадение ищется не по артикулу поставщика');
+  assert.ok(!/originalNumber/.test(block), 'снимок снова берётся по оригинальному номеру — это чужой товар');
+  assert.ok(/own\.length > 1/.test(block), 'пропала защита от неоднозначного совпадения');
+  assert.ok(/if \(!local\[file\]\)/.test(block), 'пропала проверка, что файл уже лежит в проекте');
+
+  /* И в собранном каталоге ни одного адреса на чужой сервер. */
+  const idx = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/catalog/index.json'), 'utf8'));
+  const iImg = idx.fields.indexOf('img');
+  const unpack = (v) => {
+    const t = String(v ?? '');
+    return t.charCodeAt(0) === 1 ? idx.imgBases[Number(t[1])] + t.slice(2) : t;
+  };
+  const remote = idx.rows.filter((r) => /^https?:/i.test(unpack(r[iImg])));
+  assert.equal(remote.length, 0, 'в каталоге есть горячие ссылки на картинки поставщика');
+});
+
+test('карточка без снимка не обещает фото, которого нет', async () => {
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  /*
+    Раньше галерея добавляла два вида «Крупный план» всем, у кого нет
+    ячейки атласа, — в том числе товарам с заглушкой. Карточка предлагала
+    увеличить серый прямоугольник и обещала три снимка там, где нет ни
+    одного.
+  */
+  assert.ok(/var noPhoto = !localFull && !hasAtlas;/.test(app), 'витрина перестала различать «нет снимка»');
+  assert.ok(/if \(!hasAtlas && !noPhoto\) views\.push/.test(app),
+    'виды «Крупный план» снова добавляются товару без снимка');
+  assert.ok(/noPhoto \? ' aria-label="Фото товара не передано поставщиком"'/.test(app),
+    'площадка без снимка снова притворяется кнопкой увеличения');
+  assert.ok(/classList\.contains\('no-photo'\)/.test(app), 'увеличение заглушки больше ничем не остановлено');
+  const css = fs.readFileSync(path.join(process.cwd(), 'assets/css/styles.css'), 'utf8');
+  assert.ok(/\.gmain\.no-photo\{cursor:default\}/.test(css), 'курсор на площадке без снимка снова обещает нажатие');
+});
+
 test('оценка в форме отзыва не выбрана заранее и обязательна', async () => {
   const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
   /*

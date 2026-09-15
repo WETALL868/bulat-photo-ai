@@ -1006,6 +1006,113 @@ if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
   }
 }
 
+/*
+  Карточка товара, у которого снимка нет.
+
+  Поставщик присылает у таких позиций PhotoUrl «dummy.jpg», и в каталоге
+  честно стоит заглушка. Проверяем, что вокруг неё ничего не обещано
+  лишнего: ни «Крупный план» серого прямоугольника, ни увеличения, ни
+  битых адресов. И что на карточке со снимком всё это по-прежнему есть.
+*/
+{
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/catalog/index.json'), 'utf8'));
+  const iImg = idx.fields.indexOf('img');
+  const unpackImg = (v) => {
+    const t = String(v ?? '');
+    return t.charCodeAt(0) === 1 ? idx.imgBases[Number(t[1])] + t.slice(2) : t;
+  };
+  const blank = idx.rows.find((r) => /no-photo/.test(unpackImg(r[iImg])) && slugRegistry[r[0]]);
+  const shot = idx.rows.find((r) => /vtt-full/.test(unpackImg(r[iImg])) && slugRegistry[r[0]]);
+
+  for (const device of [
+    { name: 'десктоп', viewport: { width: 1440, height: 900 } },
+    { name: 'телефон', viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true },
+  ]) {
+    const ctx = await browser.newContext({ viewport: device.viewport, hasTouch: device.hasTouch });
+    const page = await ctx.newPage();
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => { try { localStorage.setItem('hb_cookie_consent_v2', '1'); } catch (e) { } });
+
+    for (const [row, label] of [[blank, 'без снимка'], [shot, 'со снимком']]) {
+      if (!row) continue;
+      const bad = [];
+      page.removeAllListeners('response');
+      page.on('response', (r) => {
+        if (r.status() >= 400 && /\.(webp|jpe?g|png|svg)(\?|$)/i.test(r.url())) bad.push(r.status() + ' ' + r.url());
+      });
+      await page.goto(`${BASE}/product/${prod(row[0])}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#gmain', { timeout: 15000 });
+      await page.waitForTimeout(500);
+      const g = await page.evaluate(() => {
+        const main = document.getElementById('gmain');
+        const imgs = [...document.querySelectorAll('#app img')];
+        return {
+          noPhoto: main.classList.contains('no-photo'),
+          role: main.getAttribute('role'),
+          zoomOffer: !!main.querySelector('.zoom'),
+          note: (main.querySelector('.gnote') || {}).textContent || '',
+          thumbs: [...document.querySelectorAll('.thumbs .thumb')].map((t) => t.getAttribute('title')),
+          brokenImgs: imgs.filter((i) => i.complete && i.naturalWidth === 0).map((i) => i.getAttribute('src')),
+          mainSrc: (main.querySelector('img') || {}).getAttribute
+            ? main.querySelector('img').getAttribute('src') : '',
+        };
+      });
+      check(`${device.name}: картинки карточки (${label}) отдаются без ошибок`, bad.length === 0, bad.slice(0, 2).join('; '));
+      check(`${device.name}: на карточке (${label}) нет несостоявшихся картинок`,
+        g.brokenImgs.length === 0, g.brokenImgs.slice(0, 2).join('; '));
+
+      if (label === 'без снимка') {
+        check('карточка без снимка помечена как таковая', g.noPhoto === true && /no-photo\.svg$/.test(g.mainSrc));
+        check('без снимка не предлагается «Крупный план»',
+          !g.thumbs.includes('Крупный план'), 'виды: ' + g.thumbs.join(', '));
+        check('без снимка нет подписи «Открыть фото»', g.zoomOffer === false);
+        check('без снимка площадка не притворяется кнопкой', g.role !== 'button');
+        check('без снимка сказано, что фото не передано', /не передал фото/.test(g.note), g.note.trim());
+        /* Нажатие не должно открывать заглушку во весь экран. */
+        await page.click('#gmain').catch(() => {});
+        await page.waitForTimeout(400);
+        const lbOpen = await page.evaluate(() => {
+          const lb = document.getElementById('lightbox');
+          return !!lb && !lb.hidden;
+        });
+        check('нажатие на заглушку не открывает увеличение', lbOpen === false);
+      } else {
+        check('карточка со снимком предлагает увеличение', g.noPhoto === false && g.zoomOffer === true);
+        check('карточка со снимком осталась кнопкой', g.role === 'button');
+        check('у карточки со снимком есть «Крупный план»',
+          g.thumbs.includes('Крупный план') || g.thumbs.length >= 1, 'виды: ' + g.thumbs.join(', '));
+      }
+    }
+    await ctx.close();
+  }
+
+  /* Каталог: ни одной несостоявшейся картинки в сетке. */
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage();
+  const bad = [];
+  page.on('response', (r) => {
+    if (r.status() >= 400 && /\.(webp|jpe?g|png|svg)(\?|$)/i.test(r.url())) bad.push(r.status() + ' ' + r.url());
+  });
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => { try { localStorage.setItem('hb_cookie_consent_v2', '1'); } catch (e) { } });
+  await page.goto(`${BASE}/catalog/zip`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.card', { timeout: 15000 });
+  await page.waitForTimeout(700);
+  const grid = await page.evaluate(() => {
+    const imgs = [...document.querySelectorAll('.card img')];
+    return {
+      total: imgs.length,
+      broken: imgs.filter((i) => i.complete && i.naturalWidth === 0).map((i) => i.getAttribute('src')).slice(0, 3),
+      placeholders: imgs.filter((i) => /no-photo/.test(i.getAttribute('src') || '')).length,
+    };
+  });
+  check('в сетке каталога нет несостоявшихся картинок', grid.broken.length === 0, grid.broken.join('; '));
+  check('картинки каталога отдаются без ошибок', bad.length === 0, bad.slice(0, 2).join('; '));
+  check('в сетке есть и снимки, и заглушки', grid.total > 0,
+    `картинок ${grid.total}, из них заглушек ${grid.placeholders}`);
+  await ctx.close();
+}
+
 await browser.close();
 stop();
 

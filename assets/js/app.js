@@ -739,8 +739,19 @@
         сборка превью, в боевой сборке его нет.
       */
       var fullSrc = hasAtlas && window.HB_FULL_IMG ? window.HB_FULL_IMG[p.id] : null;
+      /*
+        Снимка у товара может не быть вовсе: поставщик присылает у таких
+        позиций PhotoUrl «dummy.jpg», и в каталог уходит заглушка.
+
+        Галерея этого не учитывала и всё равно добавляла два вида
+        «Крупный план» — то есть увеличение серого прямоугольника, — и
+        подпись «Открыть фото». Карточка обещала три снимка там, где нет
+        ни одного. Теперь при отсутствии снимка остаётся только то, что
+        действительно есть: сама заглушка и совместимость.
+      */
+      var noPhoto = !localFull && !hasAtlas;
       var views = [{ t: 'img' }];
-      if (!hasAtlas) views.push({ t: 'zoom', pos: '18% 50%' }, { t: 'zoom', pos: '82% 50%' });
+      if (!hasAtlas && !noPhoto) views.push({ t: 'zoom', pos: '18% 50%' }, { t: 'zoom', pos: '82% 50%' });
       if (d.models.length) views.push({ t: 'compat' });
       var thumbs = views.map(function (v, i) {
         var inner = v.t === 'img' ? imgHtml(p, { alt: '' }) : (v.t === 'zoom' ? '<span class="tz" style="background-image:url(' + src + ');background-position:' + v.pos + '"></span>' : brandLogo(p.brand, 14, '') + '<span class="tl">Совместимость</span>');
@@ -836,10 +847,17 @@
            670235, перестал находить товар. Теперь номер выдаётся один раз
            и живёт с товаром. */
         '<span>Артикул: <b>' + esc(p.code) + '</b></span><span>Код товара: <b>' + esc(String(p.no || '')) + '</b></span>' + badge(p) + '</div></header>' +
-        '<div class="gallery"><div class="gmain' + (hasAtlas ? ' has-atlas' : '') + '" id="gmain" role="button" tabindex="0"' +
-        ' aria-label="Открыть фото крупнее: ' + esc(p.name) + '" data-src="' + (hasAtlas ? '' : src) + '">' + imgHtml(p, { alt: p.name, eager: true, view: 'img', noAtlas: localFull, cls: hasAtlas ? 'g-atlas-img' : '' }) +
+        /* Без снимка блок не кнопка: нажимать не на что, и роль button с
+           подписью «Открыть фото крупнее» обманывала бы и мышь, и
+           экранный диктор. */
+        '<div class="gallery"><div class="gmain' + (hasAtlas ? ' has-atlas' : '') + (noPhoto ? ' no-photo' : '') + '" id="gmain"' +
+        (noPhoto ? ' aria-label="Фото товара не передано поставщиком"' :
+          ' role="button" tabindex="0" aria-label="Открыть фото крупнее: ' + esc(p.name) + '"') +
+        ' data-src="' + (hasAtlas || noPhoto ? '' : src) + '">' + imgHtml(p, { alt: p.name, eager: true, view: 'img', noAtlas: localFull, cls: hasAtlas ? 'g-atlas-img' : '' }) +
         (fullSrc ? '<img class="g-full" data-full="' + esc(fullSrc) + '" alt="' + esc(p.name) + '" hidden>' : '') +
-        (hasAtlas ? '' : '<div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>') + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span>' + '<span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span>' + '</div><div class="thumbs">' + thumbs + '</div></div>' +
+        (hasAtlas || noPhoto ? '' : '<div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>') + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span>' +
+        (noPhoto ? '<span class="gnote">' + ic('info', 15) + 'Поставщик не передал фото</span>'
+          : '<span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span>') + '</div><div class="thumbs">' + thumbs + '</div></div>' +
         '<div class="pinfo"><div class="keyspecs"><h3>Коротко о товаре</h3>' + key.map(function (k) { return '<div class="krow"><span>' + esc(k[0]) + '</span><b>' + esc(k[1]) + '</b></div>'; }).join('') + '</div>' +
         (compatChips ? '<div class="compat"><h3>Подходит для принтеров ' + brandLogo(p.brand, 18, '') + '</h3><div class="tags">' + compatChips + '</div></div>' : '') +
         /*
@@ -1878,7 +1896,13 @@
     if (t) { slideTo(slideIdx + (+t.dataset.sl)); restartSlider(); return; }
     t = e.target.closest('[data-dot]');
     if (t) { slideTo(+t.dataset.dot); restartSlider(); return; }
-    if (e.target.closest('#gmain') && !e.target.closest('.gcompat')) { openPhoto(); return; }
+    /* Увеличивать нечего, если снимка нет: показали бы заглушку во весь
+       экран. Проверка по самой площадке, а не по наличию картинки в
+       разметке, — заглушка тоже <img>. */
+    if (e.target.closest('#gmain') && !e.target.closest('.gcompat')) {
+      if (!e.target.closest('#gmain').classList.contains('no-photo')) openPhoto();
+      return;
+    }
     if (e.target.closest('.thumb.video')) { showToast('Видеообзор — заглушка для прототипа'); return; }
   });
 
@@ -2355,7 +2379,7 @@
     if (e.key === 'Escape') { closePhoto(); return; }
     if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
     var g = e.target.closest && e.target.closest('#gmain');
-    if (!g) return;
+    if (!g || g.classList.contains('no-photo')) return;
     /* Пробел на площадке фото не должен заодно прокручивать страницу. */
     e.preventDefault();
     openPhoto();

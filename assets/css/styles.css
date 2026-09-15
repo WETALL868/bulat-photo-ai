@@ -999,6 +999,15 @@ table.cmp td:first-child,table.cmp th:first-child{color:var(--muted);font-weight
   покупатель ищет глазами свой способ доставки и его цену, и читать ради
   этого четыре предложения подряд ему незачем.
 */
+/* Площадка фото у товара без снимка: не кнопка, курсор обычный, вместо
+   «Открыть фото» — честная пометка о том, что снимка нет. */
+.gmain.no-photo{cursor:default}
+.gmain.no-photo .zoom{display:none}
+.gnote{position:absolute;left:14px;bottom:14px;display:inline-flex;align-items:center;gap:6px;
+  padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.92);border:1px solid var(--line);
+  font-size:12.5px;color:var(--muted);line-height:1.2;max-width:calc(100% - 28px)}
+.gnote svg{flex:none;color:var(--muted2)}
+@media (max-width:640px){.gnote{left:10px;bottom:10px;font-size:12px;padding:4px 9px}}
 .dlv{display:flex;flex-direction:column;gap:22px;max-width:860px}
 .dlv-b h3{display:flex;align-items:center;gap:9px;font-family:var(--head);font-weight:800;
   font-size:19px;letter-spacing:-.01em;margin:0 0 12px}

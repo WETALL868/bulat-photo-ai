@@ -363,6 +363,64 @@ async function readVttStore(storeRoot) {
   }
 
   /*
+    Снимок по точному артикулу поставщика.
+
+    У части позиций поставщик присылает PhotoUrl «dummy.jpg» — снимка
+    нет. Но та же вещь нередко лежит в выгрузке дважды: обычная позиция и
+    её уценка по сроку годности, с тем же артикулом и почти тем же
+    названием, но своим Id. Снимок при этом привязан только к одной из
+    них, и вторая карточка оставалась с заглушкой, хотя фотография этого
+    самого товара у нас уже есть.
+
+    Берём снимок только при ПОЛНОМ совпадении артикула (NameAlias) и
+    только когда такая запись ровно одна. Оригинальный номер для этого не
+    годится: он общий у целого семейства разных позиций — под одним
+    OriginalNumber лежат и набор из двух картриджей, и одиночный, и чипы
+    соседних моделей. Подставить оттуда снимок значило бы показать
+    покупателю чужой товар.
+  */
+  {
+    /*
+      Брать можно только тот снимок, что уже лежит у нас: иначе в каталог
+      уедет адрес на b2b.vtt.ru — горячая ссылка на чужой сервер, ровно
+      то, ради чего заводили data/vtt-photos.json.
+    */
+    const registryFile = path.join(ROOT, 'data/vtt-photos.json');
+    const local = fs.existsSync(registryFile)
+      ? JSON.parse(fs.readFileSync(registryFile, 'utf8')).photos || {}
+      : {};
+    const byCode = new Map();
+    for (const it of store.loadAll().values()) {
+      const code = String(it.vendorCode ?? '').trim();
+      if (!code || !Array.isArray(it.photos) || !it.photos.length) continue;
+      if (!byCode.has(code)) byCode.set(code, []);
+      byCode.get(code).push(it);
+    }
+    let reused = 0;
+    const ambiguous = [], notDownloaded = [];
+    for (const p of products) {
+      if (!p.photoMissing) continue;
+      const code = String(p.code ?? '').trim();
+      const donors = code ? byCode.get(code) : null;
+      if (!donors || !donors.length) continue;
+      const own = donors.filter((d) => String(d.id) !== String(p.vttId));
+      if (!own.length) continue;
+      if (own.length > 1) { ambiguous.push(code); continue; }
+      const file = String(own[0].photos[0]).split('/').pop();
+      if (!local[file]) { notDownloaded.push(`${p.code} (${file})`); continue; }
+      p.img = own[0].photos[0];
+      p.imgFromCode = own[0].id;
+      p.photoMissing = false;
+      reused += 1;
+    }
+    if (reused || ambiguous.length || notDownloaded.length) {
+      console.log(`  снимков взято у записи с тем же артикулом: ${reused}` +
+        (ambiguous.length ? `, пропущено из-за неоднозначности: ${ambiguous.length}` : '') +
+        (notDownloaded.length ? `, файла нет в проекте: ${notDownloaded.length} (${notDownloaded.join(', ')})` : ''));
+    }
+  }
+
+  /*
     Полноразмерные снимки поставщика, выложенные на сайт.
 
     В выгрузке у товара стоит адрес картинки на b2b.vtt.ru. Горячая
