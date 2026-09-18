@@ -111,6 +111,168 @@ const plural = (n, one, few, many) => {
   «Повреждённая упаковка» и «3055» — то есть выдуманную совместимость.
   Текст показывается как есть, отдельным полем, за подписью поставщика.
 */
+/*
+  Перечень совместимых моделей.
+
+  Что было не так. Поставщик пишет модели одной строкой со слешами:
+  «Panasonic KX-MB1900/2000/2020/2030/2051/2061». Разбор резал её по
+  слешу и терял приставку — на карточке HB-KX-FAT410A7 стояли чипы
+  «KX-MB1500» и «1520». Второй чип ничего не значит: «1520» без марки и
+  серии — не модель принтера, а обрывок. У соседнего HB-KX-FAD412A
+  список не появлялся вовсе, хотя в выгрузке он есть.
+
+  Как устроено здесь. Строка делится на фразы по запятым, каждая фраза
+  читается словами слева направо, и приставка переносится явно:
+
+    KX-MB1900/2000/2020  ->  KX-MB1900, KX-MB2000, KX-MB2020
+    LJ 3052/3055/3390    ->  LJ 3052, LJ 3055, LJ 3390
+    CLJ M375/M475        ->  CLJ M375, CLJ M475
+
+  Марка техники из начала фразы убирается: она уже написана над списком
+  («Подходит для принтеров Panasonic»), и повторять её в каждом чипе
+  значит занять строку служебным словом.
+
+  Чем это не является. Здесь ничего не додумывается: ни одна модель не
+  появляется из воздуха, приставка берётся только у соседнего элемента
+  того же перечня. Всё, что похоже на вес, объём, ресурс, формат бумаги,
+  цвет или пометку поставщика, отбрасывается — иначе в совместимость
+  попадали бы «10K», «А4» и «Повреждённая упаковка».
+*/
+const UNIT_TOKEN = /^\d+(?:[.,]\d+)?\s*(?:[kк]|мл|л|г|кг|шт|стр|мм|см|м|%|г\/м2|дюйм\p{L}*)$/iu;
+const PAPER_FMT = /^(?:a|а)[0-9]$|^(?:letter|legal|ролик|рулон)$/i;
+const NOT_MODEL = /^(?:чип|тонер|картридж|барабан|драм|ремкомплект|комплект|упаковка|повре\p{L}+|уценк\p{L}+|оригинал\p{L}*|совместим\p{L}*|аналог|шт|компл|набор|бумаг\p{L}*|плёнк\p{L}*|пленк\p{L}*|все\p{L}*|любы\p{L}*|регион\p{L}*|гарант\p{L}*)$/iu;
+const BRAND_WORD = /^(?:hp|canon|epson|kyocera|kyocera-mita|brother|samsung|xerox|ricoh|oki|lexmark|panasonic|sharp|toshiba|konica|konica-minolta|minolta|pantum|deli|katun|develop|sindoh|avision|nashuatec|gestetner|infotec|savin|lanier)$/i;
+/*
+  Слово-серия: только латиница (LJ, CLJ, ECOSYS, Phaser, Aficio,
+  WorkCentre). Кириллица сюда не пускается намеренно: серий принтеров
+  русскими буквами не бывает, а вот «Флакон 200 гр» и «Вес 200» в этом
+  поле встречаются — и без ограничения они становились «моделью
+  Флакон 200».
+*/
+const SERIES_WORD = /^[A-Za-z][A-Za-z-]{0,14}$/;
+
+const cleanToken = (t) => String(t ?? '').replace(/^[\s.,;:•·()\/-]+|[\s.,;:•·()\/-]+$/gu, '').trim();
+
+function goodModel(t) {
+  const v = cleanToken(t);
+  if (v.length < 2 || v.length > 48) return false;
+  if (UNIT_TOKEN.test(v) || PAPER_FMT.test(v) || NOT_MODEL.test(v)) return false;
+  if (TAIL_COLOR.test(v)) return false;
+  /* Обозначение модели — это цифры либо узнаваемое слово серии с чем-то
+     ещё. Голое слово без цифр моделью не считается: так в список
+     попадали «Black» и «с чипом». */
+  if (!/\d/.test(v)) return false;
+  /* Чистое число без букв — обрывок вроде «1520» или ресурс «6000». */
+  if (/^\d+$/.test(v)) return false;
+  /* Обозначение модели пишется латиницей. Кириллическое слово с цифрой —
+     это «м2», «Флакон 200» или «Тип 4», но не принтер. */
+  if (!/[A-Za-z]/.test(v)) return false;
+  return true;
+}
+
+/* Приставка обозначения: всё до последней группы цифр. KX-MB1900 -> KX-MB. */
+function alphaPrefix(anchor) {
+  const m = /^([^\d]*[^\d\s])(\d.*)$/u.exec(String(anchor));
+  return m ? m[1] : '';
+}
+
+export function expandModelList(text) {
+  const raw = String(text ?? '').replace(/\\/g, '/')
+    /* Единицы измерения убираются ДО разбора: «260 г/м2» иначе распадётся
+       по слешу на «г» и «м2», и «м2» пройдёт за модель — цифра есть,
+       числом целиком не является. */
+    .replace(/\d+(?:[.,]\d+)?\s*(?:г\s*\/\s*м2|кг|мл|мг|шт|стр|дюйм\p{L}*|[гл])(?![\p{L}\d])/giu, ' ')
+    /* «KX-MB1500/ 1520» и «KX-MB1500 / 1520» — тот же перечень, что и без
+       пробелов: пробел вокруг слеша ставят при наборе, и на смысл он не
+       влияет. Без этого «1520» отрывалось от приставки. */
+    .replace(/\s*\/\s*/gu, '/')
+    .replace(/\s+/gu, ' ').trim();
+  if (!raw) return [];
+  const out = [];
+  for (const phrase of raw.split(/[,;\n]+/u)) {
+    const words = cleanToken(phrase).split(' ').filter(Boolean);
+    let series = '';
+    let dropBrand = true;
+    for (const word of words) {
+      const w = cleanToken(word);
+      if (!w) continue;
+      /* Марка техники в начале фразы — не модель и не серия. */
+      if (dropBrand && BRAND_WORD.test(w)) { continue; }
+      dropBrand = false;
+      if (w.indexOf('/') >= 0 && w.replace(/^\/+|\/+$/g, '').indexOf('/') >= 0) {
+        const parts = w.split('/').map(cleanToken).filter(Boolean);
+        let pre = alphaPrefix(parts[0]);
+        for (const part of parts) {
+          /*
+            Внутри перечня марка и серия могут смениться: у поставщика
+            встречается «WorkCentre 5325/5330/5335/XDP 405/505 /OKI B930».
+            Слово без цифр посреди слешей — это новая серия, а название
+            чужой марки — новый раздел перечня. Без такого переключения
+            «405» получало приставку «WorkCentre» и превращалось в
+            аппарат, которого не существует.
+          */
+          if (BRAND_WORD.test(part)) { series = ''; pre = ''; continue; }
+          if (!/\d/.test(part) && SERIES_WORD.test(part)) { series = part; pre = ''; continue; }
+          /* Элемент без своей приставки берёт её у первого в перечне —
+             это и есть та связь, которую слеш обозначает. */
+          let full = (pre && /^\d/.test(part)) ? pre + part : part;
+          if (series && /^\d/.test(full)) full = series + ' ' + full;
+          if (goodModel(full)) out.push(cleanToken(full));
+          /*
+            Приставку задаёт БЛИЖАЙШЕЕ полное обозначение слева, а не
+            первое в строке. В «405/505/Lemarks840/840e/840dn» после
+            «Lemarks840» идут его же варианты, и брать для них приставку
+            от «405» значило бы приписать их чужой серии.
+          */
+          const own = alphaPrefix(part);
+          if (own) { pre = own; series = ''; }
+        }
+        continue;
+      }
+      if (BRAND_WORD.test(w)) { series = ''; continue; }
+      if (!/\d/.test(w) && SERIES_WORD.test(w)) { series = w; continue; }
+      const full = (series && /^\d/.test(w)) ? series + ' ' + w : w;
+      if (goodModel(full)) out.push(cleanToken(full));
+    }
+  }
+  /* Повторы у поставщика встречаются: «KX-MB2000» может прийти дважды. */
+  const seen = new Set(), uniq = [];
+  for (const m of out) {
+    const key = m.toUpperCase().replace(/[^0-9A-ZА-Я]/gu, '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniq.push(m);
+  }
+  /* Ограничение сверху — защита от строки на тысячу знаков, а не выбор
+     «важных» моделей: первые в перечне идут в том порядке, в каком их
+     написал поставщик. */
+  return uniq.slice(0, 60);
+}
+
+/*
+  Совместимость товара: сначала поле поставщика, потом название.
+
+  Порядок не случайный. Compatibility — то, что поставщик написал
+  специально про совместимость, и там перечень полнее: у HB-KX-FAD412A
+  в нём восемь моделей против шести в названии. Но у уценённых позиций
+  в это же поле попадает «Повреждённая упаковка» — тогда работает
+  название.
+*/
+export function compatModels(item, code) {
+  const text = String(item?.compatibilityText ?? '').trim();
+  if (text && looksLikeCompatList(text)) {
+    const list = expandModelList(text);
+    if (list.length) return list;
+  }
+  const structural = modelsOf(item);
+  if (structural.length) {
+    const list = expandModelList(structural.join(', '));
+    if (list.length) return list;
+  }
+  const fromName = modelsFromName(item?.name, code ?? item?.vendorCode);
+  return fromName ? expandModelList(fromName) : [];
+}
+
 export function modelsOf(item) {
   return item.compatibilityLabels ?? item.compatibility ?? [];
 }
@@ -800,8 +962,11 @@ export function toShopProduct(item, { editorial = {}, categoryPath = [], shopCat
     color: item.color ?? '',
     colorTitle: colorTitle(item.color),
     chip: null,
+    /* compat — дословная строка поставщика, models — разобранный
+       перечень: первое идёт в текст карточки, второе в чипы и в ссылки
+       на подбор по принтеру. */
     compat: modelsOf(item).join(', '),
-    models: modelsOf(item),
+    models: compatModels(item, item.vendorCode ?? ""),
     /* Свободный текст поставщика едет отдельным полем и показывается как
        есть: резать его на модели нельзя, но и терять нельзя — у 6 681
        позиции это единственные сведения о совместимости. */

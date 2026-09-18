@@ -2482,6 +2482,168 @@ test('название товара в карточке не обрезаетс�
   assert.ok(!/\.mini \.t\{[^}]*line-clamp/.test(css), 'в рекомендациях название снова обрезано');
 });
 
+test('перечень совместимых моделей не теряет приставку', async () => {
+  const { expandModelList, compatModels } = await import('../src/publish.mjs');
+  /*
+    Владелец увидел у HB-KX-FAT410A7 чипы «KX-MB1500» и «1520»: разбор
+    резал строку по слешу и терял приставку. У соседнего HB-KX-FAD412A
+    перечня не было вовсе, хотя в выгрузке он есть.
+  */
+  assert.deepEqual(expandModelList('Panasonic KX-MB1500/1520'), ['KX-MB1500', 'KX-MB1520']);
+  assert.deepEqual(expandModelList('Panasonic KX-MB1500/ 1520'), ['KX-MB1500', 'KX-MB1520'],
+    'пробел вокруг слеша снова отрывает приставку');
+  assert.deepEqual(expandModelList('Xerox WC 5325/5330/5335'), ['WC 5325', 'WC 5330', 'WC 5335']);
+  /* Серия и марка внутри перечня меняются — приставка должна меняться с ними. */
+  assert.deepEqual(
+    expandModelList('Xerox WorkCentre 5325/XDP 405/505 /OKI B930'),
+    ['WorkCentre 5325', 'XDP 405', 'XDP 505', 'B930'],
+    'приставка тянется через смену серии или марки');
+  /* Вес, объём, ресурс и формат бумаги моделью не являются. */
+  assert.deepEqual(expandModelList('Холст для струйной печати, односторонний, A4, 260 г/м2'), []);
+  assert.deepEqual(expandModelList('Pantum P3010 Флакон 200 гр'), ['P3010']);
+  assert.deepEqual(expandModelList('Epson Stylus CX3500/CX3600, 10K, Black'), ['CX3500', 'CX3600']);
+  /* Голое число — обрывок, а не аппарат. */
+  assert.ok(!expandModelList('KX-MB1500, 1520').includes('1520'));
+  /* Поле поставщика важнее названия: в нём перечень полнее. */
+  const item = {
+    name: 'Драм-юнит Hi-Black (HB-KX-FAD412A) для Panasonic KX-MB1900/2000, 6K',
+    vendorCode: 'HB-KX-FAD412A',
+    compatibilityText: 'Panasonic KX-MB1900/2000/2010/2020',
+  };
+  assert.deepEqual(compatModels(item, item.vendorCode), ['KX-MB1900', 'KX-MB2000', 'KX-MB2010', 'KX-MB2020']);
+  /* «Повреждённая упаковка» в том же поле — не совместимость. */
+  assert.deepEqual(compatModels({ name: 'Картридж для Panasonic KX-MB1500/1520, 2,5K', vendorCode: 'X', compatibilityText: 'Повреждённая упаковка' }, 'X'),
+    ['KX-MB1500', 'KX-MB1520']);
+});
+
+test('наличие — первый ключ сортировки', async () => {
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  /*
+    На /catalog/zip первыми стояли отсутствующие позиции: наличие
+    подмешивается из live уже в браузере, и сортировка о нём не знала.
+  */
+  assert.ok(/var avail = function \(p\) \{ return p && p\.stock \? 0 : 1; \};/.test(app),
+    'сравнение по наличию исчезло из сортировки');
+  assert.ok(/return avail\(a\) - avail\(b\) \|\| f\(a, b\) \|\| a\.row - b\.row;/.test(app),
+    'наличие перестало быть первым ключом либо порядок стал неустойчивым');
+  /* Ни одна ветка сортировки не должна обходить общий компаратор. */
+  const body = app.slice(app.indexOf('function sortList'), app.indexOf('function sortList') + 2000);
+  const sorts = body.match(/l\.sort\(([^)]*)/g) || [];
+  assert.ok(sorts.length >= 5, 'ветки сортировки не найдены — проверка молчит');
+  for (const sortCall of sorts) {
+    assert.ok(/by\(/.test(sortCall), `ветка сортировки мимо общего компаратора: ${sortCall}`);
+  }
+  /* Подборки помимо каталога тоже начинаются с того, что есть на складе. */
+  assert.ok(/var items = sortList\(info\.products\.filter\(Boolean\), ''\);/.test(app),
+    'подбор по принтеру снова не сортируется по наличию');
+  assert.ok(/var related = sortList\(/.test(app), 'похожие товары снова не сортируются по наличию');
+});
+
+test('увеличение фотографии действительно увеличивает', async () => {
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  const css = fs.readFileSync(path.join(process.cwd(), 'assets/css/styles.css'), 'utf8');
+  /*
+    У HB-KX-FAT410A7 снимок 400×283. Окно задавало только max-width и
+    max-height, а браузер без размера рисует картинку в натуральную
+    величину — и «увеличение» открывалось меньше, чем карточка.
+  */
+  assert.ok(!/\.lightbox img\{max-width:min\(1100px,100%\);max-height:100%/.test(css),
+    'у картинки в окне снова только ограничения сверху — увеличения не будет');
+  assert.ok(/function lbFitNow\(\)/.test(app), 'вписывание кадра в сцену исчезло');
+  assert.ok(/el\.style\.width = lbFit\.w \+ 'px';/.test(app),
+    'размер кадра в окне снова не задаётся — картинка вернётся к натуральной величине');
+  /* Масштабирование и перетаскивание: колесо, кнопки, клавиши, щипок. */
+  assert.ok(/lb\.addEventListener\('wheel'/.test(app), 'колесо мыши больше не масштабирует');
+  assert.ok(/data-zoom/.test(app) && /function lbSetZoom/.test(app), 'кнопки масштаба пропали');
+  assert.ok(/lbStage\.addEventListener\('mousedown'/.test(app), 'перетаскивание мышью пропало');
+  assert.ok(/pinch = dist\(e\.touches\)/.test(app), 'щипок на телефоне пропал');
+  assert.ok(/e\.key === '\+' \|\| e\.key === '='/.test(app), 'масштаб с клавиатуры пропал');
+  /* Точка под курсором при масштабировании должна оставаться на месте. */
+  assert.ok(/lbX = ox - \(ox - lbX\) \* r;/.test(app), 'масштабирование снова уводит кадр из-под курсора');
+});
+
+test('крупный план открывается тем же фрагментом', async () => {
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  /*
+    Владелец просил вернуть прежние крупные планы. Они возвращены, но
+    исправленными: выбранный фрагмент обязан открыться этим же
+    фрагментом, а не общим видом.
+  */
+  assert.ok(/crop: \{ x: 0\.2, y: 0\.5 \}/.test(app) && /crop: \{ x: 0\.8, y: 0\.5 \}/.test(app),
+    'виды «Крупный план» снова пропали');
+  assert.ok(/if \(f\.crop\) \{\s*\n\s*lbZoom = 2\.2;/.test(app),
+    'увеличение снова открывает крупный план общим видом');
+  assert.ok(/lbX = \(0\.5 - f\.crop\.x\) \* lbFit\.w \* lbZoom;/.test(app),
+    'фрагмент в увеличении не наводится на выбранную точку');
+  /* Крупный план не добавляется к мелкому снимку: разглядывать нечего. */
+  assert.ok(/var big = d\.imgSize && Math\.max\(d\.imgSize\[0\], d\.imgSize\[1\]\) >= 560;/.test(app),
+    'крупные планы снова обещаются на снимке, где их не разглядеть');
+});
+
+test('совместимость — отдельный раздел, а не кадр галереи', async () => {
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  assert.ok(!/var compatCard = /.test(app), 'совместимость снова стоит миниатюрой в ряду фотографий');
+  assert.ok(!/views\.push\(\{ t: 'compat' \}\)/.test(app), 'вид «Совместимость» вернулся в галерею');
+  assert.ok(/var compatBlock = \(function \(\) \{/.test(app), 'единый блок совместимости исчез');
+  /* Блок обязан существовать при любом наполнении — иначе у соседних
+     карточек снова будет необъяснимая разница. */
+  assert.ok(/Совместимость уточняйте по артикулу/.test(app),
+    'состояние «данных нет» исчезло — карточка снова промолчит');
+  assert.ok(/if \(d\.fitNote\) \{/.test(app), 'подтверждённое назначение больше не показывается');
+});
+
+test('полные описания написаны для всего каталога', async () => {
+  const file = path.join(process.cwd(), 'catalog-source/product-content.json');
+  assert.ok(fs.existsSync(file), 'источник полных описаний пропал');
+  const content = JSON.parse(fs.readFileSync(file, 'utf8')).items;
+  const idx = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/catalog/index.json'), 'utf8'));
+  const ids = idx.rows.map((r) => r[0]);
+  const missing = ids.filter((id) => !content[id]);
+  assert.equal(missing.length, 0, `без описания остались: ${missing.slice(0, 5).join(', ')}`);
+
+  const texts = new Map();
+  let short = 0;
+  for (const id of ids) {
+    const it = content[id];
+    const text = (it.sections || []).map((s) => s.h + '. ' + (s.p || []).join(' ')).join('\n\n');
+    if (text.length < 1800) short += 1;
+    assert.ok((it.sections || []).length >= 3, `у ${id} меньше трёх разделов`);
+    /* Цены и наличия в постоянном описании быть не должно: они меняются
+       каждый день, а текст лежит в сборке. */
+    assert.ok(!/\d\s*₽|руб\.|в наличии на складе/i.test(text), `в описании ${id} цена или наличие`);
+    texts.set(id, text);
+  }
+  assert.equal(short, 0, `короче 1800 знаков: ${short}`);
+
+  /* Дословных дублей быть не должно вовсе. */
+  const seen = new Map();
+  for (const [id, t] of texts) {
+    if (seen.has(t)) assert.fail(`дословный дубль описания: ${id} и ${seen.get(t)}`);
+    seen.set(t, id);
+  }
+
+  /* Сборка обязана брать текст отсюда, а не собирать заново. */
+  const build = fs.readFileSync(path.join(process.cwd(), 'tools/build-catalog.mjs'), 'utf8');
+  assert.ok(/desc: content\[p\.id\]\s*\n\s*\? contentHtml\(content\[p\.id\]\)/.test(build),
+    'сборка снова перетирает готовые тексты собственным описанием');
+});
+
+test('описания попали в собранный каталог', async () => {
+  const dir = path.join(process.cwd(), 'data/catalog/chunks');
+  let n = 0, shortest = Infinity;
+  for (const f of fs.readdirSync(dir)) {
+    if (!/^detail-\d+\.json$/.test(f)) continue;
+    const part = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    for (const d of Object.values(part)) {
+      const text = String(d.desc || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      shortest = Math.min(shortest, text.length);
+      n += 1;
+    }
+  }
+  assert.ok(n > 3000, `карточек в чанках неожиданно мало: ${n}`);
+  assert.ok(shortest >= 1500, `в каталоге осталось короткое описание: ${shortest} знаков`);
+});
+
 test('оценка в форме отзыва не выбрана заранее и обязательна', async () => {
   const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
   /*

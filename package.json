@@ -10,7 +10,7 @@
     "reviews": "node tools/reviews.mjs",
     "photos": "node tools/audit-photos.mjs",
     "seo": "node tools/build-seo.mjs",
-    "build": "node tools/build-catalog.mjs && node tools/build-seo.mjs",
+    "build": "node tools/build-catalog.mjs && node tools/build-descriptions.mjs && node tools/build-catalog.mjs && node tools/build-seo.mjs",
     "single": "node tools/build-single.mjs",
     "test": "node --test vtt/tests/vtt.test.mjs",
     "vtt:diagnose": "node vtt/bin/vtt-sync.mjs diagnose",
@@ -23,7 +23,9 @@
     "vtt:images": "node vtt/bin/vtt-images.mjs",
     "artifact": "node tools/build-artifact.mjs",
     "test:ui": "node tools/test-ui.mjs",
-    "package": "node tools/build-package.mjs"
+    "package": "node tools/build-package.mjs",
+    "content": "node tools/build-descriptions.mjs",
+    "photo-queue": "node tools/photo-queue.mjs"
   },
   "devDependencies": {
     "fast-xml-parser": "^5.11.1",

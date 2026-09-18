@@ -28,7 +28,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { contacts, legal, shop, messengers} from '../catalog-source/site.config.mjs';
 import { colorKey, colorTitle, colorRank } from '../vtt/src/colors.mjs';
-import { modelsFromName, parseSupplierNote, buildDescription as vttDescription } from '../vtt/src/publish.mjs';
+import { modelsFromName, parseSupplierNote, expandModelList, buildDescription as vttDescription } from '../vtt/src/publish.mjs';
 import { seriesKey, famKey, FAM_MAX, FAM_MIN_SERIES, variantLabel } from '../vtt/src/family.mjs';
 import { ItemRegistry, stableKey } from './item-registry.mjs';
 import { readReviewQueue, reviewsSummary } from './reviews-store.mjs';
@@ -86,7 +86,18 @@ function readDataJs() {
     color: p.color || '',
     chip: p.chip ?? null,
     compat: p.compat || '',
-    models: p.models || [],
+    /*
+      Перечень моделей прототипа тоже проходит разбор.
+
+      В catalog-source/data.js он записан так, как его когда-то разрезали
+      по слешу: ["KX-MB1500", "1520"]. Второй элемент — обрывок: «1520»
+      без марки и серии не модель, а половина обозначения. Приставку
+      возвращает тот же разбор, что и у импортированных товаров, — иначе
+      у двух соседних карточек совместимость выглядела бы по-разному.
+    */
+    models: expandModelList(p.compat || '').length
+      ? expandModelList(p.compat || '')
+      : expandModelList((p.models || []).join(', ')),
     equip: p.equip || '',
     tech: p.tech || '',
     print: p.print || '',
@@ -173,7 +184,7 @@ function readVttCsv(file) {
       color: get('color'),
       chip: /без\s*чипа/i.test(name) ? false : (/с\s*чипом/i.test(name) || /да|есть/i.test(get('chip')) ? true : null),
       compat,
-      models: compat ? compat.split(/[,/]/).map((s) => s.trim()).filter(Boolean).slice(0, 24) : [],
+      models: expandModelList(compat || ''),
       equip: '', tech: '', print: '', weight: '',
       img: get('img').split(/[|,]/)[0] || '',
       rate: 0, reviews: 0, pop: 50,
@@ -1135,6 +1146,104 @@ console.log(`  цветовых серий: ${Object.keys(families).length}, в 
   сборки семейств. Пока чанки строились раньше семейств, дописанный
   абзац в карточку не попадал — в данных он был, на странице его не было.
 */
+/*
+  Чем заполнить совместимость, когда перечня моделей нет.
+
+  У 893 позиций конкретных аппаратов не назвал никто: это химия,
+  инструмент, бумага, универсальные чернила и тонеры. Выдумывать им
+  список нельзя, но и молчать не надо — часть из них universal по прямому
+  слову поставщика («Чернила Hi-Black Универсальные для HP (Тип H)»), у
+  части заполнен тип техники.
+
+  Берём только то, что написано: слово «универсальный» из названия вместе
+  с маркой, к которой оно относится, либо поле «Подходит для техники».
+  Всё остальное остаётся пустым, и карточка показывает единое состояние.
+*/
+const UNIVERSAL_RE = /универсальн\p{L}*\s*(?:для\s+([A-Za-z][\w-]*))?/iu;
+function fitNote(p) {
+  const name = String(p.name ?? '');
+  const u = UNIVERSAL_RE.exec(name);
+  if (u) {
+    return u[1]
+      ? `Универсальный расходник: поставщик заявляет применимость к технике ${u[1]}.`
+      : 'Универсальный расходник: поставщик не привязывает его к одной модели.';
+  }
+  const equip = String(p.equip ?? '').trim();
+  if (equip && equip.length > 3) return `Тип техники по данным поставщика: ${equip.replace(/\.$/, '')}.`;
+  /* Марка техники, к которой поставщик относит позицию (поле Vendor).
+     Это не перечень аппаратов и выдавать его за перечень нельзя, но
+     сказать, для чьей техники расходник предназначен, — можно: так
+     написано в выгрузке. */
+  const vendor = String(p.compatibleBrand ?? '').trim();
+  if (vendor && /^[A-Za-z][\w -]{1,24}$/.test(vendor)) {
+    return `Поставщик относит позицию к расходным материалам для техники ${vendor}, не называя конкретных аппаратов.`;
+  }
+  const path = Array.isArray(p.catPath) ? p.catPath : [];
+  if (path.length) {
+    return `Раздел поставщика: ${path.join(' → ')}. Конкретные аппараты в выгрузке не названы.`;
+  }
+  return '';
+}
+
+/*
+  Размеры снимков.
+
+  Карточке нужно знать, насколько крупный файл у неё под рукой. От
+  этого зависят два решения: показывать ли виды «Крупный план» (на
+  снимке 400×283 разглядывать в увеличенном фрагменте нечего) и что
+  писать в разметке товара для поисковиков.
+
+  Меряются только местные файлы и только один раз за сборку.
+*/
+{
+  const sharp = (await import('sharp')).default;
+  const seen = new Map();
+  let measured = 0;
+  for (const p of products) {
+    const src = String(p.img ?? '');
+    if (!/^\/?assets\/img\//.test(src)) continue;
+    const rel = src.replace(/^\//, '');
+    if (!seen.has(rel)) {
+      try {
+        const m = await sharp(path.join(ROOT, rel)).metadata();
+        seen.set(rel, m.width && m.height ? [m.width, m.height] : null);
+      } catch { seen.set(rel, null); }
+    }
+    const size = seen.get(rel);
+    if (size) { p.imgSize = size; measured += 1; }
+  }
+  console.log(`  размеры снимков: у ${measured} товаров, разных файлов ${seen.size}`);
+}
+
+/*
+  Готовые полные описания.
+
+  Тексты лежат в catalog-source/product-content.json — это версионируемый
+  источник, а не побочный продукт сборки. Сборка их только читает и
+  никогда не перезаписывает: buildDescription и vttDescriptionHtml
+  остаются запасным вариантом для позиции, которой в файле нет (товар
+  появился в выгрузке, а описание ему ещё не написали).
+
+  Пишет файл tools/build-descriptions.mjs по уже собранному каталогу,
+  поэтому порядок такой: npm run catalog, npm run content, npm run
+  catalog ещё раз. Второй проход и вносит тексты в чанки.
+*/
+const CONTENT_FILE = path.join(ROOT, 'catalog-source/product-content.json');
+const content = fs.existsSync(CONTENT_FILE)
+  ? (JSON.parse(fs.readFileSync(CONTENT_FILE, 'utf8')).items || {})
+  : {};
+const escHtml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const contentHtml = (it) => (it.sections || [])
+  .map((s) => `<h3>${escHtml(s.h)}</h3>` + (s.p || []).map((x) => `<p>${escHtml(x)}</p>`).join(''))
+  .join('');
+const contentText = (it) => (it.sections || [])
+  .map((s) => s.h + '. ' + (s.p || []).join(' ')).join('\n\n');
+{
+  const have = products.filter((p) => content[p.id]).length;
+  console.log(`  полных описаний из catalog-source/product-content.json: ${have} из ${products.length}` +
+    (have < products.length ? ', у остальных описание собирается из фактов на месте' : ''));
+}
+
 /* Детали: только то, что нужно на карточке товара. Грузится чанком по 32. */
 const chunks = [];
 for (let i = 0; i < products.length; i += CHUNK_SIZE) {
@@ -1148,7 +1257,12 @@ for (let i = 0; i < products.length; i += CHUNK_SIZE) {
       /* У импортированного товара описание уже собрано из фактов VTT на
          этапе публикации — здесь его не переписываем, иначе потеряли бы
          единственный источник правды и начали бы додумывать. */
-      desc: p.source === 'vtt' ? vttDescriptionHtml(p) : buildDescription(p, brandName(p.brand)),
+      desc: content[p.id]
+        ? contentHtml(content[p.id])
+        : (p.source === 'vtt' ? vttDescriptionHtml(p) : buildDescription(p, brandName(p.brand))),
+      /* Копию текста без разметки здесь не держим: она удваивала вес
+         чанков (33 МБ против 16,5), а предрендеру достаточно снять теги
+         с desc — разметка там простая и своя. */
       specs: p.source === 'vtt' ? vttSpecs(p) : buildSpecs(p, brandName(p.brand)),
       reviews: p.reviewList,
       ...(p.source ? { source: p.source } : {}),
@@ -1163,6 +1277,12 @@ for (let i = 0; i < products.length; i += CHUNK_SIZE) {
          индекса: девять с половиной тысяч одноэлементных списков в
          чанках — это мегабайт повтора. */
       ...(p.photos?.length > 1 ? { photos: p.photos } : {}),
+      ...(p.imgSize ? { imgSize: p.imgSize } : {}),
+      /* Чем заполнить блок совместимости, когда перечня моделей нет:
+         подтверждённая универсальность или тип техники из данных
+         поставщика. Ничего не выдумывается — если и этого нет, поля нет,
+         и карточка покажет единое «уточняйте по артикулу». */
+      ...(p.models?.length ? {} : (fitNote(p) ? { fitNote: fitNote(p) } : {})),
       /* stockDetail в публикуемые детали не кладётся: точные остатки —
          внутренние данные. Наличие витрина берёт из live-файла флагом. */
     };

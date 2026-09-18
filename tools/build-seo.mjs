@@ -129,18 +129,99 @@ const PRERENDER_PRODUCTS = Number(argValue('products', Infinity));
 const seoProducts = products.slice(0, PRERENDER_PRODUCTS);
 const skippedProducts = products.length - seoProducts.length;
 
+/*
+  Описание страницы товара.
+
+  Было: имя, ресурс, цена и «Гарантия 12 месяцев, отгрузка со склада в
+  Москве». Два изъяна. Цена меняется чаще, чем пересобирается сайт, — в
+  выдаче она устаревает и раздражает. А хвост был дословно одинаков у
+  всех трёх с половиной тысяч страниц, то есть половина описания не несла
+  ничего о самом товаре.
+
+  Стало: первые фразы полного описания этой позиции. Они написаны из её
+  собственных фактов, поэтому у каждой страницы описание своё. Ресурс, у
+  кого он известен, добавляется отдельно — это то, по чему расходники
+  сравнивают в выдаче.
+*/
+const contentItems = (() => {
+  const f = path.join(ROOT, 'catalog-source/product-content.json');
+  return fs.existsSync(f) ? (JSON.parse(fs.readFileSync(f, 'utf8')).items || {}) : {};
+})();
+function productDesc(p) {
+  const it = contentItems[p.id];
+  const head = [];
+  if (it) {
+    /* Берём столько целых предложений, сколько помещается в 300 знаков:
+       обрыв на полуслове в выдаче выглядит как ошибка. */
+    const first = (it.sections?.[0]?.p || []).join(' ');
+    for (const sent of first.split(/(?<=[.!?])\s+/)) {
+      if (head.join(' ').length + sent.length > 250) break;
+      head.push(sent);
+    }
+  }
+  const tail = p.res ? `Ресурс ${fmt(p.res)} ${plural(p.res, 'страница', 'страницы', 'страниц')}.` : '';
+  const out = [head.join(' '), tail].filter(Boolean).join(' ').trim();
+  return out || `${p.name}. Артикул ${p.code}, код товара ${p.no}.`;
+}
+/*
+  Ключевые слова.
+
+  Короткий набор из того, что у позиции действительно есть: тип, артикул,
+  оригинальный номер, марка техники, две-три совместимые модели и раздел
+  каталога. Без повторов, без перечня городов и без «купить недорого» —
+  спам в keywords поисковику давно безразличен, а человеку, который
+  откроет исходник страницы, он говорит о магазине ровно то, что думает.
+*/
+function productKeywords(p) {
+  const it = contentItems[p.id];
+  const words = [];
+  const push = (w) => {
+    const v = String(w || '').trim();
+    if (!v || v.length < 2) return;
+    if (words.some((x) => x.toLowerCase() === v.toLowerCase())) return;
+    words.push(v);
+  };
+  push(p.code);
+  if (p.type) push(`${p.type} ${p.code}`);
+  if (p.type) push(p.type);
+  push('Hi-Black');
+  const brandTitle = (brands.find((x) => x.id === p.brand) || {}).name || "";
+  if (brandTitle) push(`${p.type || 'расходные материалы'} для ${brandTitle}`);
+  for (const m of (p.models || []).slice(0, 3)) push(`${brandTitle} ${m}`.trim());
+  if (p.originalNumber && p.originalNumber !== p.code) push(p.originalNumber);
+  if (it && it.group === 'chip') push('чип для картриджа');
+  return words.slice(0, 10).join(', ');
+}
+
 for (const p of seoProducts.slice(0, LIMIT)) {
-  const l = live.items[p.id] || {};
   add('/product/' + p.slug, 'product/' + p.slug, {
     title: `${p.name} — купить в фирменном магазине Hi-Black`,
-    desc: `${p.name}. ${p.res ? 'Ресурс ' + fmt(p.res) + ' страниц. ' : ''}${l.price ? 'Цена ' + fmt(l.price) + ' ₽. ' : ''}Гарантия 12 месяцев, отгрузка со склада в Москве.`,
+    desc: productDesc(p),
+    keywords: productKeywords(p),
     product: p,
   });
 }
+/*
+  Страницы подбора по принтеру.
+
+  После разбора перечней совместимости моделей стало 7 915 вместо 235 —
+  и это настоящие данные поставщика, а не выдумка. Но у 3 788 из них
+  подходит ровно одна позиция каталога, и такая страница для поисковика
+  — тонкий контент: почти вся она состоит из общей обвязки магазина.
+
+  Страницу всё равно собираем: на неё ведут чипы совместимости с карточек
+  товара, и адрес без готовой страницы сервер отдаёт как 404. Но в индекс
+  её не зовём — noindex, follow — и в карту сайта не кладём. Ссылки
+  работают, покупатель попадает куда шёл, выдача не засоряется.
+*/
+let thinPrinter = 0;
 for (const [key, entry] of Object.entries(compat).slice(0, LIMIT)) {
+  const thin = entry.rows.length < 2;
+  if (thin) thinPrinter += 1;
   add('/printer/' + key, 'printer/' + key, {
     title: `Картриджи для ${entry.label} — расходные материалы Hi-Black`,
     desc: `Подходящие картриджи, тонеры и запчасти Hi-Black для ${entry.label}: ${entry.rows.length} ${plural(entry.rows.length, 'позиция', 'позиции', 'позиций')} в наличии и под заказ. Совместимость проверена.`,
+    noindex: thin,
   });
 }
 for (const pg of site.pages) {
@@ -187,7 +268,9 @@ for (const r of routes) {
     .replace(/<meta name="description"[^>]*>/, '<meta name="description" content="' + esc(r.meta.desc) + '">');
 
   const canonical = SITE + r.url;
-  let head = `<link rel="canonical" href="${canonical}">` +
+  let head = (r.meta.noindex ? '<meta name="robots" content="noindex, follow">' : '') +
+    (r.meta.keywords ? `<meta name="keywords" content="${esc(r.meta.keywords)}">` : '') +
+    `<link rel="canonical" href="${canonical}">` +
     `<meta property="og:type" content="${r.meta.product ? 'product' : 'website'}">` +
     `<meta property="og:title" content="${esc(r.meta.title)}">` +
     `<meta property="og:description" content="${esc(r.meta.desc)}">` +
@@ -201,6 +284,11 @@ for (const r of routes) {
       '@context': 'https://schema.org', '@type': 'Product',
       name: p.name, sku: p.code, brand: { '@type': 'Brand', name: 'Hi-Black' },
       image: SITE + p.img,
+      /* Описание в разметке — тот же текст, что человек читает на
+         странице. Разные тексты для робота и для покупателя поисковики
+         считают попыткой обмана, и справедливо. */
+      description: r.meta.desc,
+      ...(p.no ? { mpn: String(p.no) } : {}),
       /* AggregateRating выводится только там, где есть настоящие
          опубликованные отзывы. Пока их нет ни у одного товара, поэтому
          разметки рейтинга не будет ни на одной странице — и это верно:
@@ -240,7 +328,7 @@ stop();
   его поисковику нельзя.
 */
 const now = new Date().toISOString().slice(0, 10);
-const indexable = routes;
+const indexable = routes.filter((r) => !r.meta.noindex);
 const sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
   indexable.map((r) => `<url><loc>${SITE}${r.url}</loc><lastmod>${now}</lastmod><changefreq>${r.url === '/' ? 'daily' : 'weekly'}</changefreq></url>`).join('\n') +
   '\n</urlset>\n';
@@ -252,6 +340,8 @@ fs.writeFileSync(path.join(ROOT, 'robots.txt'), `User-agent: *\nDisallow: /admin
 const bytes = routes.reduce((a, r) => a + fs.statSync(path.join(OUT, r.file + '.html')).size, 0);
 console.log(`Собрано страниц: ${routes.length} за ${((Date.now() - t0) / 1000).toFixed(0)} с, ${(bytes / 1024 / 1024).toFixed(1)} МБ`);
 console.log(`  товаров ${seoProducts.slice(0, LIMIT).length}, моделей принтеров ${Math.min(Object.keys(compat).length, LIMIT)}, категорий ${cats.length}`);
+console.log(`  в карте сайта ${indexable.length} из ${routes.length}; страниц подбора с единственным товаром ` +
+  `${thinPrinter} — они собраны (на них ведут чипы совместимости), но закрыты от индексации`);
 if (skippedProducts) {
   console.log(`  не предрендерено карточек: ${skippedProducts} (бюджет --products=${PRERENDER_PRODUCTS}); ` +
     'их нет и в карте сайта — адреса без готовой страницы сервер отдаёт как 404');

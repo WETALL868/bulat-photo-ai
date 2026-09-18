@@ -43,6 +43,9 @@ const SKIP_PAGES = process.argv.includes('--skip-pages');
 */
 const FORBIDDEN = [/(^|\/)\.env/i, /(^|\/)\.git(\/|$)/, /(^|\/)node_modules(\/|$)/,
   /(^|\/)var(\/|$)/, /(^|\/)vtt-data(\/|$)/, /(^|\/)vtt-source(\/|$)/,
+  /* live/* — текущие цены и остатки сервера. Сборка из другой среды их
+     заведомо старше, и класть их в пакет значит откатить прайс. */
+  /(^|\/)live(\/|$)/, /(^|\/)mail[.-]?config/i,
   /config-path\.php$/, /(^|\/)admin-password/i, /\.key$/, /\.pem$/];
 const forbidden = (rel) => FORBIDDEN.some((re) => re.test(rel));
 
@@ -64,6 +67,24 @@ const walk = (dir, base = dir) => {
 const sha = (rel) => crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, rel))).digest('hex');
 
 const parts = [{ name: 'vitrina', title: 'витрина', files: SHOP.filter((f) => fs.existsSync(path.join(ROOT, f))) }];
+/*
+  Данные каталога — отдельная часть, и это не формальность.
+
+  Вся новая работа (полные описания, перечни совместимости, размеры
+  снимков) живёт именно здесь: index.json и чанки деталей. Без этой части
+  на сервере останется прежний каталог, и новые тексты не появятся ни на
+  одной карточке, сколько ни выкладывай styles.css.
+
+  live/* сюда НЕ идёт: там текущие цены и остатки, и перезаписывать их
+  сборкой из другой среды нельзя.
+*/
+if (fs.existsSync(path.join(ROOT, 'data/catalog'))) {
+  const files = walk(path.join(ROOT, 'data/catalog'));
+  for (const extra of ['sitemap.xml', 'robots.txt']) {
+    if (fs.existsSync(path.join(ROOT, extra))) files.push(extra);
+  }
+  parts.push({ name: 'data', title: 'каталог, карта сайта и robots.txt', files });
+}
 if (!SKIP_PAGES && fs.existsSync(path.join(ROOT, 'seo-pages'))) {
   parts.push({ name: 'seo-pages', title: 'предрендер страниц', files: walk(path.join(ROOT, 'seo-pages')) });
 }
@@ -99,6 +120,7 @@ for (const p of parts) {
        хватает суммы и контрольной суммы архива, а имена лежат рядом в
        .files.txt. */
     files: p.name === 'vitrina' ? files : undefined,
+    sample: p.name === 'vitrina' ? undefined : files.slice(0, 5).map((x) => x.path),
   });
 }
 
@@ -114,21 +136,28 @@ const readme = [
   ...manifest.parts.map((p) => `  ${p.archive} — ${p.title}, файлов ${p.count}, ${kb(p.bytes)} (архив ${kb(p.archiveBytes)})`),
   '',
   'Как выложить (пути от корня сайта):',
-  '  tar -xzf vitrina.tar.gz -C /путь/к/сайту',
-  ...(manifest.parts.length > 1 ? ['  tar -xzf seo-pages.tar.gz -C /путь/к/сайту'] : []),
+  ...manifest.parts.map((p) => `  tar -xzf ${p.archive} -C /путь/к/сайту`),
+  '',
+  'Порядок важен: сначала data (каталог), затем seo-pages (готовые страницы),',
+  'потом vitrina (index.html со свежими версиями ?v= у styles.css и app.js).',
   '',
   'Либо пересобрать у себя из коммита — результат тот же:',
   '  npm ci',
   '  npm run catalog     # каталог из текущих цен и остатков',
-  '  npm run seo         # предрендер, около 2,5 минут',
+  '  npm run content     # полные описания по собранному каталогу',
+  '  npm run catalog     # второй проход вносит тексты в чанки',
+  '  npm run seo         # предрендер, около 3 минут',
+  '  (всё четыре шага сразу: npm run build)',
   '',
   'Проверить после выкладки:',
   '  версия в index.html и на страницах — styles.css?v= и app.js?v= должны совпасть;',
   '  контрольные суммы файлов витрины — в manifest.json;',
   '  npm test && npm run test:ui && npm run photos.',
   '',
-  'Чего в пакете нет: .env и конфигурации доступов, var/ с заказами и',
-  'отзывами покупателей, vtt-data со внутренними остатками, node_modules, .git.',
+  'Чего в пакете нет: .env и конфигурации доступов, api/config-path.php,',
+  'почтовых настроек, var/ с заказами и отзывами покупателей, live/* с текущими',
+  'ценами и остатками, vtt-data со внутренними остатками, node_modules и .git.',
+  'live/* не трогать: цены и наличие на сервере свежее, чем в любой сборке.',
   '',
 ].filter((l) => l !== '').join('\n');
 fs.writeFileSync(path.join(OUT, 'README.txt'), readme + '\n');

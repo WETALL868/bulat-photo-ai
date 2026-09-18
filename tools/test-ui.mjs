@@ -883,8 +883,25 @@ if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
     await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => { try { localStorage.setItem('hb_cookie_consent_v2', '1'); } catch (e) { } });
 
-    /* ---- каталог: кнопка уведомления внутри своей карточки ---- */
+    /* ----
+      Каталог: кнопка уведомления внутри своей карточки.
+
+      Раньше проверка смотрела первую страницу /catalog/zip — там и стояли
+      отсутствующие позиции. Теперь наличие идёт первым ключом, и на
+      первой странице кнопок «Уведомить» нет вовсе: это и есть исправление
+      из пункта о сортировке. Поэтому идём на последнюю страницу раздела,
+      где отсутствующие товары как раз и собрались.
+    ---- */
     await page.goto(`${BASE}/catalog/zip`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.card', { timeout: 15000 });
+    await page.waitForTimeout(350);
+    const lastPage = await page.evaluate(() => {
+      const nums = [...document.querySelectorAll('.pager a, .pages a')]
+        .map((a) => Number(new URL(a.href, location.href).searchParams.get('page')))
+        .filter((n) => n > 0);
+      return nums.length ? Math.max(...nums) : 1;
+    });
+    await page.goto(`${BASE}/catalog/zip?page=${lastPage}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.card', { timeout: 15000 });
     await page.waitForTimeout(350);
     const grid = await page.evaluate(() => {
@@ -1240,7 +1257,14 @@ if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
       await page.waitForTimeout(400);
 
       const titles = await page.$$eval('.thumb[data-view]', (e) => e.map((x) => x.title));
-      check(`${d.name}: у трёх кадров три миниатюры`, titles.length === 3, titles.join(', '));
+      /* Три настоящих снимка плюс два крупных плана первого кадра:
+         крупные планы вернули по просьбе владельца, и они идут после
+         фотографий, а не вместо них. */
+      const photos = titles.filter((t) => /^Фото/.test(t));
+      const crops = titles.filter((t) => /^Крупный план/.test(t));
+      check(`${d.name}: три настоящих снимка дали три миниатюры`, photos.length === 3, titles.join(', '));
+      check(`${d.name}: крупные планы идут после снимков, а не вместо них`,
+        crops.length === 2 && titles.slice(0, 3).every((t) => /^Фото/.test(t)), titles.join(', '));
 
       let mismatched = [], altBad = [];
       for (const k of [1, 2, 0]) {
@@ -1279,8 +1303,10 @@ if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
       }));
       check(`${d.name}: стрелка листает, а не закрывает`, after.open === true && after.src === files[1],
         `открыт ${after.open}, кадр ${after.src}`);
-      check(`${d.name}: счётчик кадров считает`, cnt1.trim() === '1 / 3' && after.count.trim() === '2 / 3',
-        `${cnt1} -> ${after.count}`);
+      const total = titles.length;
+      check(`${d.name}: счётчик кадров считает`,
+        cnt1.trim() === `1 / ${total}` && after.count.trim() === `2 / ${total}`,
+        `${cnt1} -> ${after.count}, кадров ${total}`);
       await page.keyboard.press('Escape');
       await page.waitForTimeout(300);
       const kept = await page.evaluate(() => [...document.querySelectorAll('.thumb[data-view]')]
@@ -1302,6 +1328,215 @@ if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
     check('фикстура для многокадровой галереи собралась', false,
       `файлов ${files.length}, товар ${row ? 'найден' : 'не найден'}`);
   }
+}
+
+/*
+  Наличие всегда первым.
+
+  На /catalog/zip первыми стояли позиции, которых нет. Проверяем не
+  правило в коде, а отрисованную страницу: во всех режимах сортировки, на
+  первой и на второй странице, при включённых фильтрах.
+*/
+{
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => { try { localStorage.setItem('hb_cookie_consent_v2', '1'); } catch (e) { } });
+
+  const order = async (url) => {
+    await page.goto(BASE + url, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.card', { timeout: 15000 });
+    await page.waitForTimeout(400);
+    return page.evaluate(() => [...document.querySelectorAll('.cards .card')]
+      .map((c) => (c.querySelector('.avail') || {}).classList?.contains('out') ? 0 : 1));
+  };
+  const firstOutBeforeIn = (flags) => {
+    let sawOut = false;
+    for (const f of flags) {
+      if (!f) sawOut = true;
+      else if (sawOut) return true;
+    }
+    return false;
+  };
+  const PAGES = [
+    ['раздел ЗИП', '/catalog/zip'],
+    ['раздел ЗИП, цена вверх', '/catalog/zip?sort=price'],
+    ['раздел ЗИП, цена вниз', '/catalog/zip?sort=-price'],
+    ['раздел ЗИП, рейтинг', '/catalog/zip?sort=rating'],
+    ['раздел ЗИП, новинки', '/catalog/zip?sort=new'],
+    ['раздел ЗИП, вторая страница', '/catalog/zip?page=2'],
+    ['раздел ЗИП, по 48 на странице', '/catalog/zip?pp=48'],
+    ['весь каталог', '/catalog'],
+    ['поиск', '/search?q=ролик'],
+    ['лазерные Kyocera', '/catalog/laser/kyocera'],
+  ];
+  for (const [label, url] of PAGES) {
+    const flags = await order(url);
+    check(`наличие первым: ${label}`, flags.length > 0 && !firstOutBeforeIn(flags),
+      `порядок наличия: ${flags.join('')}`);
+  }
+  /* Фильтр «Только в наличии» смысла не меняет: отсутствующих нет совсем. */
+  const onlyStock = await order('/catalog/zip?stock=1');
+  check('фильтр «Только в наличии» оставляет только доступные',
+    onlyStock.length > 0 && onlyStock.every(Boolean), `${onlyStock.join('')}`);
+  await ctx.close();
+}
+
+/*
+  Увеличение обязано увеличивать.
+
+  Пример владельца: HB-KX-FAT410A7, снимок 400×283. Меряем кадр на
+  странице и кадр в окне и требуем, чтобы на десктопе второй был заметно
+  больше первого.
+*/
+{
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/catalog/index.json'), 'utf8'));
+  const iCode = idx.fields.indexOf('code');
+  const rows = idx.rows.filter((r) => slugRegistry[r[0]]);
+  const sample = [
+    rows.find((r) => String(r[iCode]) === 'HB-KX-FAT410A7'),
+    rows.find((r) => String(r[iCode]) === 'HB-006R01160'),
+    rows.find((r) => String(r[iCode]) === 'HB-KX-FAD412A'),
+  ].filter(Boolean);
+
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => { try { localStorage.setItem('hb_cookie_consent_v2', '1'); } catch (e) { } });
+  for (const row of sample) {
+    await page.goto(`${BASE}/product/${prod(row[0])}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#gmain', { timeout: 15000 });
+    await page.waitForTimeout(500);
+    const onPage = await page.evaluate(() => {
+      const el = document.querySelector('#gmain img, #gmain .atimg');
+      const r = el.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height), nat: el.naturalWidth || 0 };
+    });
+    await page.click('#gmain');
+    await page.waitForTimeout(600);
+    const inLb = await page.evaluate(() => {
+      const el = document.querySelector('#lightbox img:not([hidden]), #lightbox .lb-atlas:not([hidden])');
+      const r = el.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height), panel: !document.querySelector('#lightbox .lb-zoom').hidden };
+    });
+    check(`${row[iCode]}: окно крупнее карточки`, inLb.w > onPage.w * 1.4,
+      `на странице ${onPage.w}×${onPage.h}, в окне ${inLb.w}×${inLb.h} (исходник ${onPage.nat}px)`);
+    check(`${row[iCode]}: панель масштаба показана`, inLb.panel === true);
+    /* Кнопка «+» обязана реально увеличивать кадр. */
+    await page.click('#lightbox [data-zoom="1"]');
+    await page.waitForTimeout(300);
+    const zoomed = await page.evaluate(() => {
+      const el = document.querySelector('#lightbox img:not([hidden]), #lightbox .lb-atlas:not([hidden])');
+      return Math.round(el.getBoundingClientRect().width);
+    });
+    check(`${row[iCode]}: кнопка «+» увеличивает`, zoomed > inLb.w + 10, `${inLb.w} -> ${zoomed}`);
+    /* Пропорции не должны искажаться. */
+    const ratio = await page.evaluate(() => {
+      const i = document.querySelector('#lightbox img:not([hidden])');
+      if (!i || !i.naturalWidth) return null;
+      const r = i.getBoundingClientRect();
+      return Math.abs((r.width / r.height) - (i.naturalWidth / i.naturalHeight));
+    });
+    if (ratio !== null) check(`${row[iCode]}: пропорции сохранены`, ratio < 0.02, `отклонение ${ratio.toFixed(3)}`);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(250);
+  }
+  await ctx.close();
+}
+
+/*
+  Совместимость: один и тот же раздел у каждого товара.
+
+  Оба примера владельца — соседние Panasonic: у одного миниатюра
+  «Совместимость» подменяла фото, у другого перечня не было вовсе.
+*/
+{
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => { try { localStorage.setItem('hb_cookie_consent_v2', '1'); } catch (e) { } });
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/catalog/index.json'), 'utf8'));
+  const iCode = idx.fields.indexOf('code');
+  const pick = ['HB-KX-FAT410A7', 'HB-KX-FAD412A', 'HB-006R01160']
+    .map((c) => idx.rows.find((r) => String(r[iCode]) === c && slugRegistry[r[0]]))
+    .filter(Boolean);
+  for (const row of pick) {
+    await page.goto(`${BASE}/product/${prod(row[0])}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#gmain', { timeout: 15000 });
+    await page.waitForTimeout(400);
+    const r = await page.evaluate(() => {
+      const c = document.querySelector('.compat');
+      return {
+        block: !!c,
+        head: c ? c.querySelector('h3').textContent.trim() : '',
+        chips: c ? c.querySelectorAll('.chip').length : 0,
+        note: c ? ((c.querySelector('.cnote') || {}).textContent || '').trim() : '',
+        inGallery: !!document.querySelector('.gcompat, .thumb.tcompat'),
+        thumbs: [...document.querySelectorAll('.thumb[data-view]')].map((t) => t.title),
+      };
+    });
+    check(`${row[iCode]}: блок совместимости есть и назван одинаково`,
+      r.block && r.head.startsWith('Совместимые модели принтеров'), r.head);
+    check(`${row[iCode]}: совместимость не подменяет фото`, r.inGallery === false,
+      `миниатюры: ${r.thumbs.join(', ')}`);
+    check(`${row[iCode]}: блок не пустой`, r.chips > 0 || r.note.length > 20,
+      `чипов ${r.chips}, пояснение «${r.note.slice(0, 60)}»`);
+  }
+  /* Ссылки чипов ведут на существующие страницы, а не в 404. */
+  await page.goto(`${BASE}/product/${prod(pick[1][0])}`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(400);
+  const hrefs = await page.$$eval('.compat .chip', (e) => e.slice(0, 5).map((x) => x.getAttribute('href')));
+  const broken = [];
+  for (const h of hrefs) {
+    const res = await page.request.get(BASE + h);
+    if (res.status() >= 400) broken.push(h + ' -> ' + res.status());
+  }
+  check('ссылки совместимости не ведут в 404', broken.length === 0, broken.join('; '));
+  await ctx.close();
+}
+
+/*
+  Полное описание должно быть в HTML, который отдаёт сервер, — включая
+  товары без наличия. Робот не выполняет скрипты.
+*/
+{
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/catalog/index.json'), 'utf8'));
+  const live = JSON.parse(fs.readFileSync(path.join(ROOT, 'live/catalog-live.json'), 'utf8')).items || {};
+  const withSlug = idx.rows.filter((r) => slugRegistry[r[0]]);
+  const inStock = withSlug.find((r) => live[r[0]]?.available);
+  const outStock = withSlug.find((r) => !live[r[0]]?.available);
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await ctx.newPage();
+  for (const [label, row] of [['в наличии', inStock], ['нет в наличии', outStock]]) {
+    if (!row) continue;
+    const res = await page.request.get(`${BASE}/product/${prod(row[0])}`);
+    const html = await res.text();
+    const body = html.replace(/<script[\s\S]*?<\/script>/g, ' ');
+    const text = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+    check(`серверный HTML (${label}): полное описание на месте`, text.length > 4000,
+      `текста ${text.length} знаков`);
+    check(`серверный HTML (${label}): ровно один h1`,
+      (body.match(/<h1[\s>]/g) || []).length === 1, `${(body.match(/<h1[\s>]/g) || []).length}`);
+    check(`серверный HTML (${label}): есть canonical`, /<link rel="canonical" href="https?:\/\//.test(html));
+    check(`серверный HTML (${label}): есть keywords`, /<meta name="keywords" content="[^"]{10,}"/.test(html));
+    check(`серверный HTML (${label}): есть разметка товара`, /"@type":"Product"/.test(html));
+    check(`серверный HTML (${label}): кодировка объявлена`, /charset=["']?utf-8/i.test(html));
+    const desc = /<meta name="description" content="([^"]*)"/.exec(html);
+    check(`серверный HTML (${label}): описание страницы заполнено`,
+      !!desc && desc[1].length > 60, desc ? desc[1].slice(0, 70) : 'нет');
+  }
+  /* Описания страниц не должны повторяться у разных товаров. */
+  const descs = new Map();
+  for (const row of withSlug.slice(0, 40)) {
+    const res = await page.request.get(`${BASE}/product/${prod(row[0])}`);
+    const html = await res.text();
+    const m = /<meta name="description" content="([^"]*)"/.exec(html);
+    if (m) descs.set(row[0], m[1]);
+  }
+  const uniq = new Set(descs.values());
+  check('описания страниц не повторяются', uniq.size === descs.size,
+    `уникальных ${uniq.size} из ${descs.size}`);
+  await ctx.close();
 }
 
 await browser.close();

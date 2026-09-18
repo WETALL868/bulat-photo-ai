@@ -586,6 +586,10 @@ a.line-c:hover{border-color:var(--ink)}
 .thumb img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
 /* Миниатюра дополнительного кадра — такой же снимок, как основной. */
 .thumb>img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
+/* Крупный план: тот же файл, показанный вблизи. Не отдельная картинка —
+   место на снимке, поэтому и в миниатюре, и на площадке это фон. */
+.gzoom{position:absolute;inset:0;background-repeat:no-repeat;background-size:230%;cursor:zoom-in}
+.thumb .tz{position:absolute;inset:0;background-repeat:no-repeat;background-size:230%}
 .thumb.tcompat{flex-direction:column;gap:4px;font-size:11px;font-weight:600;color:var(--ink2);text-align:center}
 .thumb.tcompat img{height:14px;width:auto}
 .thumb.tcompat .tl{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -598,6 +602,20 @@ a.line-c:hover{border-color:var(--ink)}
 .compat h3 img{height:18px;width:auto}
 .compat .tags{gap:6px}
 .compat .chip{height:32px;font-size:13px;padding:0 12px}
+/*
+  Один и тот же раздел при любом наполнении.
+
+  Блок совместимости есть у каждого товара и стоит на одном месте:
+  перечень моделей, подтверждённое назначение или прямое «уточняйте по
+  артикулу». Отличается содержимое, но не рамка и не заголовок — иначе
+  покупатель снова решит, что у одного товара «что-то есть», а у
+  соседнего «чего-то не хватает».
+*/
+.compat{margin-top:22px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.compat .cnote{margin-top:10px;font-size:13px;line-height:1.45;color:var(--muted)}
+.compat .cnote a{color:var(--ink);border-bottom:1px solid var(--line2)}
+.compat .cnote a:hover{border-color:var(--ink)}
+.compat-note .cnote:first-of-type{margin-top:0}
 .allspecs{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:14px;margin-top:18px}
 .buy{border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:13px;box-shadow:var(--shadow-pop);position:sticky;top:16px;background:#fff;min-width:0}
 .buy .prow{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
@@ -1234,7 +1252,33 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
 .lightbox{position:fixed;inset:0;background:rgba(20,20,20,.86);display:none;align-items:center;justify-content:center;z-index:200;padding:32px;cursor:zoom-out}
 .lightbox.open{display:flex}
 .lightbox[hidden]{display:none}
-.lightbox img{max-width:min(1100px,100%);max-height:100%;background:#fff;border-radius:20px;padding:24px;box-shadow:0 40px 100px rgba(0,0,0,.5)}
+/*
+  Сцена увеличения.
+
+  Раньше у картинки стояли только max-width и max-height. Браузер без
+  заданного размера рисует <img> в натуральную величину, и снимок
+  400×283 открывался МЕНЬШЕ, чем он же на карточке, вписанный в площадку
+  шире пятисот пикселей. Размер кадра теперь считает скрипт — от
+  натурального размера файла и размера экрана, — а здесь только сцена,
+  в которой он живёт, и правила движения.
+*/
+/* Снизу оставлено место под панель масштаба и оговорку о размере
+   исходника: раньше подпись ложилась поверх снимка. */
+.lb-stage{position:absolute;inset:28px 28px 124px;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none}
+.lightbox img{display:block;background:#fff;border-radius:20px;box-shadow:0 40px 100px rgba(0,0,0,.5);
+  transform-origin:50% 50%;will-change:transform;user-select:none;-webkit-user-drag:none;cursor:zoom-in}
+.lightbox img:active{cursor:grabbing}
+/* Панель масштаба: та же высота и тот же язык, что у крестика. */
+.lightbox .lb-zoom{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:4px;
+  background:rgba(255,255,255,.94);border-radius:12px;padding:4px;box-shadow:0 6px 24px rgba(0,0,0,.35);z-index:2}
+.lightbox .lb-zoom[hidden]{display:none}
+.lightbox .lbz{width:40px;height:40px;border:0;border-radius:9px;background:transparent;color:var(--ink);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font:inherit;font-size:13px;font-weight:600}
+.lightbox .lbz-r{width:auto;padding:0 12px}
+.lightbox .lbz:hover:not(:disabled){background:var(--surface)}
+.lightbox .lbz:disabled{opacity:.35;cursor:default}
+.lightbox .lbz:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.lightbox .lb-scale{min-width:56px;text-align:center;font-size:13px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
 .lightbox .x{position:absolute;right:24px;top:24px;width:48px;height:48px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;color:var(--ink)}
 /* Листание кадров: появляется только там, где снимков правда несколько. */
 .lightbox .lbn{position:absolute;top:50%;transform:translateY(-50%);width:52px;height:52px;border:0;border-radius:50%;
@@ -1804,7 +1848,11 @@ body.has-cookie .toast,body.has-cookie.pg-product .toast{bottom:calc(var(--cooki
   .toast.show{transform:translateY(0)}
   body.pg-product.bar-on .toast{bottom:calc(var(--buybar-h,74px) + 24px + env(safe-area-inset-bottom,0px))}
   .lightbox{padding:12px}
-  .lightbox img{padding:12px;border-radius:14px}
+  .lightbox img{border-radius:14px}
+  .lb-stage{inset:12px 12px 112px}
+  .lightbox .lb-zoom{bottom:12px;padding:3px}
+  .lightbox .lbz{width:38px;height:38px}
+  .lightbox .lb-scale{min-width:48px;font-size:12px}
   .lightbox .x{right:12px;top:12px;width:44px;height:44px}
   /* На телефоне кадры листаются пальцем, стрелки прижимаются к краям и
      не наезжают на снимок. */
@@ -2125,12 +2173,12 @@ a.mphone .ic *{pointer-events:none!important}
 /* Увеличение доступно и с клавиатуры: рамка фокуса обязана быть видна. */
 .gmain{cursor:zoom-in}
 .gmain:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
-.lightbox .lb-atlas{display:block;width:min(480px,80vw);height:min(480px,80vw);background-repeat:no-repeat;
+.lightbox .lb-atlas{display:block;background-repeat:no-repeat;transform-origin:50% 50%;will-change:transform;cursor:zoom-in;
   background-color:#fff;border-radius:20px;padding:0;box-shadow:0 40px 100px rgba(0,0,0,.5)}
-.lightbox .lb-note{position:absolute;left:0;right:0;bottom:22px;text-align:center;color:#e6e5df;font-size:13px;
+.lightbox .lb-note{position:absolute;left:0;right:0;bottom:76px;text-align:center;color:#e6e5df;font-size:13px;
   padding:0 24px;line-height:1.45}
 @media (max-width:640px){
   .gmain.has-atlas{height:300px}
-  .lightbox .lb-note{bottom:12px;font-size:12px}
+  .lightbox .lb-note{bottom:62px;font-size:12px;padding:0 12px}
 }
 .thumb .atimg,.var-img .atimg,.mini .img .atimg,.coi .atimg,.cmp .atimg{width:100%;height:auto}

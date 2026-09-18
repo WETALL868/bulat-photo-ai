@@ -227,8 +227,33 @@
     во всех режимах, иначе при равных ценах и рейтингах список тасуется от
     страницы к странице и после смены фильтров.
   */
+  /*
+    Сортировка товарных подборок.
+
+    Наличие — первый ключ, и это не «ещё одна сортировка», а правило
+    витрины. На /catalog/zip первыми стояли позиции, которых нет: строки
+    шли в порядке сборки, а наличие подмешивается из live уже в браузере,
+    и сортировка о нём не знала. Покупатель пролистывал экран отсутствующих
+    товаров, чтобы добраться до того, что можно купить.
+
+    Выбранный человеком порядок — популярность, релевантность, цена,
+    рейтинг, новинки — работает ВНУТРИ группы наличия, а не вместо неё.
+    Смысл фильтра «Только в наличии» при этом не меняется: он по-прежнему
+    убирает отсутствующие совсем, а здесь они просто уходят вниз.
+
+    Хвостом у любого сравнения идёт номер строки: при равных значениях
+    порядок обязан быть один и тот же на каждой отрисовке, иначе товар
+    прыгал бы между страницами при переходе по пагинации.
+
+    Сортируется весь отфильтрованный список, и только потом режется на
+    страницы, — переставлять карточки внутри текущей страницы значит
+    показать «в наличии» на второй странице раньше, чем на первой.
+  */
   function sortList(l, s, query) {
-    var by = function (f) { return function (a, b) { return f(a, b) || a.row - b.row; }; };
+    var avail = function (p) { return p && p.stock ? 0 : 1; };
+    var by = function (f) {
+      return function (a, b) { return avail(a) - avail(b) || f(a, b) || a.row - b.row; };
+    };
     l = l.slice();
     if (query && (!s || s === 'relevance')) {
       var term = String(query).toLowerCase().replace(/[^0-9a-zа-яё]/gi, '');
@@ -248,7 +273,7 @@
     else if (s === '-price') l.sort(by(function (a, b) { return b.price - a.price; }));
     else if (s === 'rating') l.sort(by(function (a, b) { return b.rate - a.rate || b.reviews - a.reviews; }));
     else if (s === 'new') l.sort(by(function (a, b) { return hash(b.id) - hash(a.id); }));
-    else l.sort(function (a, b) { return a.row - b.row; });
+    else l.sort(by(function () { return 0; }));
     return l;
   }
   function toggleValue(q, key, val) {
@@ -682,8 +707,10 @@
       var d = details[members.findIndex(function (x) { return x.id === p.id; })] ||
         { compat: '', models: [], specs: [], desc: '', reviews: [] };
       var tab = r.query.tab || 'desc';
-      var related = C.all().filter(function (x) { return x.id !== p.id && x.brand === p.brand && x.cat === p.cat; }).slice(0, 4);
-      if (related.length < 4) related = related.concat(C.all().filter(function (x) { return x.id !== p.id && x.cat === p.cat && related.indexOf(x) < 0; }).slice(0, 4 - related.length));
+      /* Похожие товары — тоже подборка: предлагать первым делом то,
+         чего нет на складе, значит отправить покупателя в пустоту. */
+      var related = sortList(C.all().filter(function (x) { return x.id !== p.id && x.brand === p.brand && x.cat === p.cat; }), '').slice(0, 4);
+      if (related.length < 4) related = related.concat(sortList(C.all().filter(function (x) { return x.id !== p.id && x.cat === p.cat && related.indexOf(x) < 0; }), '').slice(0, 4 - related.length));
       /*
         В каталоге лежат только настоящие, прошедшие модерацию отзывы.
         Проверочных записей здесь больше нет: список пуст ровно тогда,
@@ -783,24 +810,43 @@
       }
       /* Подпись кадра: один снимок — просто товар, несколько — с номером,
          чтобы читающий с экрана понимал, какой именно кадр открыт. */
+      var shots = frames.length;
+      /*
+        Крупные планы возвращаются — но настоящими видами.
+
+        Прежде их было два, и они ломались об одно: выбранный фрагмент
+        открывался в увеличении общим кадром. Теперь фрагмент — это тот
+        же файл с заданной точкой и масштабом, и увеличение открывает
+        ровно её: крупный план стал местом на снимке, а не отдельной
+        картинкой, которой нет.
+
+        Добавляются они только к достаточно крупному снимку: на файле
+        400×283 рассматривать во фрагменте нечего, и обещать это не
+        надо. Размер приходит из данных — его меряет сборка.
+      */
+      var big = d.imgSize && Math.max(d.imgSize[0], d.imgSize[1]) >= 560;
+      if (big && shots && !frames[0].atlas) {
+        frames.push({ src: frames[0].src, alt: p.name, crop: { x: 0.2, y: 0.5 }, label: 'Крупный план, левая часть' });
+        frames.push({ src: frames[0].src, alt: p.name, crop: { x: 0.8, y: 0.5 }, label: 'Крупный план, правая часть' });
+      }
       frames.forEach(function (f, k) {
-        if (frames.length > 1) f.alt = p.name + ' — фото ' + (k + 1) + ' из ' + frames.length;
+        if (f.crop) f.alt = p.name + ' — ' + f.label.toLowerCase();
+        else if (shots > 1) f.alt = p.name + ' — фото ' + (k + 1) + ' из ' + shots;
       });
       var views = frames.map(function (f, k) { return { t: 'photo', f: k }; });
-      if (d.models.length) views.push({ t: 'compat' });
       gFrames = frames; gFrame = 0; gView = 0;
       var thumbs = views.map(function (v, i) {
-        var inner, title;
-        if (v.t === 'compat') { inner = brandLogo(p.brand, 14, '') + '<span class="tl">Совместимость</span>'; title = 'Совместимые модели'; }
-        else if (v.f === 0) { inner = imgHtml(p, { alt: '' }); title = frames.length > 1 ? 'Фото 1' : 'Фото товара'; }
-        else { inner = '<img src="' + esc(frames[v.f].src) + '" alt="" loading="lazy">'; title = 'Фото ' + (v.f + 1); }
-        return '<div class="thumb ' + (i === 0 ? 'on' : '') + (v.t === 'compat' ? ' tcompat' : '') + '" data-view="' + i + '" title="' + title + '">' + inner + '</div>';
+        var f = frames[v.f], inner, title;
+        if (f.crop) {
+          inner = '<span class="tz" style="background-image:url(' + f.src + ');background-position:' +
+            (f.crop.x * 100) + '% ' + (f.crop.y * 100) + '%"></span>';
+          title = f.label;
+        } else if (v.f === 0) { inner = imgHtml(p, { alt: '' }); title = shots > 1 ? 'Фото 1' : 'Фото товара'; }
+        else { inner = '<img src="' + esc(f.src) + '" alt="" loading="lazy">'; title = 'Фото ' + (v.f + 1); }
+        return '<div class="thumb ' + (i === 0 ? 'on' : '') + '" data-view="' + i + '" title="' + esc(title) + '">' + inner + '</div>';
       }).join('');
       /* Полоса из одной миниатюры ничего не переключает — не показываем её. */
       if (views.length < 2) thumbs = '';
-      var compatCard = '<div class="gcompat" data-gview="compat" hidden>' + brandLogo(p.brand, 34, '') + '<h3>Подходит для принтеров ' + esc(C.brandName(p.brand)) + '</h3><div class="tags">' + d.models.map(function (m) {
-        return '<a class="chip" href="' + link.printer(printerKey(p.brand, m)) + '">' + esc(m) + '</a>';
-      }).join('') + '</div></div>';
       var key = [];
       if (p.res) key.push(['Ресурс', fmt(p.res) + ' страниц']);
       if (p.color) key.push(['Цвет', C.colorTitle(p.color)]);
@@ -850,9 +896,46 @@
       pick('Объём', 'Объём');
       pick('В упаковке', 'В упаковке');
       pick('Штрихкод', 'Штрихкод');
-      var compatChips = d.models.map(function (m) {
-        return '<a class="chip" href="' + link.printer(printerKey(p.brand, m)) + '">' + esc(C.brandName(p.brand) + ' ' + m) + '</a>';
-      }).join('');
+      /*
+        Совместимость — отдельный раздел карточки, а не кадр галереи.
+
+        Раньше она стояла миниатюрой в ряду фотографий: нажал — и вместо
+        снимка список моделей. У одного товара такая миниатюра была, у
+        соседнего нет, и разницу объяснить было нечем: у первого перечень
+        разобрался, у второго рассыпался. Плюс сам ряд обещал лишнюю
+        фотографию там, где её нет.
+
+        Теперь блок есть у КАЖДОГО товара, стоит на одном месте и выглядит
+        одинаково. Отличается только содержимое, и ровно настолько,
+        насколько отличаются данные: перечень моделей со ссылками на
+        подбор; подтверждённое поставщиком назначение, если аппараты он не
+        назвал; или единое «уточняйте по артикулу», когда нет и этого.
+      */
+      var compatBlock = (function () {
+        var head = '<h3>Совместимые модели принтеров ' + brandLogo(p.brand, 18, '') + '</h3>';
+        if (d.models.length) {
+          var chips = d.models.map(function (m) {
+            /* В чипе только обозначение аппарата. Марка написана в
+               заголовке блока, а в перечне поставщика попадаются модели
+               соседних марок — приписывать им марку товара нельзя. */
+            return '<a class="chip" href="' + link.printer(printerKey(p.brand, m)) + '">' + esc(m) + '</a>';
+          }).join('');
+          return '<div class="compat"><h3>Совместимые модели принтеров ' + brandLogo(p.brand, 18, '') + '</h3>' +
+            '<div class="tags">' + chips + '</div>' +
+            '<p class="cnote">Перечень собран из данных поставщика по артикулу ' + esc(p.code) +
+            '. Сверьте обозначение на корпусе аппарата — у близких моделей расходники отличаются.</p></div>';
+        }
+        if (d.fitNote) {
+          return '<div class="compat compat-note">' + head +
+            '<p class="cnote">' + esc(d.fitNote) + '</p>' +
+            '<p class="cnote">Точную применимость подтвердим по артикулу ' + esc(p.code) +
+            ' — напишите или позвоните. <a href="' + link.page('contacts') + '">Контакты</a></p></div>';
+        }
+        return '<div class="compat compat-note">' + head +
+          '<p class="cnote">Совместимость уточняйте по артикулу ' + esc(p.code) +
+          ': конкретные аппараты поставщик не назвал, а придумывать перечень мы не будем. ' +
+          '<a href="' + link.page('contacts') + '">Напишите нам</a> — проверим по документации.</p></div>';
+      })();
       var tabs = [['desc', 'Описание'], ['specs', 'Характеристики'],
         ['reviews', 'Отзывы' + (revs.length ? ' <i>' + revs.length + '</i>' : '')],
         ['delivery', 'Доставка и оплата']];
@@ -896,11 +979,14 @@
           ' role="button" tabindex="0" aria-label="Открыть фото крупнее: ' + esc(p.name) + '"') +
         ' data-src="' + (hasAtlas || noPhoto ? '' : src) + '">' + imgHtml(p, { alt: p.name, eager: true, view: 'img', noAtlas: localFull, cls: hasAtlas ? 'g-atlas-img' : '' }) +
         (fullSrc ? '<img class="g-full" data-full="' + esc(fullSrc) + '" alt="' + esc(p.name) + '" hidden>' : '') +
-        compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span>' +
+        /* Площадка для крупного плана: тот же файл, показанный вблизи.
+           Пустая, пока фрагмент не выбран. */
+        (big && shots && !frames[0].atlas ? '<div class="gzoom" data-gview="zoom" hidden></div>' : '') +
+        (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span>' +
         (noPhoto ? '<span class="gnote">' + ic('info', 15) + 'Поставщик не передал фото</span>'
           : '<span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span>') + '</div>' + (thumbs ? '<div class="thumbs">' + thumbs + '</div>' : '') + '</div>' +
         '<div class="pinfo"><div class="keyspecs"><h3>Коротко о товаре</h3>' + key.map(function (k) { return '<div class="krow"><span>' + esc(k[0]) + '</span><b>' + esc(k[1]) + '</b></div>'; }).join('') + '</div>' +
-        (compatChips ? '<div class="compat"><h3>Подходит для принтеров ' + brandLogo(p.brand, 18, '') + '</h3><div class="tags">' + compatChips + '</div></div>' : '') +
+        compatBlock +
         /*
           Ссылка на характеристики.
 
@@ -1171,7 +1257,10 @@
   function printer(r) {
     return C.printer(r.key).then(function (info) {
       if (!info) return notfound();
-      var items = info.products.filter(Boolean);
+      /* Наличие первым ключом и здесь: подбор по принтеру — такая же
+         товарная подборка, и начинаться она обязана с того, что можно
+         купить сегодня. */
+      var items = sortList(info.products.filter(Boolean), '');
       var byCat = {};
       items.forEach(function (p) { (byCat[p.cat] ||= []).push(p); });
       return '<div class="wrap"><div class="ph1">' + crumbs([['Главная', link.home()], ['Подбор по принтеру', link.plain('finder')], [info.label, '']]) +
@@ -1949,7 +2038,7 @@
     /* Увеличивать нечего, если снимка нет: показали бы заглушку во весь
        экран. Проверка по самой площадке, а не по наличию картинки в
        разметке, — заглушка тоже <img>. */
-    if (e.target.closest('#gmain') && !e.target.closest('.gcompat')) {
+    if (e.target.closest('#gmain')) {
       if (!e.target.closest('#gmain').classList.contains('no-photo')) openPhoto();
       return;
     }
@@ -2410,21 +2499,161 @@
     того же gFrame, по которому подсвечена миниатюра и показано основное
     фото, так что все трое всегда сходятся.
   */
+  /*
+    Увеличение, которое действительно увеличивает.
+
+    Как было. У картинки в окне стояли только max-width и max-height, а
+    браузер без заданного размера рисует <img> в натуральную величину.
+    У собственных снимков магазина натуральная величина — 400×283 (для
+    HB-KX-FAT410A7 это /assets/img/products/p_388.webp), а площадка на
+    карточке шире пятисот пикселей и вписывает снимок в себя. Нажатие на
+    «Открыть фото» делало картинку МЕНЬШЕ, чем она была на странице.
+
+    Как стало. Кадр вписывается в сцену размером почти во весь экран —
+    пропорции считаются от натурального размера, ничего не обрезается и
+    не растягивается. Дальше работает масштабирование: колесо, кнопки,
+    двойное нажатие, «плюс» и «минус» с клавиатуры, щипок на телефоне;
+    перетаскивание двигает увеличенный кадр.
+
+    Маленький исходник этим не «чинится» — подменять его чужим снимком
+    нельзя. Он так же вписывается в сцену и так же масштабируется, а
+    рядом честно написано, какого он размера на самом деле.
+  */
+  var lbStage = document.getElementById('lb-stage');
+  var lbZoom = 1, lbX = 0, lbY = 0, lbFit = { w: 0, h: 0 }, lbNat = { w: 0, h: 0 };
+  var LB_MAX = 4, LB_STEP = 1.4;
+
+  /*
+    Размер сцены берётся у самой сцены, а не считается заново.
+
+    Раньше поля были записаны числами и в двух местах: в скрипте и в
+    стилях. Они разошлись, и подпись про размер исходника легла поверх
+    снимка. Теперь отступы задаёт только CSS, а скрипт спрашивает
+    готовый размер — расходиться нечему.
+  */
+  function lbBox() {
+    var r = lbStage ? lbStage.getBoundingClientRect() : null;
+    if (!r || r.width < 40) return { w: Math.max(80, window.innerWidth - 32), h: Math.max(80, window.innerHeight - 160) };
+    return { w: Math.max(80, r.width), h: Math.max(80, r.height) };
+  }
+  function lbApply() {
+    var el = lb.querySelector('img'), at = lb.querySelector('.lb-atlas');
+    var node = (el && !el.hidden) ? el : at;
+    if (!node) return;
+    node.style.transform = 'translate(' + lbX.toFixed(1) + 'px,' + lbY.toFixed(1) + 'px) scale(' + lbZoom.toFixed(3) + ')';
+    node.style.cursor = lbZoom > 1 ? 'grab' : 'zoom-in';
+    var sc = lb.querySelector('.lb-scale');
+    /* Проценты считаются от НАТУРАЛЬНОГО размера файла, а не от
+       вписанного: человеку важно, во сколько раз он видит оригинал. */
+    if (sc) sc.textContent = lbNat.w ? Math.round(lbFit.w * lbZoom / lbNat.w * 100) + '%' : Math.round(lbZoom * 100) + '%';
+    var minus = lb.querySelector('[data-zoom="-1"]'), plus = lb.querySelector('[data-zoom="1"]');
+    if (minus) minus.disabled = lbZoom <= 1.001;
+    if (plus) plus.disabled = lbZoom >= LB_MAX - 0.001;
+  }
+  /* Сдвиг ограничен так, чтобы кадр нельзя было утащить за пределы сцены
+     и потерять из виду. */
+  function lbClamp() {
+    var box = lbBox();
+    var w = lbFit.w * lbZoom, h = lbFit.h * lbZoom;
+    var mx = Math.max(0, (w - box.w) / 2), my = Math.max(0, (h - box.h) / 2);
+    lbX = Math.min(mx, Math.max(-mx, lbX));
+    lbY = Math.min(my, Math.max(-my, lbY));
+  }
+  function lbFitNow() {
+    var el = lb.querySelector('img'), at = lb.querySelector('.lb-atlas');
+    var box = lbBox();
+    if (el && !el.hidden && el.naturalWidth) {
+      lbNat = { w: el.naturalWidth, h: el.naturalHeight };
+      var k = Math.min(box.w / lbNat.w, box.h / lbNat.h);
+      lbFit = { w: Math.round(lbNat.w * k), h: Math.round(lbNat.h * k) };
+      el.style.width = lbFit.w + 'px';
+      el.style.height = lbFit.h + 'px';
+    } else if (at && !at.hidden) {
+      /* Ячейка атласа — квадрат 240 пикселей: другого исходника нет. */
+      lbNat = { w: 240, h: 240 };
+      var side = Math.min(box.w, box.h);
+      lbFit = { w: side, h: side };
+      at.style.width = side + 'px';
+      at.style.height = side + 'px';
+    } else return;
+    lbClamp();
+    lbApply();
+  }
+  function lbSetZoom(z, ox, oy) {
+    var was = lbZoom;
+    lbZoom = Math.min(LB_MAX, Math.max(1, z));
+    if (lbZoom === was) return;
+    if (ox != null) {
+      /* Точка под курсором остаётся на месте — иначе кадр уезжает
+         из-под пальца и приходится искать деталь заново. */
+      var r = lbZoom / was;
+      lbX = ox - (ox - lbX) * r;
+      lbY = oy - (oy - lbY) * r;
+    }
+    if (lbZoom === 1) { lbX = 0; lbY = 0; }
+    lbClamp();
+    lbApply();
+  }
+  function lbResetZoom() { lbZoom = 1; lbX = 0; lbY = 0; lbApply(); }
+
   function showFrameInLb(k) {
     var g = document.getElementById('gmain'); if (!g) return false;
     var img = lb.querySelector('img'), at = lb.querySelector('.lb-atlas'), note = lb.querySelector('.lb-note');
     var f = gFrames[k];
+    lbResetZoom();
     if (f && !f.atlas && f.src) {
-      /* Полноразмерный оригинал поставщика — только для первого кадра. */
+      /*
+        Для увеличения берётся САМЫЙ КРУПНЫЙ файл этого товара.
+
+        Кадр на странице и кадр в окне — не обязательно один файл. Рядом
+        с миниатюрой атласа может лежать оригинал поставщика, и в окно
+        идёт он. Но только этого товара и только этого кадра: подменять
+        мелкий снимок чужим крупным нельзя — покупатель будет
+        рассматривать не то, что заказывает.
+      */
       var full = k === 0 ? g.querySelector('.g-full') : null;
       img.src = (full && full.complete && full.naturalWidth > 0) ? (full.currentSrc || full.src) : f.src;
       img.alt = f.alt || '';
       img.hidden = false; at.hidden = true;
+      at.style.width = ''; at.style.height = '';
       note.hidden = true; note.textContent = '';
+      var fit = function () {
+        lbFitNow();
+        /*
+          Выбран крупный план — увеличение открывает ИМЕННО его.
+
+          Это и было сломано: фрагмент выбирали, а открывался общий вид.
+          Фрагмент здесь не отдельная картинка, а точка на снимке и
+          масштаб, поэтому открыть его — значит приблизить кадр к этой
+          точке. Дальше человек волен отдалить и посмотреть целиком.
+        */
+        if (f.crop) {
+          lbZoom = 2.2;
+          lbX = (0.5 - f.crop.x) * lbFit.w * lbZoom;
+          lbY = (0.5 - f.crop.y) * lbFit.h * lbZoom;
+          lbClamp();
+          lbApply();
+        }
+        /* Про маленький исходник говорим прямо, а не прячем его за
+           растягиванием: видно, во сколько раз кадр уже увеличен. */
+        /* Порог не выдуман: собственные снимки магазина не больше 520
+           пикселей, снимки поставщика — от 600. Оговорка нужна первым и
+           только им, иначе она стояла бы почти на каждой карточке и её
+           перестали бы читать. */
+        if (img.naturalWidth && Math.max(img.naturalWidth, img.naturalHeight) < 560) {
+          note.hidden = false;
+          note.textContent = 'Исходный снимок ' + img.naturalWidth + '×' + img.naturalHeight + ' пикселей — ' +
+            'крупнее у этой позиции нет. Масштаб и перетаскивание работают, но при сильном увеличении кадр будет мягче.';
+        } else { note.hidden = true; note.textContent = ''; }
+      };
+      if (img.complete && img.naturalWidth) fit();
+      else img.onload = fit;
     } else {
       var cell = g.querySelector('.atimg');
       if (!cell) return false;
+      img.onload = null;
       img.hidden = true; img.removeAttribute('src'); img.alt = '';
+      img.style.width = ''; img.style.height = '';
       at.hidden = false;
       at.style.backgroundImage = cell.style.backgroundImage;
       at.style.backgroundSize = cell.style.backgroundSize;
@@ -2432,6 +2661,7 @@
       at.setAttribute('aria-label', (f && f.alt) || g.getAttribute('aria-label') || 'Фото товара');
       note.hidden = false;
       note.textContent = 'Снимок поставщика доступен только в размере 240 пикселей — более крупного исходника у этой позиции нет.';
+      lbFitNow();
     }
     gFrame = k;
     lbCount();
@@ -2462,19 +2692,27 @@
     lbFrom = g;
     lb.hidden = false;
     lb.classList.add('open');
+    var zp = lb.querySelector('.lb-zoom'); if (zp) zp.hidden = false;
+    /* Размер сцены известен только после показа окна: пока оно скрыто,
+       считать вписывание не по чему. */
+    lbFitNow();
     var x = lb.querySelector('.x'); if (x) x.focus();
   }
   /* Снимок из закрытого окна тоже убирается: пока он там лежал, на
      следующем товаре в разметке оставался кадр предыдущего. */
   function lbReset() {
     var img = lb.querySelector('img'), at = lb.querySelector('.lb-atlas'), note = lb.querySelector('.lb-note');
-    if (img) { img.removeAttribute('src'); img.alt = ''; img.hidden = false; }
-    if (at) { at.hidden = true; at.style.backgroundImage = ''; }
+    if (img) { img.onload = null; img.removeAttribute('src'); img.alt = ''; img.hidden = false; img.style.width = ''; img.style.height = ''; }
+    if (at) { at.hidden = true; at.style.backgroundImage = ''; at.style.width = ''; at.style.height = ''; }
     if (note) { note.hidden = true; note.textContent = ''; }
+    var zp = lb.querySelector('.lb-zoom'); if (zp) zp.hidden = true;
+    lbResetZoom();
     lbCount();
   }
   function closePhoto() {
     if (!lb.classList.contains('open')) return;
+    /* Масштаб не переживает закрытие: следующий кадр открывается целиком. */
+    lbResetZoom();
     lb.classList.remove('open');
     lb.hidden = true;
     if (lbFrom && document.contains(lbFrom)) lbFrom.focus();
@@ -2493,33 +2731,109 @@
     var nav = e.target.closest && e.target.closest('[data-lb]');
     /* Нажатие на стрелку листает кадр, а не закрывает окно. */
     if (nav) { e.stopPropagation(); lbStep(+nav.dataset.lb); return; }
+    var z = e.target.closest && e.target.closest('[data-zoom]');
+    if (z) {
+      e.stopPropagation();
+      var d = +z.dataset.zoom;
+      if (d === 0) lbResetZoom(); else lbSetZoom(lbZoom * (d > 0 ? LB_STEP : 1 / LB_STEP));
+      return;
+    }
+    /* Щелчок по самому кадру приближает, а не закрывает: закрытие — это
+       фон, крестик и Esc. Иначе попытка рассмотреть деталь выкидывала бы
+       из окна. */
+    if (e.target.closest && e.target.closest('#lb-stage')) {
+      e.stopPropagation();
+      if (lbDragged) { lbDragged = false; return; }
+      var r = lb.getBoundingClientRect();
+      lbSetZoom(lbZoom > 1 ? 1 : 2, e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2);
+      return;
+    }
     closePhoto();
   });
   /*
-    Листание с клавиатуры и пальцем. Порядок кадров один и тот же везде:
-    стрелки идут по тому же списку, что и миниатюры, поэтому после
-    закрытия подсвечена та миниатюра, на которой человек остановился.
+    Клавиатура: стрелки листают кадры, «плюс» и «минус» масштабируют,
+    ноль возвращает исходный размер. Всё то же, что делают кнопки, —
+    чтобы окном можно было пользоваться без мыши.
   */
   document.addEventListener('keydown', function (e) {
     if (!lb.classList.contains('open')) return;
     if (e.key === 'ArrowLeft') { e.preventDefault(); lbStep(-1); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); lbStep(1); }
+    else if (e.key === '+' || e.key === '=') { e.preventDefault(); lbSetZoom(lbZoom * LB_STEP); }
+    else if (e.key === '-' || e.key === '_') { e.preventDefault(); lbSetZoom(lbZoom / LB_STEP); }
+    else if (e.key === '0') { e.preventDefault(); lbResetZoom(); }
   });
+  /* Колесо мыши масштабирует к точке под курсором. */
+  lb.addEventListener('wheel', function (e) {
+    if (!lb.classList.contains('open')) return;
+    e.preventDefault();
+    var r = lb.getBoundingClientRect();
+    lbSetZoom(lbZoom * (e.deltaY < 0 ? 1.18 : 1 / 1.18), e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2);
+  }, { passive: false });
+
+  var lbDragged = false;
+  /* Перетаскивание мышью работает только когда есть что двигать. */
   (function () {
-    var x0 = null, y0 = null;
+    var on = false, sx = 0, sy = 0, bx = 0, by = 0;
+    lbStage.addEventListener('mousedown', function (e) {
+      if (lbZoom <= 1) return;
+      on = true; lbDragged = false;
+      sx = e.clientX; sy = e.clientY; bx = lbX; by = lbY;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', function (e) {
+      if (!on) return;
+      lbX = bx + (e.clientX - sx); lbY = by + (e.clientY - sy);
+      if (Math.abs(e.clientX - sx) > 3 || Math.abs(e.clientY - sy) > 3) lbDragged = true;
+      lbClamp(); lbApply();
+    });
+    window.addEventListener('mouseup', function () { on = false; });
+  })();
+  /*
+    Палец: одним двигаем кадр или листаем, двумя — щипок.
+
+    Листание срабатывает только в исходном масштабе: когда кадр уже
+    приближен, горизонтальный жест человек делает, чтобы дотянуться до
+    края снимка, а не чтобы уйти на соседний.
+  */
+  (function () {
+    var x0 = null, y0 = null, bx = 0, by = 0, moved = false;
+    var pinch = 0, zoom0 = 1;
+    var dist = function (t) {
+      var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
     lb.addEventListener('touchstart', function (e) {
-      if (!e.touches || e.touches.length !== 1) { x0 = null; return; }
-      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+      if (e.touches.length === 2) { pinch = dist(e.touches); zoom0 = lbZoom; x0 = null; return; }
+      if (e.touches.length !== 1) { x0 = null; return; }
+      pinch = 0; moved = false;
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; bx = lbX; by = lbY;
     }, { passive: true });
+    lb.addEventListener('touchmove', function (e) {
+      if (pinch && e.touches.length === 2) {
+        e.preventDefault();
+        lbSetZoom(zoom0 * (dist(e.touches) / pinch));
+        return;
+      }
+      if (x0 === null || lbZoom <= 1) return;
+      e.preventDefault();
+      lbX = bx + (e.touches[0].clientX - x0); lbY = by + (e.touches[0].clientY - y0);
+      moved = true;
+      lbClamp(); lbApply();
+    }, { passive: false });
     lb.addEventListener('touchend', function (e) {
+      if (pinch) { if (!e.touches.length) pinch = 0; return; }
       if (x0 === null || !e.changedTouches || !e.changedTouches.length) return;
       var dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
       x0 = null;
+      if (moved || lbZoom > 1) return;
       /* Горизонтальный жест — листание, вертикальный оставляем окну. */
       if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
       lbStep(dx < 0 ? 1 : -1);
     }, { passive: true });
   })();
+  /* Поворот телефона и изменение окна пересчитывают вписывание. */
+  window.addEventListener('resize', function () { if (lb.classList.contains('open')) lbFitNow(); });
 
   /*
     Переключение вида в галерее.
@@ -2537,28 +2851,36 @@
     /* Миниатюр может не быть вовсе (один вид) — кадр всё равно первый. */
     if (thumbs.length && !th) return;
     if (th) thumbs.forEach(function (x) { x.classList.toggle('on', x === th); });
-    var compat = !!(th && th.classList.contains('tcompat'));
-    var img = g.querySelector('[data-gview="img"]'), comp = g.querySelector('[data-gview="compat"]');
+    var img = g.querySelector('[data-gview="img"]');
+    var zoomEl = g.querySelector('[data-gview="zoom"]');
     gView = i;
-    if (!compat) {
-      /* Номер вида и номер кадра совпадают, пока виды — это снимки:
-         «Совместимость» всегда идёт последней и кадром не является. */
-      gFrame = Math.min(i, Math.max(0, gFrames.length - 1));
-      var f = gFrames[gFrame];
+    gFrame = Math.min(i, Math.max(0, gFrames.length - 1));
+    var f = gFrames[gFrame];
+    if (f && f.crop) {
+      /* Крупный план — та же фотография, показанная вблизи. Отдельного
+         файла у неё нет и быть не должно: это место на снимке. */
+      if (zoomEl) {
+        zoomEl.style.backgroundImage = 'url(' + f.src + ')';
+        zoomEl.style.backgroundPosition = (f.crop.x * 100) + '% ' + (f.crop.y * 100) + '%';
+        zoomEl.hidden = false;
+        zoomEl.setAttribute('role', 'img');
+        zoomEl.setAttribute('aria-label', f.alt || '');
+      }
+      if (img) img.hidden = true;
+    } else {
+      if (zoomEl) zoomEl.hidden = true;
       if (f && img && !f.atlas && img.tagName === 'IMG' && f.src && img.getAttribute('src') !== f.src) {
         img.src = f.src;
         img.alt = f.alt || '';
       }
-      /* Полноразмерный снимок поставщика относится только к первому
-         кадру: у остальных своего оригинала нет, и оставленная поверх
-         картинка показала бы чужой вид. */
-      var full = g.querySelector('.g-full');
-      if (full) full.hidden = gFrame !== 0 || !(full.complete && full.naturalWidth > 0);
+      if (img) img.hidden = false;
     }
-    if (img) img.hidden = compat;
-    if (comp) comp.hidden = !compat;
-    g.dataset.frame = compat ? '' : String(gFrame);
-    var zoomHint = g.querySelector('.zoom'); if (zoomHint) zoomHint.hidden = compat;
+    /* Полноразмерный снимок поставщика относится только к первому
+       кадру: у остальных своего оригинала нет, и оставленная поверх
+       картинка показала бы чужой вид. */
+    var full = g.querySelector('.g-full');
+    if (full) full.hidden = gFrame !== 0 || !(full.complete && full.naturalWidth > 0);
+    g.dataset.frame = String(gFrame);
   }
 
   var slideIdx = 0, sliderTimer = null;
