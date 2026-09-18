@@ -1057,14 +1057,26 @@ if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
             ? main.querySelector('img').getAttribute('src') : '',
         };
       });
+      /* Что реально откроется по «Открыть фото» — спрашиваем у страницы,
+         а не у разметки: именно здесь выбор и терялся. */
+      if (label === 'со снимком') {
+        await page.click('#gmain').catch(() => {});
+        await page.waitForTimeout(400);
+        g.lbSrc = await page.evaluate(() => {
+          const i = document.querySelector('#lightbox img');
+          return i ? i.getAttribute('src') : '';
+        });
+        await page.keyboard.press('Escape').catch(() => {});
+        await page.waitForTimeout(200);
+      }
       check(`${device.name}: картинки карточки (${label}) отдаются без ошибок`, bad.length === 0, bad.slice(0, 2).join('; '));
       check(`${device.name}: на карточке (${label}) нет несостоявшихся картинок`,
         g.brokenImgs.length === 0, g.brokenImgs.slice(0, 2).join('; '));
 
       if (label === 'без снимка') {
         check('карточка без снимка помечена как таковая', g.noPhoto === true && /no-photo\.svg$/.test(g.mainSrc));
-        check('без снимка не предлагается «Крупный план»',
-          !g.thumbs.includes('Крупный план'), 'виды: ' + g.thumbs.join(', '));
+        check('без снимка не предлагается ни одного кадра',
+          !g.thumbs.some((t) => /Фото/.test(t || '')), 'виды: ' + g.thumbs.join(', '));
         check('без снимка нет подписи «Открыть фото»', g.zoomOffer === false);
         check('без снимка площадка не притворяется кнопкой', g.role !== 'button');
         check('без снимка сказано, что фото не передано', /не передал фото/.test(g.note), g.note.trim());
@@ -1079,8 +1091,13 @@ if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
       } else {
         check('карточка со снимком предлагает увеличение', g.noPhoto === false && g.zoomOffer === true);
         check('карточка со снимком осталась кнопкой', g.role === 'button');
-        check('у карточки со снимком есть «Крупный план»',
-          g.thumbs.includes('Крупный план') || g.thumbs.length >= 1, 'виды: ' + g.thumbs.join(', '));
+        /* Миниатюр ровно столько, сколько настоящих кадров: полоса из
+           одного вида не рисуется вовсе, а «Крупный план» из того же
+           файла больше не выдумывается. */
+        check('у карточки со снимком нет выдуманных видов',
+          !g.thumbs.includes('Крупный план'), 'виды: ' + g.thumbs.join(', '));
+        check('карточка со снимком открывает именно его',
+          g.lbSrc === g.mainSrc, `главное ${g.mainSrc}, увеличение ${g.lbSrc}`);
       }
     }
     await ctx.close();
@@ -1111,6 +1128,180 @@ if (fs.existsSync(path.join(ROOT, 'dist/artifact/index.html'))) {
   check('в сетке есть и снимки, и заглушки', grid.total > 0,
     `картинок ${grid.total}, из них заглушек ${grid.placeholders}`);
   await ctx.close();
+}
+
+/*
+  Полное название товара в каталоге, поиске и списке.
+
+  Ошибка владельца: в выдаче по артикулу 006R01160 название обрывалось
+  ровно там, где стоял артикул, и отличить товар от соседнего было
+  нельзя. Проверяем не правило в CSS, а отрисованную страницу: у каждого
+  названия не должно быть невидимого хвоста (scrollHeight больше высоты
+  блока), и при этом сетка не должна уезжать за край экрана.
+*/
+{
+  const WIDTHS = [
+    { name: 'десктоп 1440', width: 1440, height: 900 },
+    { name: 'телефон 430', width: 430, height: 900, mobile: true },
+    { name: 'телефон 390', width: 390, height: 844, mobile: true },
+    { name: 'телефон 375', width: 375, height: 812, mobile: true },
+    { name: 'телефон 360', width: 360, height: 740, mobile: true },
+    { name: 'телефон 320', width: 320, height: 640, mobile: true },
+  ];
+  /* Товар с заведомо длинным названием и длинным артикулом без пробелов:
+     на нём обрезка и распирание карточки видны раньше всего. */
+  const PAGES = [
+    ['поиск', '/search?q=006R01160'],
+    ['каталог', '/catalog/laser'],
+    ['список', '/catalog/laser?v=list'],
+  ];
+  for (const d of WIDTHS) {
+    const ctx = await browser.newContext({
+      viewport: { width: d.width, height: d.height },
+      isMobile: !!d.mobile, hasTouch: !!d.mobile,
+    });
+    const page = await ctx.newPage();
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => { try { localStorage.setItem('hb_cookie_consent_v2', '1'); } catch (e) { } });
+    for (const [label, url] of PAGES) {
+      await page.goto(BASE + url, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.ctitle', { timeout: 15000 });
+      await page.waitForTimeout(400);
+      const r = await page.evaluate(() => {
+        const t = [...document.querySelectorAll('.ctitle')];
+        const clipped = t.filter((x) => x.scrollHeight > x.clientHeight + 1)
+          .map((x) => x.textContent.trim().slice(0, 60));
+        /* Низ карточек одного ряда должен оставаться на одной линии:
+           название любой высоты не имеет права ломать ряд лесенкой. */
+        const rows = {};
+        document.querySelectorAll('.cards:not(.clist) .card').forEach((c) => {
+          const b = c.getBoundingClientRect();
+          const key = Math.round(b.top / 8);
+          (rows[key] = rows[key] || []).push(Math.round(b.bottom));
+        });
+        const ragged = Object.values(rows).filter((v) => v.length > 1 && Math.max(...v) - Math.min(...v) > 2).length;
+        /* Кнопка покупки обязана остаться внутри своей карточки. */
+        const spill = [...document.querySelectorAll('.card .cfoot .btn, .card .cbot')].filter((e) => {
+          const r2 = e.getBoundingClientRect(), c = e.closest('.card').getBoundingClientRect();
+          return r2.left < c.left - 1 || r2.right > c.right + 1;
+        }).length;
+        return {
+          n: t.length, clipped, ragged, spill,
+          overflow: document.documentElement.scrollWidth - window.innerWidth,
+        };
+      });
+      check(`${d.name}: ${label} — название видно целиком`, r.n > 0 && r.clipped.length === 0,
+        r.n ? r.clipped.slice(0, 2).join(' | ') : 'названий на странице нет');
+      check(`${d.name}: ${label} — сетка не уехала за край`, r.overflow <= 0, `лишних ${r.overflow}px`);
+      check(`${d.name}: ${label} — низ карточек в ряду на одной линии`, r.ragged === 0, `рядов вразнобой: ${r.ragged}`);
+      check(`${d.name}: ${label} — кнопки не вылезли из карточки`, r.spill === 0, `вылезло элементов: ${r.spill}`);
+    }
+    await ctx.close();
+  }
+}
+
+/*
+  Галерея: выбранный кадр открывается в увеличении.
+
+  Ошибка владельца: выбрана вторая миниатюра, нажата «Открыть фото» —
+  открывается первая. Настоящих товаров с несколькими снимками в проекте
+  сейчас нет (поставщик отдаёт дополнительные кадры, но их файлы к нам не
+  скачаны), поэтому многокадровая галерея проверяется ФИКСТУРОЙ: список
+  кадров подменяется тремя РАЗНЫМИ файлами, которые лежат в проекте.
+  Одно- и бескадровый случаи проверяются на настоящих товарах выше.
+*/
+{
+  const reg = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/vtt-photos.json'), 'utf8')).photos || {};
+  const files = [...new Set(Object.values(reg))].slice(0, 3).map((f) => '/assets/img/vtt-full/' + f);
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/catalog/index.json'), 'utf8'));
+  const iImg = idx.fields.indexOf('img');
+  const unpackImg = (v) => {
+    const t = String(v ?? '');
+    return t.charCodeAt(0) === 1 ? idx.imgBases[Number(t[1])] + t.slice(2) : t;
+  };
+  const row = idx.rows.find((r) => /vtt-full/.test(unpackImg(r[iImg])) && slugRegistry[r[0]]);
+  if (files.length === 3 && row) {
+    for (const d of [
+      { name: 'десктоп', viewport: { width: 1440, height: 1000 } },
+      { name: 'телефон', viewport: { width: 390, height: 844 }, mobile: true },
+    ]) {
+      const ctx = await browser.newContext({ viewport: d.viewport, isMobile: !!d.mobile, hasTouch: !!d.mobile });
+      const page = await ctx.newPage();
+      await page.route('**/data/catalog/chunks/detail-*.json', async (route) => {
+        const res = await route.fetch();
+        const body = await res.json();
+        if (body[row[0]]) body[row[0]].photos = files;
+        await route.fulfill({ response: res, body: JSON.stringify(body) });
+      });
+      await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+      await page.evaluate(() => { try { localStorage.setItem('hb_cookie_consent_v2', '1'); } catch (e) { } });
+      await page.goto(`${BASE}/product/${prod(row[0])}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.thumb[data-view]', { timeout: 15000 });
+      await page.waitForTimeout(400);
+
+      const titles = await page.$$eval('.thumb[data-view]', (e) => e.map((x) => x.title));
+      check(`${d.name}: у трёх кадров три миниатюры`, titles.length === 3, titles.join(', '));
+
+      let mismatched = [], altBad = [];
+      for (const k of [1, 2, 0]) {
+        await (await page.$$('.thumb[data-view]'))[k].click();
+        await page.waitForTimeout(250);
+        const main = await page.evaluate(() => {
+          const i = document.querySelector('#gmain [data-gview="img"]');
+          return i ? i.getAttribute('src') : '';
+        });
+        await page.click('#gmain');
+        await page.waitForTimeout(350);
+        const lb = await page.evaluate(() => {
+          const i = document.querySelector('#lightbox img');
+          return { src: i ? i.getAttribute('src') : '', alt: i ? i.alt : '' };
+        });
+        if (main !== files[k] || lb.src !== files[k]) mismatched.push(`кадр ${k + 1}: главное ${main}, увеличение ${lb.src}`);
+        if (!lb.alt || lb.alt.indexOf(String(k + 1)) < 0) altBad.push(`кадр ${k + 1}: «${lb.alt}»`);
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(200);
+      }
+      check(`${d.name}: увеличение открывает выбранный кадр`, mismatched.length === 0, mismatched.join('; '));
+      check(`${d.name}: подпись кадра называет его номер`, altBad.length === 0, altBad.join('; '));
+
+      /* Стрелки в увеличении двигают тот же выбор, что и миниатюры. */
+      await (await page.$$('.thumb[data-view]'))[0].click();
+      await page.waitForTimeout(200);
+      await page.click('#gmain');
+      await page.waitForTimeout(300);
+      const cnt1 = await page.textContent('#lightbox .lb-count');
+      await page.click('#lightbox [data-lb="1"]');
+      await page.waitForTimeout(300);
+      const after = await page.evaluate(() => ({
+        src: document.querySelector('#lightbox img').getAttribute('src'),
+        open: document.getElementById('lightbox').classList.contains('open'),
+        count: document.querySelector('#lightbox .lb-count').textContent,
+      }));
+      check(`${d.name}: стрелка листает, а не закрывает`, after.open === true && after.src === files[1],
+        `открыт ${after.open}, кадр ${after.src}`);
+      check(`${d.name}: счётчик кадров считает`, cnt1.trim() === '1 / 3' && after.count.trim() === '2 / 3',
+        `${cnt1} -> ${after.count}`);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
+      const kept = await page.evaluate(() => [...document.querySelectorAll('.thumb[data-view]')]
+        .findIndex((t) => t.classList.contains('on')));
+      check(`${d.name}: после закрытия выбран тот кадр, на котором остановились`, kept === 1, `подсвечена ${kept + 1}`);
+
+      /* Переход на другой товар не оставляет кадр предыдущего. */
+      await page.goto(`${BASE}/catalog/laser`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(500);
+      const left = await page.evaluate(() => {
+        const i = document.querySelector('#lightbox img');
+        return { src: i ? i.getAttribute('src') : '', open: document.getElementById('lightbox').classList.contains('open') };
+      });
+      check(`${d.name}: на другой странице не остался кадр предыдущего товара`,
+        !left.open && !left.src, `${left.src}`);
+      await ctx.close();
+    }
+  } else {
+    check('фикстура для многокадровой галереи собралась', false,
+      `файлов ${files.length}, товар ${row ? 'найден' : 'не найден'}`);
+  }
 }
 
 await browser.close();

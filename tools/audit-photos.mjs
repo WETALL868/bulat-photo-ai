@@ -121,6 +121,52 @@ for (const row of idx.rows) {
   withPhoto += 1;
 }
 
+/*
+  Кадры галереи.
+
+  Дополнительные снимки лежат в деталях карточки (chunks/detail-*.json)
+  и на витрине становятся миниатюрами. Проверяем их по тем же правилам,
+  что и основной снимок: файл обязан лежать в проекте, горячих ссылок на
+  поставщика быть не должно, а один и тот же файл не имеет права стоять
+  двумя разными кадрами — именно так и выглядела прежняя «галерея» из
+  одного снимка.
+*/
+const frames = [];
+let withFrames = 0, framesTotal = 0;
+{
+  const chunkDir = path.join(ROOT, 'data/catalog/chunks');
+  const byId = {};
+  for (const r of idx.rows) byId[r[F.id]] = r;
+  if (fs.existsSync(chunkDir)) {
+    for (const f of fs.readdirSync(chunkDir)) {
+      if (!/^detail-\d+\.json$/.test(f)) continue;
+      const part = JSON.parse(fs.readFileSync(path.join(chunkDir, f), 'utf8'));
+      for (const [id, d] of Object.entries(part)) {
+        const list = d && d.photos;
+        if (!Array.isArray(list) || !list.length) continue;
+        const row = byId[id];
+        const info = { url: '/product/' + (slugs[id] ? slugs[id].slug : id), code: row ? row[F.code] : id, no: row ? row[F.no] : '' };
+        withFrames += 1; framesTotal += list.length;
+        if (list.length < 2) frames.push({ ...info, reason: 'список кадров из одного снимка — поле лишнее', img: list[0] });
+        const seen = new Set();
+        for (const url of list) {
+          const u = String(url || '');
+          if (/^https?:/i.test(u)) { frames.push({ ...info, reason: 'кадр ведёт на чужой сервер', img: u }); continue; }
+          if (seen.has(u)) { frames.push({ ...info, reason: 'один файл стоит двумя кадрами', img: u }); continue; }
+          seen.add(u);
+          if (!fs.existsSync(path.join(ROOT, u.replace(/^\//, '')))) {
+            frames.push({ ...info, reason: 'файла кадра нет в проекте', img: u });
+          }
+        }
+        const main = row ? unpack(row[F.img]) : null;
+        if (main && list[0] !== main) {
+          frames.push({ ...info, reason: `первый кадр не совпадает с основным снимком (${main})`, img: list[0] });
+        }
+      }
+    }
+  }
+}
+
 /* Картинки разделов и логотипы марок — тоже адреса, которые отдаёт сервер. */
 const extra = [];
 for (const c of R('data/catalog/categories.json')) {
@@ -140,7 +186,7 @@ for (const f of (thumbs && thumbs.files) || []) {
   }
 }
 
-const problems = broken.length + hotlink.length + unexpected.length + corrupt.length + extra.length;
+const problems = broken.length + hotlink.length + unexpected.length + corrupt.length + extra.length + frames.length;
 console.log(`товаров в каталоге: ${idx.rows.length}`);
 console.log(`  со снимком: ${withPhoto}`);
 console.log(`  без снимка (заглушка правдива): ${noPhoto.length}`);
@@ -155,6 +201,10 @@ console.log(`испорченных файлов: ${corrupt.length}`);
 corrupt.slice(0, 10).forEach((x) => console.log(`   ${x.no} ${x.code} -> ${x.missingFile}`));
 console.log(`битых картинок разделов, марок и атласа: ${extra.length}`);
 extra.slice(0, 10).forEach((x) => console.log(`   ${x.url} -> ${x.missingFile}`));
+console.log(`товаров с несколькими кадрами: ${withFrames}` +
+  (withFrames ? `, кадров всего ${framesTotal}` : ' (дополнительных снимков в проекте нет)'));
+console.log(`неправильных кадров галереи: ${frames.length}`);
+frames.slice(0, 10).forEach((x) => console.log(`   ${x.no} ${x.code} -> ${x.reason}: ${x.img}`));
 
 if (args.includes('--list')) {
   console.log('\nПОЗИЦИИ БЕЗ СНИМКА (адрес, артикул, код товара, чего не хватает):');
@@ -169,6 +219,7 @@ if (args.includes('--json')) {
     generatedAt: new Date().toISOString(),
     total: idx.rows.length, withPhoto,
     broken, hotlink, unexpected, corrupt, extra, noPhoto,
+    frames, withFrames, framesTotal,
   }, null, 1));
   console.log(`\nотчёт: ${path.relative(ROOT, out)}`);
 }

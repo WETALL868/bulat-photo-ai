@@ -692,6 +692,36 @@ export function availabilityOf(item) {
 */
 export const PHOTO_PLACEHOLDER = '/assets/img/no-photo.svg';
 
+/*
+  Кадры галереи товара.
+
+  У поставщика к позиции бывает несколько снимков: основной лежит по
+  адресу «<Id>.jpg», остальные — «<Id>_2.jpg», «<Id>_3.jpg». Витрина их
+  не показывала, а вместо этого рисовала из одного файла три вида, сдвигая
+  фон, — три миниатюры на одну фотографию.
+
+  Здесь собирается честный список: сначала основной снимок, затем те
+  дополнительные, ФАЙЛЫ которых действительно лежат в проекте. Решает это
+  resolveLocal: он получает адрес у поставщика и возвращает местный путь
+  или null. Файла нет — кадра нет; кадр один — списка нет вовсе, и
+  карточка показывает одну фотографию.
+
+  Список не начинается с горячей ссылки: если основной снимок так и
+  остался адресом на стороне поставщика, галереи у товара нет — иначе
+  рядом с битой картинкой встал бы целый второй кадр.
+*/
+export function galleryFrames(product, resolveLocal) {
+  const main = String(product?.img ?? '');
+  if (product?.photoMissing || !/^\/?assets\/img\//.test(main)) return [];
+  const frames = [main];
+  const sources = product.imagesFromCode ?? product.images ?? [];
+  for (const url of sources.slice(1)) {
+    const local = resolveLocal(url);
+    if (local && !frames.includes(local)) frames.push(local);
+  }
+  return frames;
+}
+
 export function usablePhoto(url) {
   if (typeof url !== 'string' || !url) return false;
   if (!/^https?:\/\//i.test(url)) return false;

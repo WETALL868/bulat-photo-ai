@@ -410,6 +410,9 @@ async function readVttStore(storeRoot) {
       if (!local[file]) { notDownloaded.push(`${p.code} (${file})`); continue; }
       p.img = own[0].photos[0];
       p.imgFromCode = own[0].id;
+      /* Остальные кадры донора тоже принадлежат этому товару: артикул
+         совпал целиком, а запись-донор ровно одна. */
+      p.imagesFromCode = own[0].photos.slice();
       p.photoMissing = false;
       reused += 1;
     }
@@ -489,6 +492,64 @@ async function readVttStore(storeRoot) {
       picked += 1;
     }
     if (picked) console.log(`  оригиналов снимков из assets/img/vtt: ${picked}`);
+  }
+
+  /*
+    Кадры галереи.
+
+    У поставщика к одной позиции бывает несколько снимков: основной
+    лежит по адресу «<Id>.jpg», остальные — «<Id>_2.jpg», «<Id>_3.jpg» и
+    дальше. Галерея их не показывала: карточка знала только про один
+    адрес, а второй и третий вид рисовались из него же — увеличенным
+    куском того же файла со сдвигом фона. Покупатель видел три
+    миниатюры, а снимок был один, и «Открыть фото» показывало не то,
+    что он выбрал.
+
+    Теперь карточка получает СПИСОК кадров, и в нём только те файлы,
+    которые действительно лежат в проекте. Горячих ссылок на b2b.vtt.ru
+    здесь нет по той же причине, что и у основного снимка: чужой сервер
+    закрыт, и половина посетителей получила бы битую картинку. Файла нет
+    в data/vtt-photos.json — кадра нет в галерее. Ровно один кадр —
+    карточка показывает одну фотографию и не притворяется, что их три.
+
+    Как добавить кадры: положить файл в assets/img/vtt-full и вписать в
+    data/vtt-photos.json строку «<имя у поставщика>»: «<имя файла>»,
+    например «9899991975_2.jpg»: «…webp». Пересборка подхватит его сама.
+  */
+  {
+    const registryFile = path.join(ROOT, 'data/vtt-photos.json');
+    const reg = fs.existsSync(registryFile)
+      ? JSON.parse(fs.readFileSync(registryFile, 'utf8'))
+      : { photos: {}, dir: 'assets/img/vtt-full' };
+    const dir = String(reg.dir || 'assets/img/vtt-full');
+    const photos = reg.photos || {};
+    /* Снимки, положенные рядом вручную: «<Id>_2.webp» рядом с «<Id>.webp». */
+    const VTT_DIR = path.join(ROOT, 'assets/img/vtt');
+    const loose = new Map();
+    if (fs.existsSync(VTT_DIR)) {
+      for (const f of fs.readdirSync(VTT_DIR)) {
+        if (!/\.(jpe?g|png|webp)$/i.test(f)) continue;
+        loose.set(f.replace(/\.[^.]+$/, ''), '/assets/img/vtt/' + f);
+      }
+    }
+    const localOf = (url) => {
+      const name = String(url ?? '').split('/').pop();
+      if (!name) return null;
+      const hit = photos[name];
+      if (hit && fs.existsSync(path.join(ROOT, dir, hit))) return '/' + dir + '/' + hit;
+      const bare = name.replace(/\.[^.]+$/, '');
+      return loose.get(bare) || null;
+    };
+    /* Сам отбор кадров живёт в vtt/src/publish.mjs и покрыт тестами:
+       здесь остаётся только «где лежит файл». */
+    const { galleryFrames } = await import('../vtt/src/publish.mjs');
+    let extra = 0, withMany = 0;
+    for (const p of products) {
+      const frames = galleryFrames(p, localOf);
+      if (frames.length > 1) { p.photos = frames; extra += frames.length - 1; withMany += 1; }
+    }
+    console.log(`  товаров с несколькими кадрами: ${withMany}` +
+      (withMany ? `, дополнительных кадров: ${extra}` : ' (дополнительных файлов в проекте нет)'));
   }
 
   /* Сводка считается по тому, что реально попало на витрину, а не по
@@ -1097,6 +1158,11 @@ for (let i = 0; i < products.length; i += CHUNK_SIZE) {
       ...(p.catPath?.length ? { vttCatPath: p.catPath } : (p.vttCategory ? { vttCatPath: [p.vttCategory] } : {})),
       ...(p.supplierDescription ? { supplierDesc: p.supplierDescription } : {}),
       ...(p.originalNumber ? { originalNumber: p.originalNumber } : {}),
+      /* Кадры галереи — только когда их правда несколько. У товара с
+         одним снимком поля нет, и карточка берёт основной адрес из
+         индекса: девять с половиной тысяч одноэлементных списков в
+         чанках — это мегабайт повтора. */
+      ...(p.photos?.length > 1 ? { photos: p.photos } : {}),
       /* stockDetail в публикуемые детали не кладётся: точные остатки —
          внутренние данные. Наличие витрина берёт из live-файла флагом. */
     };

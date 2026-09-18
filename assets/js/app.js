@@ -750,13 +750,54 @@
         действительно есть: сама заглушка и совместимость.
       */
       var noPhoto = !localFull && !hasAtlas;
-      var views = [{ t: 'img' }];
-      if (!hasAtlas && !noPhoto) views.push({ t: 'zoom', pos: '18% 50%' }, { t: 'zoom', pos: '82% 50%' });
+      /*
+        Кадры галереи — это снимки, а не куски одного снимка.
+
+        Раньше здесь из единственного файла делали ещё два вида: тот же
+        адрес с фоном, сдвинутым на 18 и на 82 процента. Получалось три
+        миниатюры на одну фотографию, и человек, выбравший вторую, по
+        «Открыть фото» видел первую. Это была не галерея, а обещание
+        снимков, которых нет.
+
+        Теперь список кадров приходит из данных (d.photos): сборка
+        кладёт туда только те файлы, что действительно лежат в проекте.
+        Поля нет — кадр ровно один, и галерея показывает одну
+        фотографию, ничего не изображая.
+
+        Совместимость кадром не считается: это сведения о товаре, и она
+        по-прежнему идёт отдельным видом после снимков.
+      */
+      var frames = [];
+      if (noPhoto) { /* нечего показывать: ниже встанет заглушка */ }
+      else if (hasAtlas) frames.push({ atlas: true, src: '', alt: p.name });
+      else {
+        var list = (d.photos && d.photos.length) ? d.photos : [src];
+        for (var fi = 0; fi < list.length; fi++) {
+          var fsrc = String(list[fi] || '');
+          if (!fsrc) continue;
+          var dup = false;
+          for (var fj = 0; fj < frames.length; fj++) if (frames[fj].src === fsrc) dup = true;
+          if (dup) continue;
+          frames.push({ src: fsrc, alt: p.name });
+        }
+      }
+      /* Подпись кадра: один снимок — просто товар, несколько — с номером,
+         чтобы читающий с экрана понимал, какой именно кадр открыт. */
+      frames.forEach(function (f, k) {
+        if (frames.length > 1) f.alt = p.name + ' — фото ' + (k + 1) + ' из ' + frames.length;
+      });
+      var views = frames.map(function (f, k) { return { t: 'photo', f: k }; });
       if (d.models.length) views.push({ t: 'compat' });
+      gFrames = frames; gFrame = 0; gView = 0;
       var thumbs = views.map(function (v, i) {
-        var inner = v.t === 'img' ? imgHtml(p, { alt: '' }) : (v.t === 'zoom' ? '<span class="tz" style="background-image:url(' + src + ');background-position:' + v.pos + '"></span>' : brandLogo(p.brand, 14, '') + '<span class="tl">Совместимость</span>');
-        return '<div class="thumb ' + (i === 0 ? 'on' : '') + (v.t === 'compat' ? ' tcompat' : '') + '" data-view="' + i + '" title="' + (v.t === 'img' ? 'Общий вид' : (v.t === 'zoom' ? 'Крупный план' : 'Совместимые модели')) + '">' + inner + '</div>';
+        var inner, title;
+        if (v.t === 'compat') { inner = brandLogo(p.brand, 14, '') + '<span class="tl">Совместимость</span>'; title = 'Совместимые модели'; }
+        else if (v.f === 0) { inner = imgHtml(p, { alt: '' }); title = frames.length > 1 ? 'Фото 1' : 'Фото товара'; }
+        else { inner = '<img src="' + esc(frames[v.f].src) + '" alt="" loading="lazy">'; title = 'Фото ' + (v.f + 1); }
+        return '<div class="thumb ' + (i === 0 ? 'on' : '') + (v.t === 'compat' ? ' tcompat' : '') + '" data-view="' + i + '" title="' + title + '">' + inner + '</div>';
       }).join('');
+      /* Полоса из одной миниатюры ничего не переключает — не показываем её. */
+      if (views.length < 2) thumbs = '';
       var compatCard = '<div class="gcompat" data-gview="compat" hidden>' + brandLogo(p.brand, 34, '') + '<h3>Подходит для принтеров ' + esc(C.brandName(p.brand)) + '</h3><div class="tags">' + d.models.map(function (m) {
         return '<a class="chip" href="' + link.printer(printerKey(p.brand, m)) + '">' + esc(m) + '</a>';
       }).join('') + '</div></div>';
@@ -855,9 +896,9 @@
           ' role="button" tabindex="0" aria-label="Открыть фото крупнее: ' + esc(p.name) + '"') +
         ' data-src="' + (hasAtlas || noPhoto ? '' : src) + '">' + imgHtml(p, { alt: p.name, eager: true, view: 'img', noAtlas: localFull, cls: hasAtlas ? 'g-atlas-img' : '' }) +
         (fullSrc ? '<img class="g-full" data-full="' + esc(fullSrc) + '" alt="' + esc(p.name) + '" hidden>' : '') +
-        (hasAtlas || noPhoto ? '' : '<div class="gzoom" data-gview="zoom" style="background-image:url(' + src + ')" hidden></div>') + compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span>' +
+        compatCard + (badge(p) ? '<div class="cbadges">' + badge(p) + '</div>' : '') + '<span class="gbrand">Для принтеров ' + brandLogo(p.brand, 16, '') + '</span>' +
         (noPhoto ? '<span class="gnote">' + ic('info', 15) + 'Поставщик не передал фото</span>'
-          : '<span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span>') + '</div><div class="thumbs">' + thumbs + '</div></div>' +
+          : '<span class="zoom">' + ic('zoom', 16) + 'Открыть фото</span>') + '</div>' + (thumbs ? '<div class="thumbs">' + thumbs + '</div>' : '') + '</div>' +
         '<div class="pinfo"><div class="keyspecs"><h3>Коротко о товаре</h3>' + key.map(function (k) { return '<div class="krow"><span>' + esc(k[0]) + '</span><b>' + esc(k[1]) + '</b></div>'; }).join('') + '</div>' +
         (compatChips ? '<div class="compat"><h3>Подходит для принтеров ' + brandLogo(p.brand, 18, '') + '</h3><div class="tags">' + compatChips + '</div></div>' : '') +
         /*
@@ -1498,6 +1539,15 @@
 
   function render() {
     var r = parse(), fn = routes[r.route] || notfound;
+    /*
+      Увеличение закрывается до перехода, а список кадров обнуляется:
+      иначе на новой странице осталось бы открытым окно с фотографией
+      предыдущего товара, а «Открыть фото» на карточке без снимка
+      показало бы чужой кадр из прошлого состояния.
+    */
+    closePhoto();
+    gFrames = []; gFrame = 0; gView = 0;
+    lbReset();
     var key = r.route + ':' + (r.slug || r.id || r.key || '');
     var keepScroll = (r.route === 'catalog' && lastPath === 'catalog') || (r.route === 'product' && key === lastKey) || (r.route === 'cart' && lastPath === 'cart') || (r.route === 'checkout' && lastPath === 'checkout');
     var mode = navMode; navMode = 'page';
@@ -2328,6 +2378,16 @@
   var lb = document.getElementById('lightbox');
   var lbFrom = null;
   /*
+    Состояние галереи — одно на страницу.
+
+    gFrames — кадры текущего товара по порядку, gFrame — какой из них
+    выбран, gView — какой вид открыт (снимок или «Совместимость»).
+    Читают это и миниатюры, и основное фото, и увеличение, поэтому
+    разойтись им негде. При переходе на другой товар список сбрасывается
+    в render() — иначе на новой карточке остался бы кадр предыдущей.
+  */
+  var gFrames = [], gFrame = 0, gView = 0;
+  /*
     Увеличение фотографии.
 
     Открывается и нажатием, и с клавиатуры: у площадки роль кнопки и
@@ -2341,32 +2401,77 @@
     нет, и растягивать его, изображая чёткость, нечестно — вместо этого
     под фотографией стоит прямая оговорка.
   */
-  function openPhoto() {
-    var g = document.getElementById('gmain');
-    if (!g) return;
+  /*
+    Увеличение открывает ВЫБРАННЫЙ кадр.
+
+    Прежде эта функция смотрела на data-src площадки — адрес первого
+    снимка, записанный при отрисовке, — и о выборе миниатюры не знала
+    ничего. Выбрана вторая, открывается первая. Теперь кадр берётся из
+    того же gFrame, по которому подсвечена миниатюра и показано основное
+    фото, так что все трое всегда сходятся.
+  */
+  function showFrameInLb(k) {
+    var g = document.getElementById('gmain'); if (!g) return false;
     var img = lb.querySelector('img'), at = lb.querySelector('.lb-atlas'), note = lb.querySelector('.lb-note');
-    var cell = g.querySelector('.atimg');
-    var full = g.querySelector('.g-full');
-    if (full && full.complete && full.naturalWidth > 0) {
-      img.src = full.currentSrc || full.src; img.hidden = false; at.hidden = true;
+    var f = gFrames[k];
+    if (f && !f.atlas && f.src) {
+      /* Полноразмерный оригинал поставщика — только для первого кадра. */
+      var full = k === 0 ? g.querySelector('.g-full') : null;
+      img.src = (full && full.complete && full.naturalWidth > 0) ? (full.currentSrc || full.src) : f.src;
+      img.alt = f.alt || '';
+      img.hidden = false; at.hidden = true;
       note.hidden = true; note.textContent = '';
-    } else if (g.dataset.src) {
-      img.src = g.dataset.src; img.hidden = false; at.hidden = true;
-      note.hidden = true; note.textContent = '';
-    } else if (cell) {
-      img.hidden = true; img.removeAttribute('src');
+    } else {
+      var cell = g.querySelector('.atimg');
+      if (!cell) return false;
+      img.hidden = true; img.removeAttribute('src'); img.alt = '';
       at.hidden = false;
       at.style.backgroundImage = cell.style.backgroundImage;
       at.style.backgroundSize = cell.style.backgroundSize;
       at.style.backgroundPosition = cell.style.backgroundPosition;
-      at.setAttribute('aria-label', g.getAttribute('aria-label') || 'Фото товара');
+      at.setAttribute('aria-label', (f && f.alt) || g.getAttribute('aria-label') || 'Фото товара');
       note.hidden = false;
       note.textContent = 'Снимок поставщика доступен только в размере 240 пикселей — более крупного исходника у этой позиции нет.';
-    } else { return; }
+    }
+    gFrame = k;
+    lbCount();
+    return true;
+  }
+  /* Счётчик и стрелки появляются только там, где кадров правда несколько. */
+  function lbCount() {
+    var many = gFrames.length > 1;
+    var c = lb.querySelector('.lb-count'), pv = lb.querySelector('[data-lb="-1"]'), nx = lb.querySelector('[data-lb="1"]');
+    if (c) { c.hidden = !many; c.textContent = many ? (gFrame + 1) + ' / ' + gFrames.length : ''; }
+    if (pv) pv.hidden = !many;
+    if (nx) nx.hidden = !many;
+  }
+  function lbStep(dir) {
+    if (gFrames.length < 2) return;
+    var k = (gFrame + dir + gFrames.length) % gFrames.length;
+    if (!showFrameInLb(k)) return;
+    /* Стрелки двигают тот же выбор, что и миниатюры: закрыв увеличение,
+       человек остаётся на кадре, до которого долистал. */
+    showView(k);
+  }
+  function openPhoto() {
+    var g = document.getElementById('gmain');
+    if (!g) return;
+    if (!gFrames.length) return;
+    var k = Math.min(Math.max(0, gFrame), gFrames.length - 1);
+    if (!showFrameInLb(k)) return;
     lbFrom = g;
     lb.hidden = false;
     lb.classList.add('open');
     var x = lb.querySelector('.x'); if (x) x.focus();
+  }
+  /* Снимок из закрытого окна тоже убирается: пока он там лежал, на
+     следующем товаре в разметке оставался кадр предыдущего. */
+  function lbReset() {
+    var img = lb.querySelector('img'), at = lb.querySelector('.lb-atlas'), note = lb.querySelector('.lb-note');
+    if (img) { img.removeAttribute('src'); img.alt = ''; img.hidden = false; }
+    if (at) { at.hidden = true; at.style.backgroundImage = ''; }
+    if (note) { note.hidden = true; note.textContent = ''; }
+    lbCount();
   }
   function closePhoto() {
     if (!lb.classList.contains('open')) return;
@@ -2384,18 +2489,76 @@
     e.preventDefault();
     openPhoto();
   });
-  lb.addEventListener('click', closePhoto);
+  lb.addEventListener('click', function (e) {
+    var nav = e.target.closest && e.target.closest('[data-lb]');
+    /* Нажатие на стрелку листает кадр, а не закрывает окно. */
+    if (nav) { e.stopPropagation(); lbStep(+nav.dataset.lb); return; }
+    closePhoto();
+  });
+  /*
+    Листание с клавиатуры и пальцем. Порядок кадров один и тот же везде:
+    стрелки идут по тому же списку, что и миниатюры, поэтому после
+    закрытия подсвечена та миниатюра, на которой человек остановился.
+  */
+  document.addEventListener('keydown', function (e) {
+    if (!lb.classList.contains('open')) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); lbStep(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); lbStep(1); }
+  });
+  (function () {
+    var x0 = null, y0 = null;
+    lb.addEventListener('touchstart', function (e) {
+      if (!e.touches || e.touches.length !== 1) { x0 = null; return; }
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+    }, { passive: true });
+    lb.addEventListener('touchend', function (e) {
+      if (x0 === null || !e.changedTouches || !e.changedTouches.length) return;
+      var dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+      x0 = null;
+      /* Горизонтальный жест — листание, вертикальный оставляем окну. */
+      if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+      lbStep(dx < 0 ? 1 : -1);
+    }, { passive: true });
+  })();
 
+  /*
+    Переключение вида в галерее.
+
+    Выбранный кадр — одно состояние на всех: миниатюру, основное фото и
+    увеличение. Раньше состояний было два — класс «on» у миниатюры и
+    отдельно то, что читал лайтбокс, — и они расходились: выбрана вторая
+    миниатюра, а «Открыть фото» показывает первую. Теперь номер кадра
+    лежит в одном месте (gFrame), и всё остальное читает его.
+  */
   function showView(i) {
     var g = document.getElementById('gmain'); if (!g) return;
-    var thumbs = app.querySelectorAll('.thumb[data-view]'), th = thumbs[i]; if (!th) return;
-    thumbs.forEach(function (x) { x.classList.toggle('on', x === th); });
-    var tz = th.querySelector('.tz'), img = g.querySelector('[data-gview="img"]'), zoom = g.querySelector('[data-gview="zoom"]'), comp = g.querySelector('[data-gview="compat"]');
-    var kind = th.classList.contains('tcompat') ? 'compat' : (tz ? 'zoom' : 'img');
-    img.hidden = kind !== 'img'; zoom.hidden = kind !== 'zoom';
-    if (comp) comp.hidden = kind !== 'compat';
-    if (kind === 'zoom') zoom.style.backgroundPosition = tz.style.backgroundPosition;
-    g.querySelector('.zoom').hidden = kind === 'compat';
+    var thumbs = app.querySelectorAll('.thumb[data-view]');
+    var th = thumbs[i];
+    /* Миниатюр может не быть вовсе (один вид) — кадр всё равно первый. */
+    if (thumbs.length && !th) return;
+    if (th) thumbs.forEach(function (x) { x.classList.toggle('on', x === th); });
+    var compat = !!(th && th.classList.contains('tcompat'));
+    var img = g.querySelector('[data-gview="img"]'), comp = g.querySelector('[data-gview="compat"]');
+    gView = i;
+    if (!compat) {
+      /* Номер вида и номер кадра совпадают, пока виды — это снимки:
+         «Совместимость» всегда идёт последней и кадром не является. */
+      gFrame = Math.min(i, Math.max(0, gFrames.length - 1));
+      var f = gFrames[gFrame];
+      if (f && img && !f.atlas && img.tagName === 'IMG' && f.src && img.getAttribute('src') !== f.src) {
+        img.src = f.src;
+        img.alt = f.alt || '';
+      }
+      /* Полноразмерный снимок поставщика относится только к первому
+         кадру: у остальных своего оригинала нет, и оставленная поверх
+         картинка показала бы чужой вид. */
+      var full = g.querySelector('.g-full');
+      if (full) full.hidden = gFrame !== 0 || !(full.complete && full.naturalWidth > 0);
+    }
+    if (img) img.hidden = compat;
+    if (comp) comp.hidden = !compat;
+    g.dataset.frame = compat ? '' : String(gFrame);
+    var zoomHint = g.querySelector('.zoom'); if (zoomHint) zoomHint.hidden = compat;
   }
 
   var slideIdx = 0, sliderTimer = null;

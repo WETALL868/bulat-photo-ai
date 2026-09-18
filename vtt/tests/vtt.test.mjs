@@ -2371,13 +2371,115 @@ test('карточка без снимка не обещает фото, кот�
     одного.
   */
   assert.ok(/var noPhoto = !localFull && !hasAtlas;/.test(app), 'витрина перестала различать «нет снимка»');
-  assert.ok(/if \(!hasAtlas && !noPhoto\) views\.push/.test(app),
-    'виды «Крупный план» снова добавляются товару без снимка');
+  /* Виды теперь строятся из списка кадров: у товара без снимка список
+     пуст, и ни одного вида-фотографии не появляется. */
+  assert.ok(/if \(noPhoto\) \{ \/\* нечего показывать/.test(app),
+    'галерея снова собирает виды товару без снимка');
+  assert.ok(!/views\.push\(\{ t: 'zoom'/.test(app),
+    'вернулись искусственные виды «Крупный план» из одного файла');
   assert.ok(/noPhoto \? ' aria-label="Фото товара не передано поставщиком"'/.test(app),
     'площадка без снимка снова притворяется кнопкой увеличения');
   assert.ok(/classList\.contains\('no-photo'\)/.test(app), 'увеличение заглушки больше ничем не остановлено');
   const css = fs.readFileSync(path.join(process.cwd(), 'assets/css/styles.css'), 'utf8');
   assert.ok(/\.gmain\.no-photo\{cursor:default\}/.test(css), 'курсор на площадке без снимка снова обещает нажатие');
+});
+
+test('галерея собирается из настоящих кадров, а не из одного файла', async () => {
+  const { galleryFrames } = await import('../src/publish.mjs');
+  /*
+    Владелец увидел на карточке три миниатюры и один снимок: второй и
+    третий вид рисовались из того же файла со сдвигом фона. Список кадров
+    отвечает за то, чтобы такого больше не было.
+  */
+  const local = {
+    'https://b2b.vtt.ru/images/1.jpg': '/assets/img/vtt-full/a.webp',
+    'https://b2b.vtt.ru/images/1_2.jpg': '/assets/img/vtt-full/b.webp',
+    'https://b2b.vtt.ru/images/1_3.jpg': '/assets/img/vtt-full/c.webp',
+  };
+  const resolve = (u) => local[u] ?? null;
+
+  const many = galleryFrames({
+    img: '/assets/img/vtt-full/a.webp',
+    images: ['https://b2b.vtt.ru/images/1.jpg', 'https://b2b.vtt.ru/images/1_2.jpg', 'https://b2b.vtt.ru/images/1_3.jpg'],
+  }, resolve);
+  assert.deepEqual(many, ['/assets/img/vtt-full/a.webp', '/assets/img/vtt-full/b.webp', '/assets/img/vtt-full/c.webp'],
+    'кадры собрались не по порядку или не все');
+
+  /* Один снимок — один кадр: три вида из него делать нечего. */
+  const one = galleryFrames({ img: '/assets/img/vtt-full/a.webp', images: ['https://b2b.vtt.ru/images/1.jpg'] }, resolve);
+  assert.deepEqual(one, ['/assets/img/vtt-full/a.webp']);
+
+  /* Файла дополнительного кадра нет в проекте — кадра нет в галерее. */
+  const missing = galleryFrames({
+    img: '/assets/img/vtt-full/a.webp',
+    images: ['https://b2b.vtt.ru/images/1.jpg', 'https://b2b.vtt.ru/images/9_2.jpg'],
+  }, resolve);
+  assert.deepEqual(missing, ['/assets/img/vtt-full/a.webp'], 'в галерею попал кадр, файла которого у нас нет');
+
+  /* Заглушка кадром не считается. */
+  assert.deepEqual(galleryFrames({ img: '/assets/img/no-photo.svg', photoMissing: true, images: [] }, resolve), []);
+
+  /* Основной снимок остался у поставщика — галереи нет вовсе, иначе
+     рядом с битой картинкой встал бы целый второй кадр. */
+  assert.deepEqual(galleryFrames({
+    img: 'https://b2b.vtt.ru/images/1.jpg',
+    images: ['https://b2b.vtt.ru/images/1.jpg', 'https://b2b.vtt.ru/images/1_2.jpg'],
+  }, resolve), [], 'галерея начинается с горячей ссылки на чужой сервер');
+
+  /* Товар, снявший фото у записи с тем же артикулом, берёт оттуда и
+     остальные кадры. */
+  assert.deepEqual(galleryFrames({
+    img: '/assets/img/vtt-full/a.webp',
+    images: [],
+    imagesFromCode: ['https://b2b.vtt.ru/images/1.jpg', 'https://b2b.vtt.ru/images/1_2.jpg'],
+  }, resolve), ['/assets/img/vtt-full/a.webp', '/assets/img/vtt-full/b.webp']);
+
+  /* Повтор одного файла не превращается во второй кадр. */
+  assert.deepEqual(galleryFrames({
+    img: '/assets/img/vtt-full/a.webp',
+    images: ['https://b2b.vtt.ru/images/1.jpg', 'https://b2b.vtt.ru/images/1.jpg'],
+  }, resolve), ['/assets/img/vtt-full/a.webp']);
+});
+
+test('увеличение открывает выбранный кадр, а не первый', async () => {
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  /*
+    Ошибка владельца: выбрана вторая миниатюра, нажата «Открыть фото» —
+    открывается первая. Причина была в том, что openPhoto читала
+    data-src площадки, записанный при отрисовке, и о выборе не знала.
+  */
+  assert.ok(/var gFrames = \[\], gFrame = 0, gView = 0;/.test(app),
+    'состояние выбранного кадра исчезло из витрины');
+  assert.ok(/function openPhoto\(\)[\s\S]{0,400}?var k = Math\.min\(Math\.max\(0, gFrame\), gFrames\.length - 1\);/.test(app),
+    'увеличение снова открывает кадр мимо выбранного');
+  assert.ok(!/\} else if \(g\.dataset\.src\) \{\s*\n\s*img\.src = g\.dataset\.src;/.test(app),
+    'openPhoto снова читает data-src вместо выбранного кадра');
+  /* Стрелки двигают тот же выбор, что и миниатюры. */
+  assert.ok(/function lbStep\(dir\)[\s\S]{0,400}?showView\(k\);/.test(app),
+    'листание в увеличении разошлось с миниатюрами');
+  /* Переход на другой товар не оставляет кадр предыдущего. */
+  assert.ok(/closePhoto\(\);\s*\n\s*gFrames = \[\]; gFrame = 0; gView = 0;\s*\n\s*lbReset\(\);/.test(app),
+    'при переходе между товарами кадр предыдущего больше не сбрасывается');
+});
+
+test('название товара в карточке не обрезается', async () => {
+  const css = fs.readFileSync(path.join(process.cwd(), 'assets/css/styles.css'), 'utf8');
+  /*
+    В выдаче по артикулу 006R01160 название обрывалось на середине —
+    ровно там, где стоял артикул. Обрезка жила в трёх местах: сетка,
+    список и мобильное правило.
+  */
+  const rules = css.match(/^\.ctitle\{[^}]*\}|\.clist \.ctitle\{[^}]*\}|^  \.ctitle\{[^}]*\}/gm) || [];
+  assert.ok(rules.length >= 3, 'правила названия карточки не найдены — проверка молча ничего не проверяет');
+  for (const r of rules) {
+    assert.ok(!/line-clamp/.test(r), `обрезка названия вернулась: ${r}`);
+    assert.ok(!/overflow:hidden/.test(r), `скрытие переполнения названия вернулось: ${r}`);
+    assert.ok(!/min-height/.test(r), `фиксированная высота названия вернулась: ${r}`);
+  }
+  assert.ok(/\.ctitle\{[^}]*overflow-wrap:anywhere/.test(css),
+    'длинный артикул снова может распереть карточку');
+  /* Рекомендации показывают те же товары теми же карточками. */
+  assert.ok(!/\.mini \.t\{[^}]*line-clamp/.test(css), 'в рекомендациях название снова обрезано');
 });
 
 test('оценка в форме отзыва не выбрана заранее и обязательна', async () => {
