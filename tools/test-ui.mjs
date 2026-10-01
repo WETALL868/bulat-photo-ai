@@ -52,6 +52,41 @@ const stop = () => { try { server.kill(); } catch { /* уже закрыт */ } 
 process.on('exit', stop);
 await new Promise((r) => setTimeout(r, 900));
 
+/*
+  Предполётная сверка: то ли мы вообще проверяем.
+
+  Витрина отдаётся из seo-pages — заранее собранных страниц. Если они
+  старее исходников, браузер получит ПРОШЛУЮ оболочку: прошлые версии
+  styles.css и app.js, прошнюю разметку окна увеличения. Проверки начнут
+  падать или падать с аварией, и разбираться придётся не с сайтом, а с
+  тем, почему тест видит не то, что лежит в репозитории.
+
+  Поэтому сначала сверяем отданный сервером HTML с index.html и, если он
+  расходится, говорим об этом прямо и сразу — одной понятной строкой, а
+  не сотней непонятных.
+*/
+{
+  const shell = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const wantCss = (/styles\.css\?v=([a-z0-9-]+)/i.exec(shell) || [])[1] || '';
+  const wantJs = (/app\.js\?v=([a-z0-9-]+)/i.exec(shell) || [])[1] || '';
+  const probe = await fetch(`${BASE}/product/${SLUG}`).then((r) => r.text()).catch(() => '');
+  if (!probe) {
+    check('предрендер отвечает', false, `${BASE}/product/${SLUG} не отдал страницу`);
+  } else {
+    const gotCss = (/styles\.css\?v=([a-z0-9-]+)/i.exec(probe) || [])[1] || '';
+    const gotJs = (/app\.js\?v=([a-z0-9-]+)/i.exec(probe) || [])[1] || '';
+    check('версии стилей и скрипта в предрендере совпадают с index.html',
+      gotCss === wantCss && gotJs === wantJs,
+      `в index.html styles=${wantCss} app=${wantJs}; на странице styles=${gotCss} app=${gotJs}` +
+      (gotCss === wantCss && gotJs === wantJs ? '' : ' — пересоберите: npm run seo'));
+    /* Узлы, без которых проверки увеличения падают с аварией. */
+    const need = ['lb-stage', 'lb-atlas', 'lb-note', 'lb-zoom'];
+    const absent = need.filter((n) => shell.includes(n) && !probe.includes(n));
+    check('разметка оболочки в предрендере не отстала от index.html', absent.length === 0,
+      absent.length ? `нет узлов: ${absent.join(', ')} — пересоберите: npm run seo` : '');
+  }
+}
+
 const browser = await chromium.launch();
 
 /* Одна и та же проверка прогоняется на двух ширинах: липкая шапка и
@@ -477,11 +512,32 @@ for (const [dev, vp] of [['десктоп', { width: 1440, height: 900 }], ['т�
     await page.waitForTimeout(300);
     let open = await page.evaluate(() => document.getElementById('lightbox').classList.contains('open'));
     check(`${slug}: увеличение открывается нажатием`, open);
+    /*
+      Читаем окно увеличения ОСТОРОЖНО.
+
+      Раньше здесь стояло at.hidden без проверки на null. Стоило отдать
+      странице предрендер постарше — без .lb-atlas и .lb-note, — и
+      проверка падала с «Cannot read properties of null», унося с собой
+      весь прогон: всё, что идёт дальше по файлу, не выполнялось вовсе.
+      Это хуже, чем провалившаяся проверка: провал виден в отчёте, а
+      авария прячет и его, и сотню следующих.
+    */
     const shown = await page.evaluate(() => {
       const lb = document.getElementById('lightbox');
+      if (!lb) return { missing: 'самого окна #lightbox' };
       const at = lb.querySelector('.lb-atlas'), im = lb.querySelector('img'), note = lb.querySelector('.lb-note');
-      return { atlas: !at.hidden, img: !im.hidden, note: note.hidden ? '' : note.textContent };
+      if (!im) return { missing: '<img> внутри окна' };
+      return {
+        atlas: !!at && !at.hidden,
+        img: !im.hidden,
+        note: (note && !note.hidden) ? note.textContent : '',
+        missing: at ? '' : '.lb-atlas (разметка окна старее исходников)',
+      };
     });
+    if (shown.missing) {
+      check(`${slug}: разметка окна увеличения совпадает с исходниками`, false,
+        `в отданном сервером HTML нет ${shown.missing} — предрендер собран до правки index.html, пересоберите: npm run seo`);
+    }
     check(`${slug}: в увеличении показан снимок`, shown.atlas || shown.img,
       shown.atlas ? 'из атласа, с оговоркой: ' + shown.note.slice(0, 48) : 'из файла');
     await page.keyboard.press('Escape');

@@ -102,18 +102,28 @@ const server = http.createServer((req, res) => {
     return send(res, 200, fs.readFileSync(file), TYPES['.html'], { 'X-Robots-Tag': 'noindex, nofollow' });
   }
 
+  /*
+    Заказ уходит в НАСТОЯЩИЙ php, а не в заглушку.
+
+    Так было не всегда, и это дорого стоило. Раньше dev-сервер принимал
+    любой JSON и отвечал «ок» с номером: проверки цен, наличия, промокода
+    и способа доставки жили только в api/index.php и локально не
+    исполнялись ни разу. Поэтому 01.10.2026 на боевом сайте перестал
+    отправляться быстрый заказ — сервер отвечал 422 на заявку без способа
+    доставки, — а все местные проверки покупки при этом проходили: они
+    разговаривали с заглушкой, которая не умеет отказывать.
+
+    Теперь оба пути ведут в один и тот же код. Если php в системе нет,
+    ответ об этом говорит прямо — молчаливой подмены больше не будет.
+  */
   if (req.method === 'POST' && pathname === '/api/order') {
-    let body = '';
-    req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy(); });
-    req.on('end', () => {
-      let order;
-      try { order = JSON.parse(body); } catch { return send(res, 400, JSON.stringify({ ok: false, error: 'Некорректный запрос' }), TYPES['.json']); }
-      const number = 10240 + fs.readdirSync(fs.existsSync(ORDERS) ? ORDERS : (fs.mkdirSync(ORDERS, { recursive: true }), ORDERS)).length + 1;
-      fs.writeFileSync(path.join(ORDERS, number + '.json'), JSON.stringify({ number, createdAt: new Date().toISOString(), ...order }, null, 2));
-      console.log(`заказ №${number}: ${order.items?.length || 0} поз., ${order.total} ₽`);
-      send(res, 200, JSON.stringify({ ok: true, number }), TYPES['.json']);
-    });
-    return;
+    if (!php) {
+      return send(res, 503, JSON.stringify({
+        ok: false,
+        error: 'Приём заказа проверяется настоящим php, а его нет в системе. Установите php — иначе проверка покупки ничего не доказывает.',
+      }), TYPES['.json']);
+    }
+    return proxyToPhp(req, res, pathname, url.search);
   }
 
   /*

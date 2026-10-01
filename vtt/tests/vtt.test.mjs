@@ -2182,6 +2182,122 @@ test('PHP и сборка дают одинаковый live/reviews.json', asyn
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('быстрый заказ принимается как заявка, а не отваливается на доставке', async (t) => {
+  const { spawnSync, spawn } = await import('node:child_process');
+  if (spawnSync('php', ['--version'], { stdio: 'ignore' }).status !== 0) {
+    t.skip('php в системе нет');
+    return;
+  }
+  /*
+    Боевой дефект 01.10.2026: «Купить в 1 клик» не отправлялся вовсе.
+
+    Форма быстрого заказа спрашивает только имя и телефон — ни доставки,
+    ни оплаты там нет и быть не должно. Когда на сервере появилась
+    строгая проверка способа доставки, каждая такая заявка стала падать
+    с 422, а покупатель видел общую фразу «Не удалось отправить заказ».
+
+    Проверка держит ровно это разделение: ЗАЯВКА проходит без способа
+    доставки, ОФОРМЛЕНИЕ без него по-прежнему не проходит. И то и другое
+    проверяется на настоящем PHP, в своей песочнице, с отключённой
+    почтой — письма отсюда не уходят.
+  */
+  const os = await import('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-quick-'));
+  const orders = path.join(dir, 'orders');
+  fs.mkdirSync(orders, { recursive: true });
+
+  /* Живые цены подменяются одним выдуманным товаром: тест не должен
+     зависеть от того, что сегодня есть на складе. */
+  const live = { items: { 'test-id': { price: 1000, stock: 5, available: true } } };
+  const liveDir = path.join(dir, 'live');
+  fs.mkdirSync(liveDir);
+  fs.writeFileSync(path.join(liveDir, 'catalog-live.json'), JSON.stringify(live));
+
+  /* Песочница получает весь api целиком: index.php подключает соседние
+     файлы по __DIR__, и в одиночку он просто не запустится. */
+  for (const f of fs.readdirSync(path.join(process.cwd(), 'api'))) {
+    if (f.endsWith('.php')) fs.copyFileSync(path.join(process.cwd(), 'api', f), path.join(dir, f));
+  }
+  /* Указатель на конфигурацию убираем: песочница работает на значениях
+     по умолчанию, а почта в них пустая — письма отсюда не уходят. */
+  fs.rmSync(path.join(dir, 'config-path.php'), { force: true });
+  const php = fs.readFileSync(path.join(process.cwd(), 'api/index.php'), 'utf8');
+  /* Корень api подменяем на песочницу и включаем САМУЮ строгую проверку
+     доставки — ту, из-за которой всё и сломалось. Если заявка пройдёт и
+     при ней, значит исправление настоящее, а не отключённая проверка. */
+  const patched = php
+    .replace(/__DIR__ \. '\/\.\.\/live\/catalog-live\.json'/g, JSON.stringify(path.join(liveDir, 'catalog-live.json')))
+    .replace(/'orders_dir' => __DIR__ \. '\/\.\.\/var\/orders'/, `'orders_dir' => ${JSON.stringify(orders)}`)
+    .replace("    default => null,\n};", "    default => fail(422, 'Выберите доступный способ доставки'),\n};");
+  assert.ok(patched.includes("fail(422, 'Выберите доступный способ доставки')"),
+    'не удалось включить строгую проверку доставки — тест проверял бы не то');
+  const sandbox = path.join(dir, 'index.php');
+  fs.writeFileSync(sandbox, patched);
+
+  /*
+    Запрос подаём через встроенный сервер PHP, а не через CLI: в CLI
+    php://input берётся из stdin и ведёт себя иначе, чем под веб-сервером,
+    а проверять надо ровно тот путь, по которому приходит покупатель.
+  */
+  const router = path.join(dir, 'router.php');
+  fs.writeFileSync(router, '<?php require __DIR__ . "/index.php"; return true;');
+  const port = 8200 + Math.floor(Math.random() * 300);
+  const srv = spawn('php', ['-S', `127.0.0.1:${port}`, '-t', dir, router], { cwd: dir, stdio: 'ignore' });
+  await new Promise((r) => setTimeout(r, 1200));
+  const call = async (body) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return await res.json();
+    } catch (e) {
+      return { raw: String(e && e.message) };
+    }
+  };
+
+  const quick = await call({
+    customer: { name: 'Проверка', phone: '+70000000000', type: 'quick' },
+    items: [{ id: 'test-id', qty: 1 }],
+  });
+  assert.equal(quick.ok, true, `быстрый заказ снова не проходит: ${JSON.stringify(quick)}`);
+
+  const checkout = await call({
+    customer: { name: 'Проверка', phone: '+70000000000' },
+    items: [{ id: 'test-id', qty: 1 }],
+  });
+  assert.equal(checkout.ok, false, 'оформление без способа доставки стало проходить — проверку ослабили');
+
+  /* Заявка не должна притворяться оформленным заказом. */
+  const saved = fs.readdirSync(orders).filter((f) => /^\d+\.json$/.test(f))
+    .map((f) => JSON.parse(fs.readFileSync(path.join(orders, f), 'utf8')));
+  const q = saved.find((o) => o.kind === 'quick');
+  assert.ok(q, 'заявка не помечена как быстрый заказ — менеджер не отличит её от оформленного');
+  assert.equal(q.delivery.method, 'manager', 'быстрому заказу подставили способ доставки, который никто не выбирал');
+  assert.equal(q.delivery.cost, null, 'быстрому заказу посчитали стоимость доставки до разговора с менеджером');
+  assert.equal(q.payment, '', 'быстрому заказу проставили способ оплаты, которого не спрашивали');
+  srv.kill();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('причину отказа показывают покупателю, а не прячут', async () => {
+  const app = fs.readFileSync(path.join(process.cwd(), 'assets/js/app.js'), 'utf8');
+  /*
+    Вторая половина того же дефекта: сервер назвал причину, а человек
+    увидел «Не удалось отправить заказ». По такому сообщению нельзя ни
+    исправить заказ, ни объяснить его менеджеру по телефону.
+  */
+  assert.ok(/err\.fromServer = !!said;/.test(app),
+    'submitOrder снова не разбирает причину отказа из ответа сервера');
+  assert.ok(!/r\.ok \? r\.json\(\) : Promise\.reject\(new Error\('HTTP ' \+ r\.status\)\)/.test(app),
+    'из ответа сервера снова берётся только код состояния');
+  /* Оба места, где заказ уходит: быстрый и оформление. */
+  const shown = app.match(/err && err\.fromServer/g) || [];
+  assert.ok(shown.length >= 2,
+    `причина показывается не везде: нашли ${shown.length} из двух мест отправки заказа`);
+});
+
 test('подключаемые части api не запускаются напрямую', async (t) => {
   const { execFileSync, spawnSync } = await import('node:child_process');
   if (spawnSync('php', ['--version'], { stdio: 'ignore' }).status !== 0) {

@@ -2140,7 +2140,27 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ customer: data, items: items.map(function (x) { return { id: x.p.id, code: x.p.code, name: x.p.name, price: x.p.price, qty: x.q }; }), promo: S.promo || '', total: total }),
-    }).then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+    }).then(function (r) {
+      /*
+        Сервер отвечает на отказ не просто кодом, а причиной:
+        {"ok":false,"error":"Выберите доступный способ доставки"}. Раньше
+        здесь из всего ответа брался только номер кода, и покупатель
+        видел «Не удалось отправить заказ» — одинаковое и бесполезное
+        сообщение и на упавшую сеть, и на товар, который кончился, и на
+        незаполненное поле. Разбирать такое по телефону невозможно.
+
+        Теперь причина поднимается наверх: если сервер её назвал, человек
+        прочитает именно её.
+      */
+      if (r.ok) return r.json();
+      return r.json().catch(function () { return null; }).then(function (body) {
+        var said = body && typeof body.error === 'string' ? body.error.trim() : '';
+        var err = new Error(said || ('HTTP ' + r.status));
+        err.fromServer = !!said;
+        err.status = r.status;
+        throw err;
+      });
+    })
       .then(function (result) {
         if (!result || !result.ok || !result.number) throw new Error('Заказ не подтверждён сервером');
         return result;
@@ -2177,10 +2197,16 @@
       btn.disabled = true; btn.textContent = 'Отправляем…';
       (OFFLINE ? Promise.reject(new Error('offline')) : submitOrder(d2, items, total))
         .then(function (res) { finishOrder(d2, res.number, false); })
-        .catch(function () {
+        .catch(function (err) {
           if (OFFLINE) return finishOrder(d2, 10240 + (S.orders = (S.orders || 0) + 1), true);
           btn.disabled = false; btn.innerHTML = was;
-          showToast('Не удалось отправить заказ. Корзина сохранена — попробуйте ещё раз или позвоните нам.');
+          /* Причина от сервера важнее общей фразы: «товар кончился,
+             обновите корзину» говорит, что делать, а «не удалось» — нет.
+             Про сохранённую корзину дописываем: это ответ на вопрос,
+             который возникает сразу. */
+          showToast(err && err.fromServer
+            ? err.message + ' Корзина сохранена.'
+            : 'Не удалось отправить заказ. Корзина сохранена — попробуйте ещё раз или позвоните нам.');
         });
       return;
     }
@@ -2450,9 +2476,15 @@
     var items = [{ p: qItem.p, q: qItem.q }], total = qItem.p.price * qItem.q;
     (OFFLINE ? Promise.reject(new Error('offline')) : submitOrder(d, items, total))
       .then(function (res) { finishQuick(d, res.number, false); })
-      .catch(function () {
+      .catch(function (err) {
         if (OFFLINE) return finishQuick(d, 10240 + (S.orders = (S.orders || 0) + 1), true);
-        showToast('Не удалось отправить заказ. Попробуйте ещё раз или позвоните нам.');
+        /* Причину, названную сервером, показываем как есть: «Выберите
+           доступный способ доставки» или «товар кончился» объясняют, что
+           делать, а общая фраза — нет. Общая остаётся только там, где
+           сервер промолчал: оборвалась сеть, упал запрос. */
+        showToast(err && err.fromServer
+          ? err.message
+          : 'Не удалось отправить заказ. Попробуйте ещё раз или позвоните нам.');
       })
       .then(function () { btn.disabled = false; btn.innerHTML = was; });
   });
